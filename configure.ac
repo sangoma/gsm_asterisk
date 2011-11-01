@@ -445,6 +445,7 @@ AST_EXT_LIB_SETUP([SDL_IMAGE], [Sdl Image], [SDL_image])
 AST_OPTION_ONLY([sounds-cache], [SOUNDS_CACHE_DIR], [cached sound tarfiles], [])
 AST_EXT_LIB_SETUP([SPANDSP], [SPANDSP], [spandsp])
 AST_EXT_LIB_SETUP([SS7], [ISDN SS7], [ss7])
+AST_EXT_LIB_SETUP([WAT], [GSM AT], [wat])
 AST_EXT_LIB_SETUP([SPEEX], [Speex], [speex])
 AST_EXT_LIB_SETUP([SPEEX_PREPROCESS], [Speex preprocess routines], [speex])
 AST_EXT_LIB_SETUP([SPEEXDSP], [SpeexDSP], [speexdsp])
@@ -1890,6 +1891,8 @@ if test "x${PBX_SPANDSP}" = "x1" ; then
 	PBX_SPANDSP=0
 	AST_EXT_LIB_CHECK([SPANDSP], [spandsp], [t38_terminal_init], [spandsp.h], [-ltiff])
 fi
+
+AST_EXT_LIB_CHECK([WAT], [wat], [wat_register], [libwat.h])
 
 AST_EXT_LIB_CHECK([SS7], [ss7], [ss7_pollflags], [libss7.h])
 
