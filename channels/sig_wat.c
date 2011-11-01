@@ -23,7 +23,6 @@
  * \author David Yat Sin <dyatsin@sangoma.com>
  */
 
-
 #include "asterisk.h"
 
 #ifdef HAVE_WAT
