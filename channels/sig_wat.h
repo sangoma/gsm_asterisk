@@ -25,12 +25,12 @@
  * \author David Yat Sin <dyatsin@sangoma.com>
  */
 
-
+#include "asterisk/pbx.h"
 #include "asterisk/channel.h"
 #include "asterisk/frame.h"
-#include "asterisk/event.h"
+//#include "asterisk/event.h"
 #include <libwat.h>
-#include <dahdi/user.h>
+//#include <dahdi/user.h>
 
 //DAVIDY remove this define later
 #define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
@@ -73,7 +73,7 @@ struct sig_wat_callback {
 	int (* const train_echocanceller)(void *pvt);				/* DAVIDY: Do I need this? */
 	int (* const dsp_reset_and_flush_digits)(void *pvt);		/* DAVIDY: Do I need this? */
 
-	struct ast_channel * (* const new_ast_channel)(void *pvt, int state, int sub, const struct ast_channel *requestor);
+	struct ast_channel * (* const new_ast_channel)(void *pvt, int state, int startpbx, int sub, const struct ast_channel *requestor);
 
 	void (* const fixup_chans)(void *old_chan, void *new_chan);	/* DAVIDY: Do I need this? */
 
@@ -103,6 +103,8 @@ struct sig_wat_callback {
 	 */
 	void (* const ami_channel_event)(void *pvt, struct ast_channel *chan); /* DAVIDY: Do I need this? */
 
+	void (* const set_new_owner)(void *pvt, struct ast_channel *new_owner);
+
 	/*! Reference the parent module. */
 	void (*module_ref)(void);
 	/*! Unreference the parent module. */
@@ -111,12 +113,15 @@ struct sig_wat_callback {
 
 struct sig_wat_chan;
 
-struct sig_wat_call {
+struct sig_wat_subchannel {
+	struct ast_channel *owner;
+	struct ast_frame f; /* DAVIDY do I need this ? */
+	unsigned int allocd:1;
+	
 	uint8_t wat_call_id; /*!< Id used by libwat for this call */
 
 	int cid_ton;
 	char cid_num[AST_MAX_EXTENSION];
-
 	
 	struct sig_wat_chan *chan;
 };
@@ -124,15 +129,24 @@ struct sig_wat_call {
 struct sig_wat_chan {
 	struct sig_wat_span *wat;
 	struct sig_wat_callback *calls;
-	void *chan_pvt;					/*!< Private structure of the user of this module. */	
+	void *chan_pvt;					/*!< Private structure of the user of this module. */
 
-	struct sig_wat_call *call;	/*!< Active call if there is one */
+	struct ast_channel *owner;			/*!< Our current active owner (if applicable) */
+
+	struct sig_wat_subchannel subs[3];	/*!< Sub-channels */
+
+	int channel;					/*!< Channel Number or CRV */
 
 	char context[AST_MAX_CONTEXT];
 	char mohinterpret[MAX_MUSICCLASS];
-	int channel;					/*!< Channel Number or CRV */
+	char cid_num[AST_MAX_EXTENSION];
+	char cid_name[AST_MAX_EXTENSION];
 
-	struct ast_channel *owner;
+	unsigned int use_callerid:1; /*< whether or not to use caller id on this channel */
+
+	unsigned int remotehangup:1; /*< If the remote side initiated hangup on this channel */
+	
+
 };
 
 struct sig_wat_span {

@@ -1435,7 +1435,8 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 		.wat.wat.wat_cfg = {
 			.moduletype = WAT_MODULE_TELIT,
 			.timeout_cid_num = 1,
-			.signal_poll_interval = 30,
+			.progress_poll_interval = 750,
+			.signal_poll_interval = 60*1000,
 		},
 #endif
 #if defined(HAVE_SS7)
@@ -1614,6 +1615,32 @@ static inline int dahdi_sig_pri_lib_handles(int signaling)
 
 	return handles;
 }
+
+#ifdef HAVE_WAT
+/*!
+ * \internal
+ * \brief Determine if sig_wat handles the signaling.
+ *
+ * \param signaling Signaling to determine if is for sig_wat.
+ *
+ * \return TRUE if the signaling is for sig_wat.
+ */
+static inline int dahdi_sig_wat_lib_handles(int signaling)
+{
+	int handles;
+
+	switch (signaling) {
+		case SIG_GSM:
+			handles = 1;
+			break;
+		default:
+			handles = 0;
+			break;
+	}
+
+	return handles;
+}
+#endif
 
 static enum analog_sigtype dahdisig_to_analogsig(int sig)
 {
@@ -2619,7 +2646,7 @@ static int dahdi_setlaw(int dfd, int law)
 #endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
 
 #ifdef HAVE_WAT
-static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int sub, const struct ast_channel *requestor)
+static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int startpbx, int sub, const struct ast_channel *requestor)
 {
 	int dahdi_sub;
 	int audio = 1;
@@ -2645,7 +2672,7 @@ static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int sub,
 				p->channel, audio, strerror(errno));
 	}
 		
-	return dahdi_new(p, state, 1, dahdi_sub, DAHDI_LAW_ALAW, requestor ? requestor->linkedid : "");
+	return dahdi_new(p, state, startpbx, dahdi_sub, DAHDI_LAW_ALAW, requestor ? requestor->linkedid : "");
 }
 #endif /* defined (HAVE_WAT) */
 
@@ -3530,7 +3557,7 @@ static struct sig_wat_callback dahdi_wat_callbacks =
 	.deadlock_avoidance_private = my_deadlock_avoidance_private,
 
 	.set_echocanceller = my_set_echocanceller,
-
+	.deadlock_avoidance_private = my_deadlock_avoidance_private,
 	.new_ast_channel = my_new_wat_ast_channel,
 	//.play_tone = my_wat_play_tone,
 
@@ -3544,6 +3571,7 @@ static struct sig_wat_callback dahdi_wat_callbacks =
 	.module_ref = my_module_ref,
 	.module_unref = my_module_unref,
 	.open_media = my_wat_open_media,
+	.set_new_owner = my_set_new_owner,
 };
 #endif /* defined (HAVE_WAT) */
 
@@ -5570,7 +5598,7 @@ static int dahdi_call(struct ast_channel *ast, char *rdest, int timeout)
 #endif	/* defined(HAVE_SS7) */
 
 #ifdef HAVE_WAT
-	if (p->sig == SIG_GSM) {
+	if (dahdi_sig_wat_lib_handles(p->sig)) {
 		res = sig_wat_call(p->sig_pvt, ast, rdest);
 		ast_mutex_unlock(&p->lock);
 		return res;
@@ -6397,7 +6425,7 @@ static int dahdi_hangup(struct ast_channel *ast)
 #endif	/* defined(HAVE_PRI) */
 
 #ifdef HAVE_WAT
-	if (p->sig == SIG_GSM) {
+	if (dahdi_sig_wat_lib_handles(p->sig)) {
 		x = 1;
 		ast_channel_setoption(ast, AST_OPTION_AUDIO_MODE, &x, sizeof(char), 0);
 
@@ -6416,47 +6444,22 @@ static int dahdi_hangup(struct ast_channel *ast)
 		dahdi_setlinear(p->subs[SUB_REAL].dfd, 0);
 
 		p->owner = NULL;
-		
-		p->distinctivering = 0;/* Probably not used in this mode. Reset anyway. */
-		p->confirmanswer = 0;/* Probably not used in this mode. Reset anyway. */
+		p->cid_tag[0] = '\0';
+
 		p->outgoing = 0;
-		p->digital = 0;
-		p->faxhandled = 0;
-		p->pulsedial = 0;/* Probably not used in this mode. Reset anyway. */
 
 		revert_fax_buffers(p, ast);
 
-		p->law = p->law_default;
-		law = p->law_default;
-		res = ioctl(p->subs[SUB_REAL].dfd, DAHDI_SETLAW, &law);
-		if (res < 0) {
-			ast_log(LOG_WARNING, "Unable to set law on channel %d to default: %s\n",
-					p->channel, strerror(errno));
-		}
-
 		sig_wat_hangup(p->sig_pvt, ast);
 
-		tone_zone_play_tone(p->subs[SUB_REAL].dfd, -1);
 		dahdi_disable_ec(p);
 
-		x = 0;
-		ast_channel_setoption(ast, AST_OPTION_TDD, &x, sizeof(char), 0);
-		p->didtdd = 0;/* Probably not used in this mode. Reset anyway. */
-
-		p->rdnis[0] = '\0';
 		update_conf(p);
 		reset_conf(p);
 
-		/* Restore data mode */
-		x = 0;
-		ast_channel_setoption(ast, AST_OPTION_AUDIO_MODE, &x, sizeof(char), 0);
-
-		if (num_restart_pending == 0) {
-			restart_monitor();
-		}
 		goto hangup_out;
 	}
-#endif
+#endif /* HAVE_WAT */
 	
 #if defined(HAVE_SS7)
 	if (p->sig == SIG_SS7) {
@@ -12574,7 +12577,7 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 			if (chan_sig == SIG_GSM) {
 				int offset;
 				int matchessigchan;
-				int x,y;
+				int x;
 
 				offset = (channel - p.chanpos) + 2;
 				
@@ -12596,18 +12599,16 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 					}
 
 					//DAVIDY: Verify this with multiple spans
-					wats[x].sigchannel = offset;
-					wats[x].wat.span = span;
-					wats[x].wat.wat_span_id = p.spanno;
+					wats[span].sigchannel = offset;
+					wats[span].wat.span = span;
+					wats[span].wat.wat_span_id = span + 1;
 
 					/* Make sure this isn't a sig-channel */
 					matchessigchan=0;
 					for (x = 0; x < NUM_SPANS; x++) {
-						for (y = 0; y < SIG_PRI_NUM_DCHANS; y++) {
-							if (wats[x].sigchannel == tmp->channel) {
-								matchessigchan = 1;
-								break;
-							}
+						if (wats[x].sigchannel == tmp->channel) {
+							matchessigchan = 1;
+							break;
 						}
 					}
 
@@ -14377,14 +14378,6 @@ static int prepare_wat(struct dahdi_wat *wat)
 }
 #endif	/* HAVE_WAT */
 
-#ifdef HAVE_WAT
-static void dahdi_wat_message(char *s)
-{
-	WAT_NOT_IMPL
-}
-#endif	/* HAVE_WAT */
-
-
 #if defined(HAVE_PRI)
 #ifndef PRI_RESTART
 #error "Upgrade your libpri"
@@ -14438,13 +14431,6 @@ static void dahdi_pri_message(struct pri *pri, char *s)
 	ast_mutex_unlock(&pridebugfdlock);
 }
 #endif	/* defined(HAVE_PRI) */
-
-#ifdef HAVE_WAT
-static void dahdi_wat_error(char *s)
-{
-	WAT_NOT_IMPL
-}
-#endif
 
 #if defined(HAVE_PRI)
 static void dahdi_pri_error(struct pri *pri, char *s)
@@ -15416,6 +15402,18 @@ static int dahdi_restart(void)
 			pthread_kill(pris[i].pri.master, SIGURG);
 			ast_debug(4, "Waiting to join thread of span %d with pid=%p, cancel_code=%d\n", i, (void *) pris[i].pri.master, cancel_code);
 			pthread_join(pris[i].pri.master, NULL);
+			ast_debug(4, "Joined thread of span %d\n", i);
+		}
+	}
+#endif
+	
+#if defined(HAVE_WAT)
+	for (i = 0; i < NUM_SPANS; i++) {
+		if (wats[i].wat.master && (wats[i].wat.master != AST_PTHREADT_NULL)) {
+			cancel_code = pthread_cancel(wats[i].wat.master);
+			pthread_kill(wats[i].wat.master, SIGURG);
+			ast_debug(4, "Waiting to join thread of span %d with pid=%p, cancel_code=%d\n", i, (void *) wats[i].wat.master, cancel_code);
+			pthread_join(wats[i].wat.master, NULL);
 			ast_debug(4, "Joined thread of span %d\n", i);
 		}
 	}
@@ -17042,6 +17040,14 @@ static int __unload_module(void)
 	ast_unregister_application(dahdi_send_callrerouting_facility_app);
 #endif
 #endif
+#ifdef HAVE_WAT
+	for (i = 0; i < NUM_SPANS; i++) {
+		if (wats[i].wat.master != AST_PTHREADT_NULL)
+			pthread_cancel(wats[i].wat.master);
+	}
+	/* TODO: Unregister CLI commands here */
+	//ast_cli_unregister_multiple(dahdi_ss7_cli, ARRAY_LEN(dahdi_ss7_cli));
+#endif
 #if defined(HAVE_SS7)
 	for (i = 0; i < NUM_SPANS; i++) {
 		if (linksets[i].ss7.master != AST_PTHREADT_NULL)
@@ -17109,7 +17115,9 @@ static int __unload_module(void)
 			pthread_join(wats[i].wat.master, NULL);
 			dahdi_close_wat_fd(&wats[i]);
 		}
-		sig_wat_stop_wat(&wats[i].wat);
+		if (wats[i].wat.wat_span_id) {
+			sig_wat_stop_wat(&wats[i].wat);
+		}
 	}
 #endif
 #if defined(HAVE_SS7)
