@@ -28,12 +28,12 @@
 #include "asterisk/pbx.h"
 #include "asterisk/channel.h"
 #include "asterisk/frame.h"
-//#include "asterisk/event.h"
 #include <libwat.h>
-//#include <dahdi/user.h>
 
 //DAVIDY remove this define later
 #define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
+
+#define MAX_NUM_SMS	20	/*!< Maximum number of SMS waiting to be sent */
 
 
 enum sig_wat_law {
@@ -113,12 +113,17 @@ struct sig_wat_callback {
 
 struct sig_wat_chan;
 
+struct sig_wat_sms {
+	unsigned char wat_sms_id;
+	wat_sms_event_t sms_event;
+};
+
 struct sig_wat_subchannel {
 	struct ast_channel *owner;
 	struct ast_frame f; /* DAVIDY do I need this ? */
 	unsigned int allocd:1;
 	
-	uint8_t wat_call_id; /*!< Id used by libwat for this call */
+	unsigned char wat_call_id; /*!< Id used by libwat for this call */
 
 	int cid_ton;
 	char cid_num[AST_MAX_EXTENSION];
@@ -165,6 +170,8 @@ struct sig_wat_span {
 	struct sig_wat_callback *calls;	
 
 	ast_mutex_t lock;			/*!< libwat access mutex */ /* DAVIDY do I need this? */
+
+	struct sig_wat_sms *smss[MAX_NUM_SMS];
 };
 
 int sig_wat_start_wat(struct sig_wat_span *wat);
@@ -176,13 +183,17 @@ int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest);
 int sig_wat_answer(struct sig_wat_chan *p, struct ast_channel *ast);
 int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast);
 
-void wat_event_alarm(struct sig_wat_span *wat, int before_start_wat);
-void wat_event_noalarm(struct sig_wat_span *wat, int before_start_wat);
+void wat_event_alarm(struct sig_wat_span *wat);
+void wat_event_noalarm(struct sig_wat_span *wat);
 
 void sig_wat_load(int maxspans);
 void sig_wat_unload(void);
 
 struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *callback, struct sig_wat_span *wat, int channo);
+
+void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat);
+void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat);
+void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, const char *sms);
 
 
 #endif /* _SIG_WAT_H */

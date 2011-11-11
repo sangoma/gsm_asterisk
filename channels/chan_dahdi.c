@@ -3478,7 +3478,7 @@ static struct sig_pri_callback dahdi_pri_callbacks =
 };
 #endif	/* defined(HAVE_PRI) */
 
-#if defined (HAVE_WAT)
+#ifdef HAVE_WAT
 static void wat_handle_sig_exception(struct sig_wat_span *wat)
 {
 	int x;
@@ -3489,10 +3489,10 @@ static void wat_handle_sig_exception(struct sig_wat_span *wat)
 	/* Keep track of alarm state */
 	switch (x) {
 		case DAHDI_EVENT_ALARM:
-			wat_event_alarm(wat, 0);
+			wat_event_alarm(wat);
 			break;
 		case DAHDI_EVENT_NOALARM:
-			wat_event_noalarm(wat, 0);
+			wat_event_noalarm(wat);
 			break;
 		default:
 			break;
@@ -12598,7 +12598,6 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 						return NULL;
 					}
 
-					//DAVIDY: Verify this with multiple spans
 					wats[span].sigchannel = offset;
 					wats[span].wat.span = span;
 					wats[span].wat.wat_span_id = span + 1;
@@ -14360,9 +14359,9 @@ static int prepare_wat(struct dahdi_wat *wat)
 		ast_log(LOG_ERROR, "Unable to get span state for Sig-channel %d (%s)\n", x, strerror(errno));
 	}
 	if (!si.alarms) {
-		wat_event_noalarm(&wat->wat, 1);
+		wat_event_noalarm(&wat->wat);
 	} else {
-		wat_event_alarm(&wat->wat, 1);
+		wat_event_alarm(&wat->wat);
 	}
 	memset(&bi, 0, sizeof(bi));
 	bi.txbufpolicy = DAHDI_POLICY_IMMEDIATE;
@@ -16918,6 +16917,130 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 };
 #endif	/* defined(HAVE_SS7) */
 
+static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat send sms";
+			e->usage =
+					"Usage: wat send sms <span> <number> <sms>\n"
+					"       Send a sms on <span> <number> <sms>\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc < 6)
+		return CLI_SHOWUSAGE;
+
+	span = atoi(a->argv[3]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_cli_send_sms(a->fd, &wats[span-1].wat, a->argv[4], a->argv[5]);
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show spans";
+			e->usage =
+					"Usage: wat show spans\n"
+					"       Displays WAT span information\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc != 3)
+		return CLI_SHOWUSAGE;
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			sig_wat_cli_show_spans(a->fd, span + 1, &wats[span].wat);
+		}
+	}
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show span";
+			e->usage =
+					"Usage: wat show span <span>\n"
+					"       Displays GSM Information on a given WAT span\n";
+			return NULL;
+		case CLI_GENERATE:
+			return complete_span_4(a->line, a->word, a->pos, a->n);
+	}
+
+	if (a->argc < 4)
+		return CLI_SHOWUSAGE;
+	span = atoi(a->argv[3]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_cli_show_span(a->fd, &wats[span-1].wat);
+
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	unsigned char current = 0;
+	unsigned char revision = 0;
+	unsigned char age = 0;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show version";
+			e->usage =
+					"Usage: wat show version\n"
+					"	Show the libwat version\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	wat_version(&current, &revision, &age);
+	ast_cli(a->fd, "libwat version: %d.%d.%d\n", current, revision, age);
+
+	return CLI_SUCCESS;
+}
+
+#if defined(HAVE_WAT)
+static struct ast_cli_entry dahdi_wat_cli[] = {
+	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
+	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
+	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
+	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
+	AST_CLI_DEFINE(handle_wat_version, "Displays libwat version"),
+};
+#endif	/* defined(HAVE_WAT) */
+
 #if defined(HAVE_PRI)
 #if defined(HAVE_PRI_CCSS)
 /*!
@@ -17045,8 +17168,7 @@ static int __unload_module(void)
 		if (wats[i].wat.master != AST_PTHREADT_NULL)
 			pthread_cancel(wats[i].wat.master);
 	}
-	/* TODO: Unregister CLI commands here */
-	//ast_cli_unregister_multiple(dahdi_ss7_cli, ARRAY_LEN(dahdi_ss7_cli));
+	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
 #endif
 #if defined(HAVE_SS7)
 	for (i = 0; i < NUM_SPANS; i++) {
@@ -19168,7 +19290,7 @@ static int load_module(void)
 	ss7_set_error(dahdi_ss7_error);
 	ss7_set_message(dahdi_ss7_message);
 #endif	/* defined(HAVE_SS7) */
-#if defined (HAVE_WAT)
+#ifdef HAVE_WAT
 	sig_wat_load(NUM_SPANS);
 	memset(wats, 0, sizeof(wats));
 	for (y = 0; y < NUM_SPANS; y++) {
@@ -19190,6 +19312,9 @@ static int load_module(void)
 #if defined(HAVE_SS7)
 	ast_cli_register_multiple(dahdi_ss7_cli, ARRAY_LEN(dahdi_ss7_cli));
 #endif	/* defined(HAVE_SS7) */
+#ifdef HAVE_WAT
+	ast_cli_register_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
+#endif
 #ifdef HAVE_OPENR2
 	ast_cli_register_multiple(dahdi_mfcr2_cli, ARRAY_LEN(dahdi_mfcr2_cli));
 	ast_register_application_xml(dahdi_accept_r2_call_app, dahdi_accept_r2_call_exec);
