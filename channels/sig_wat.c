@@ -129,6 +129,8 @@ void sig_wat_free(void *ptr)
 }
 
 void sig_wat_log_span(unsigned char span_id, unsigned char loglevel, char *fmt, ...)
+	__attribute__((format (printf, 3, 0)));
+void sig_wat_log_span(unsigned char span_id, unsigned char loglevel, char *fmt, ...)
 {
 	char *data;
 	va_list ap;
@@ -143,6 +145,8 @@ void sig_wat_log_span(unsigned char span_id, unsigned char loglevel, char *fmt, 
 	return;
 }
 
+void sig_wat_log(unsigned char loglevel, char *fmt, ...)
+	__attribute__((format (printf, 2, 0)));
 void sig_wat_log(unsigned char loglevel, char *fmt, ...)
 {
 	char *data;
@@ -191,7 +195,7 @@ int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
 	int res;
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 	
 	res = write(wat->fd, buffer, len);
 	if (res < 0) {
@@ -209,7 +213,7 @@ void sig_wat_status_change(unsigned char span_id, wat_sigstatus_t status)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 	
 	if (status == WAT_SIGSTATUS_UP) {
 		ast_verb(2, "Span %d:Signalling up\n", wat->span + 1);
@@ -228,7 +232,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 
 	wat = wat_spans[span_id];
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 	ast_assert(con_event->sub < WAT_CALL_SUB_INVALID);
 
 	ast_verb(3, "Span %d: Call Incoming (%s)\n",
@@ -290,7 +294,7 @@ void sig_wat_con_sts(unsigned char span_id, uint8_t call_id, wat_con_status_t *c
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 
 	ast_verb(3, "Span %d: Remote side %s\n",
 								wat->span + 1,
@@ -327,7 +331,7 @@ void sig_wat_rel_ind(unsigned char span_id, uint8_t call_id, wat_rel_event_t *re
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
-	ast_assert(wat);	
+	ast_assert(wat != NULL);	
 
 	ast_verb(3, "Span %d: Call hangup requested\n", wat->span + 1);	
 
@@ -356,7 +360,7 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 
 	ast_verb(3, "Span %d: Call Release\n", wat->span + 1);
 	sig_wat_lock_private(wat->pvt);
@@ -381,7 +385,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];	
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 	
 	if (sms_status->success) {
 		ast_verb(3, "Span %d: SMS sent OK (id:%d)\n", wat->span + 1, sms_id);
@@ -497,7 +501,7 @@ int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast)
 	int res = 0;
 
 	wat = p->wat;
-	ast_assert(wat);
+	ast_assert(wat != NULL);
 
 	ast_verb(3, "Span %d: Call Hung up\n", wat->span + 1);
 
@@ -776,8 +780,8 @@ void sig_wat_load(int maxspans)
 
 	wat_intf.wat_span_write = sig_wat_span_write;
 	wat_intf.wat_sigstatus_change = sig_wat_status_change;
-	wat_intf.wat_log = sig_wat_log;
-	wat_intf.wat_log_span = sig_wat_log_span;
+	wat_intf.wat_log = (wat_log_func_t)sig_wat_log;
+	wat_intf.wat_log_span = (wat_log_span_func_t)sig_wat_log_span;
 	wat_intf.wat_malloc = sig_wat_malloc;
 	wat_intf.wat_calloc = sig_wat_calloc;
 	wat_intf.wat_free = sig_wat_free;
@@ -920,7 +924,7 @@ void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, co
 	struct sig_wat_sms *wat_sms;
 
 	if (strlen(sms) > WAT_MAX_SMS_SZ) {
-		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%d max:%d)\n", wat->span + 1, strlen(sms), WAT_MAX_SMS_SZ);
+		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%zd max:%d)\n", wat->span + 1, strlen(sms), WAT_MAX_SMS_SZ);
 		return;
 	}
 	
