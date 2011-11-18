@@ -256,6 +256,8 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	wat->pvt->subs[con_event->sub].allocd = 1;
 	wat->pvt->subs[con_event->sub].wat_call_id = call_id;
 
+	wat->pvt->remotehangup = 0;
+
 	if (wat->pvt->use_callerid) {
 		/* TODO: Set plan etc.. properly */
 		strcpy(wat->pvt->cid_num, con_event->calling_num.digits);
@@ -473,6 +475,8 @@ int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
 	wat->pvt->subs[WAT_CALL_SUB_REAL].wat_call_id = i;
 	wat->pvt->subs[WAT_CALL_SUB_REAL].owner = ast;
 	wat->pvt->owner = ast;
+
+	wat->pvt->remotehangup = 0;
 
 	memset(&con_event, 0, sizeof(con_event));
 
