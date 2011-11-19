@@ -866,9 +866,18 @@ static void build_span_status(char *s, size_t len, int sigchanavail)
 void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat)
 {
 	char status[30];
+	char subscriber_number[40] = "(unknown)";
 
 	build_span_status(status, sizeof(status), wat->sigchanavail);
-	ast_cli(fd, "WAT span %d: %s\n", span, status);
+	wat_span_get_chip_info(wat->wat_span_id,
+				NULL, 0,
+				NULL, 0,
+				NULL, 0,
+				NULL, 0,
+				NULL, 0,
+				subscriber_number, sizeof(subscriber_number));
+
+	ast_cli(fd, "WAT span %d: %5s (%20s)\n", span, status, subscriber_number);
 }
 
 void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
