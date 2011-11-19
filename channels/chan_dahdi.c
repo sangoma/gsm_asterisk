@@ -17031,12 +17031,45 @@ static char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli
 	return CLI_SUCCESS;
 }
 
+static char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span = 0;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat exec";
+			e->usage =
+					"Usage: wat exec <span> <AT command>\n"
+					"       Executes an arbitrary AT command in the given WAT span\n";
+			return NULL;
+		case CLI_GENERATE:
+			return complete_span_4(a->line, a->word, a->pos, a->n);
+	}
+
+	if (a->argc < 4)
+		return CLI_SHOWUSAGE;
+	span = atoi(a->argv[2]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[2], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_cli_exec_at(a->fd, &wats[span-1].wat, a->argv[3]);
+
+	return CLI_SUCCESS;
+}
+
 #if defined(HAVE_WAT)
 static struct ast_cli_entry dahdi_wat_cli[] = {
 	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
 	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
 	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
 	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
+	AST_CLI_DEFINE(handle_wat_exec_at, "Executes an arbitrary AT command"),
 	AST_CLI_DEFINE(handle_wat_version, "Displays libwat version"),
 };
 #endif	/* defined(HAVE_WAT) */

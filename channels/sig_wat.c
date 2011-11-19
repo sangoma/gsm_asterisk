@@ -931,6 +931,21 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	return;
 }
 
+WAT_AT_CMD_RESPONSE_FUNC(sig_wat_at_response)
+{
+	int i = 0;
+	while (tokens[i]) {
+		ast_log(LOG_DEBUG, "AT response: %s\n", tokens[i]);
+		i++;
+	}
+	return i;
+}
+
+void sig_wat_cli_exec_at(int fd, struct sig_wat_span *wat, const char *at_cmd)
+{
+	wat_exec_at(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
+}
+
 void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, const char *sms)
 {
 	int i;
