@@ -30,11 +30,7 @@
 #include "asterisk/frame.h"
 #include <libwat.h>
 
-//DAVIDY remove this define later
-#define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
-
 #define MAX_NUM_SMS	20	/*!< Maximum number of SMS waiting to be sent */
-
 
 enum sig_wat_law {
 	SIG_WAT_DEFLAW = 0,

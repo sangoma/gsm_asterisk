@@ -45,20 +45,8 @@
 		sig_wat_lock_private(p); \
 } while (0)
 
-struct error_code {
-	uint32_t code;
-	char *string;
-};
 
-static struct error_code sms_cause_codes[] = {
-	{ WAT_SMS_CAUSE_QUEUE_FULL, "Queue full" },
-	{ WAT_SMS_CAUSE_MODE_NOT_SUPPORTED, "SMS mode not supported" },
-	{ WAT_SMS_CAUSE_NO_RESPONSE, "No response from GSM module" },
-	{ WAT_SMS_CAUSE_NO_NETWORK, "Not registered to a GSM network" },
-	{ WAT_SMS_CAUSE_NETWORK_REJECT, "Network rejected SMS request" },
-	{ WAT_SMS_CAUSE_UNKNOWN, "Unknown" },
-	{ -1, "invalid"},
-};
+#define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
 
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm);
 void *sig_wat_malloc(size_t size);
@@ -86,8 +74,6 @@ static void wat_queue_control(struct sig_wat_span *wat, int subclass);
 static void sig_wat_set_dialing(struct sig_wat_chan *p, int is_dialing);
 static void sig_wat_lock_owner(struct sig_wat_span *wat);
 
-static char * sig_wat_strerror(int error, struct error_code error_table[]);
-
 static int sig_wat_set_echocanceller(struct sig_wat_chan *p, int enable);
 static void sig_wat_open_media(struct sig_wat_chan *p);
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor);
@@ -95,22 +81,9 @@ static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int s
 struct sig_wat_span **wat_spans;
 struct sig_wat_sms **wat_smss;
 
-static char *sig_wat_strerror(int error, struct error_code error_table[])
-{
-	int i = 0;
-
-	while (error_table[i].code != -1) {
-		if (error_table[i].code == error) {
-			return error_table[i].string;
-		}
-		i++;
-	}
-	return "invalid";
-}
-
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
 {
-	WAT_NOT_IMPL
+	ast_log(LOG_WARNING, "Span %d:Alarm %d", span_id, alarm);
 }
 
 void *sig_wat_malloc(size_t size)
@@ -185,9 +158,6 @@ void sig_wat_assert(char *message)
 {
 	ast_log(LOG_ERROR, "%s\n", message);
 	ast_assert(0);
-#if 1 /* DAVIDY remove this later */
-	abort();
-#endif
 }
 
 int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
@@ -395,13 +365,13 @@ void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sm
 		if (sms_status->error) {
 			ast_verb(3, "Span %d: Failed to send SMS cause:%s error:%s (id:%d)\n",
 													wat->span + 1,
-													sig_wat_strerror(sms_status->cause, sms_cause_codes),
+													wat_decode_sms_cause(sms_status->cause),
 													sms_status->error,
 													sms_id);
 		} else {
 			ast_verb(3, "Span %d: Failed to send SMS cause:%s (id:%d)\n",
 													wat->span + 1,
-													sig_wat_strerror(sms_status->cause, sms_cause_codes),
+													wat_decode_sms_cause(sms_status->cause),
 													sms_id);
 		}
 
@@ -864,69 +834,69 @@ static void build_span_status(char *s, size_t len, int sigchanavail)
 }
 
 void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat)
-{
+{	
 	char status[30];
-	char subscriber_number[40] = "(unknown)";
+	const wat_sim_info_t *sim_info = NULL;
 
 	build_span_status(status, sizeof(status), wat->sigchanavail);
-	wat_span_get_chip_info(wat->wat_span_id,
-				NULL, 0,
-				NULL, 0,
-				NULL, 0,
-				NULL, 0,
-				NULL, 0,
-				subscriber_number, sizeof(subscriber_number));
+	
+	sim_info = wat_span_get_sim_info(wat->wat_span_id);
+	if (sim_info == NULL) {
+		ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
+	}
 
-	ast_cli(fd, "WAT span %d: %5s (%20s)\n", span, status, subscriber_number);
+	ast_cli(fd, "WAT span %d: %5s (%14s)\n", span, status, (sim_info) ? sim_info->subscriber.digits:"(unknown)");
 }
 
 void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 {
 	char status[256];
-	char net_status[40];
-	char strength[40];
-	char ber[40];
-	char manufacturer_name[40];
-	char manufacturer_id[40];
-	char revision_id[40];
-	char serial_number[40];
-	char imsi[40];
-	char subscriber_number[40];
-
+	const wat_chip_info_t *chip_info = NULL;
+	const wat_sim_info_t *sim_info = NULL;
+	const wat_sig_info_t *sig_info = NULL;
+	const wat_net_info_t *net_info = NULL;
+	
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 
-	if (wat_span_get_netinfo(wat->wat_span_id,  net_status, sizeof(net_status))) {
-		ast_cli(fd, "Span %d:Failed to get network information\n", wat->span + 1);
-		return;
-	}
-
-	if (wat_span_get_signal_quality(wat->wat_span_id, strength, sizeof(strength), ber, sizeof(ber))) {
-		ast_cli(fd, "Span %d:Failed to get signal quality\n", wat->span + 1);
-		return;
-	}
-
-	if (wat_span_get_chip_info(wat->wat_span_id,
-						manufacturer_name, sizeof(manufacturer_name),
-						manufacturer_id, sizeof(manufacturer_id),
-						revision_id, sizeof(revision_id),
-						serial_number, sizeof(serial_number),
-						imsi, sizeof(imsi),
-						subscriber_number, sizeof(subscriber_number))) {
-
-		ast_cli(fd, "Span %d:Failed to get chip information\n", wat->span + 1);
-		return;
-	}
-
 	ast_cli(fd, "WAT span %d: %s\n", wat->span + 1, status);
-	ast_cli(fd, "   Network: %s\n", net_status);
-	ast_cli(fd, "   Signal strength: %s\n", strength);
-	ast_cli(fd, "   Signal BER: %s\n", ber);
-	ast_cli(fd, "   Subscriber: %s\n\n", subscriber_number);
-	ast_cli(fd, "   Manufacturer Name: %s\n", manufacturer_name);
-	ast_cli(fd, "   Manufacturer ID: %s\n", manufacturer_id);
-	ast_cli(fd, "   Revision ID: %s\n", revision_id);
-	ast_cli(fd, "   Serial Number: %s\n", serial_number);
-	ast_cli(fd, "   IMSI: %s\n\n", imsi);
+
+	net_info = wat_span_get_net_info(wat->wat_span_id);
+	if (net_info == NULL) {
+		ast_cli(fd, "Span %d:Failed to get Network information\n", wat->span +1);
+	} else {
+		ast_cli(fd, "   Status: %s\n\n", wat_net_stat2str(net_info->stat));
+	}
+
+	sig_info = wat_span_get_sig_info(wat->wat_span_id);
+	if (sig_info == NULL) {
+		ast_cli(fd, "Span %d:Failed to get Signal information\n", wat->span +1);
+	} else {
+		char dest[30];
+		ast_cli(fd, "   Signal strength: %s\n", wat_decode_rssi(dest, sig_info->rssi));
+		ast_cli(fd, "   Signal BER: %s\n\n", wat_decode_ber(sig_info->ber));
+	}
+
+	sim_info = wat_span_get_sim_info(wat->wat_span_id);
+	if (sim_info == NULL) {
+		ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
+	} else {
+		ast_cli(fd, "   Subscriber: %s type:%d plan:%d <%s> \n",
+												sim_info->subscriber.digits,
+												sim_info->subscriber.type,
+												sim_info->subscriber.plan,
+												sim_info->subscriber_type);
+		ast_cli(fd, "   IMSI: %s\n\n", sim_info->imsi);
+	}
+
+	chip_info = wat_span_get_chip_info(wat->wat_span_id);
+	if (chip_info == NULL) {
+		ast_cli(fd, "Span %d:Failed to get Chip information\n", wat->span +1);
+	} else {
+		ast_cli(fd, "   Manufacturer Name: %s\n", chip_info->manufacturer_name);
+		ast_cli(fd, "   Manufacturer ID: %s\n", chip_info->manufacturer_id);
+		ast_cli(fd, "   Revision ID: %s\n", chip_info->revision);
+		ast_cli(fd, "   Serial Number: %s\n", chip_info->serial);
+	}
 
 	return;
 }
