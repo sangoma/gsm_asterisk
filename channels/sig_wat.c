@@ -768,7 +768,7 @@ void sig_wat_load(int maxspans)
 	wat_intf.wat_rel_cfm = sig_wat_rel_cfm;
 	wat_intf.wat_sms_ind = sig_wat_sms_ind;
 	wat_intf.wat_sms_sts = sig_wat_sms_sts;
-	wat_intf.wat_cmd_sts = sig_wat_cmd_sts;
+	//wat_intf.wat_cmd_sts = sig_wat_cmd_sts;
 
 	if (wat_register(&wat_intf)) {
 		ast_log(LOG_ERROR, "Unable to register to libwat\n");
@@ -913,7 +913,7 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_at_response)
 
 void sig_wat_cli_exec_at(int fd, struct sig_wat_span *wat, const char *at_cmd)
 {
-	wat_exec_at(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
+	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
 void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, const char *sms)
