@@ -1435,7 +1435,7 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 		.wat.wat.wat_cfg = {
 			.moduletype = WAT_MODULE_TELIT,
 			.timeout_cid_num = 500,
-			.timeout_command = 5000,
+			.timeout_command = 20000,
 			.progress_poll_interval = 750,
 			.signal_poll_interval = 60*1000,
 		},
