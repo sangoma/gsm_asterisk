@@ -158,16 +158,20 @@ void sig_wat_assert(char *message)
 {
 	ast_log(LOG_ERROR, "%s\n", message);
 	ast_assert(0);
+	ast_backtrace();
 }
 
 int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
 {
 	int res;
 	struct sig_wat_span *wat = wat_spans[span_id];
+	char at_buf[len+2];
 	
 	ast_assert(wat != NULL);
-	
-	res = write(wat->fd, buffer, len);
+
+	memcpy(at_buf, buffer, len);
+	len += 2;
+	res = write(wat->fd, at_buf, len);
 	if (res < 0) {
 		if (errno != EAGAIN) {
 			ast_log(LOG_ERROR, "Span %d:Write failed: %s\n", wat->span, strerror(errno));
