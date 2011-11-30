@@ -4621,17 +4621,24 @@ static int dahdi_digit_begin(struct ast_channel *chan, char digit)
 	if ((idx != SUB_REAL) || !pvt->owner)
 		goto out;
 
-#ifdef HAVE_PRI
 	switch (pvt->sig) {
+#ifdef HAVE_PRI
 	case SIG_PRI_LIB_HANDLE_CASES:
 		res = sig_pri_digit_begin(pvt->sig_pvt, chan, digit);
 		if (!res)
 			goto out;
 		break;
+#endif
+#ifdef HAVE_WAT
+	case SIG_GSM:
+		res = sig_wat_digit_begin(pvt->sig_pvt, chan, digit);
+		if (!res)
+			goto out;
+		break;
+#endif
 	default:
 		break;
 	}
-#endif
 	if ((dtmf = digit_to_dtmfindex(digit)) == -1)
 		goto out;
 
@@ -4678,6 +4685,12 @@ static int dahdi_digit_end(struct ast_channel *chan, char digit, unsigned int du
 #ifdef HAVE_PRI
 	/* This means that the digit was already sent via PRI signalling */
 	if (dahdi_sig_pri_lib_handles(pvt->sig) && !pvt->begindigit) {
+		goto out;
+	}
+#endif
+#ifdef HAVE_WAT
+	/* This means that the digit was already sent via GSM signalling */
+	if (dahdi_sig_wat_lib_handles(pvt->sig) && !pvt->begindigit) {
 		goto out;
 	}
 #endif

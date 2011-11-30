@@ -915,6 +915,49 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_at_response)
 	return i;
 }
 
+WAT_AT_CMD_RESPONSE_FUNC(sig_wat_dtmf_response)
+{
+	struct sig_wat_span *wat = NULL;
+	int i = 0;
+	char x = 0;
+	while (tokens[i]) {
+		i++;
+	}
+
+	wat = wat_spans[span_id];
+
+	ast_assert(wat != NULL);
+
+	ast_mutex_lock(&wat->lock);
+
+	wat->dtmf_count--;
+
+	sig_wat_lock_private(wat->pvt);
+
+	if (!wat->pvt->owner || !wat->pvt->subs[WAT_CALL_SUB_REAL].allocd) {
+		goto done;
+	}
+
+	if (wat->dtmf_count) {
+		/* DTMF still pending, do not enable digit detection back again just yet */
+		goto done;
+	}
+
+	sig_wat_lock_owner(wat);
+
+	x = 1;
+	ast_channel_setoption(wat->pvt->owner, AST_OPTION_DIGIT_DETECT, &x, sizeof(char), 0);
+
+	ast_channel_unlock(wat->pvt->owner);
+
+done:
+	sig_wat_unlock_private(wat->pvt);
+
+	ast_mutex_unlock(&wat->lock);
+
+	return i;
+}
+
 void sig_wat_cli_exec_at(int fd, struct sig_wat_span *wat, const char *at_cmd)
 {
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
@@ -970,6 +1013,33 @@ void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, co
 		ast_verb(1, "Span %d: Failed to send sms\n", wat->span + 1);
 	}
 	return;
+}
+
+
+int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char digit)
+{
+	struct sig_wat_span *wat;
+	char x = 0;
+	int count = 0;
+	char dtmf[2] = { digit, '\0' };
+
+	wat = p->wat;
+
+	ast_assert(wat != NULL);
+
+	ast_mutex_lock(&wat->lock);
+	wat->dtmf_count++;
+	count = wat->dtmf_count;
+	ast_mutex_unlock(&wat->lock);
+
+	/* Disable DTMF detection while we play DTMF because the GSM module will play back some sort of feedback tone */
+	if (count == 1) {
+		x = 0;
+		ast_channel_setoption(wat->pvt->owner, AST_OPTION_DIGIT_DETECT, &x, sizeof(char), 0);
+	}
+	wat_send_dtmf(wat->wat_span_id, wat->pvt->subs[WAT_CALL_SUB_REAL].wat_call_id, dtmf, sig_wat_dtmf_response, wat);
+
+	return 0;
 }
 
 #endif /* HAVE_WAT */

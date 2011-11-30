@@ -165,6 +165,8 @@ struct sig_wat_span {
 
 	struct sig_wat_callback *calls;	
 
+	int dtmf_count; /*!< How many DTMF's have we enqueued */
+
 	ast_mutex_t lock;			/*!< libwat access mutex */ /* DAVIDY do I need this? */
 
 	struct sig_wat_sms *smss[MAX_NUM_SMS];
@@ -191,6 +193,7 @@ void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat);
 void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat);
 void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, const char *sms);
 void sig_wat_cli_exec_at(int fd, struct sig_wat_span *wat, const char *at_cmd);
+int sig_wat_digit_begin(struct sig_wat_chan *pvt, struct ast_channel *ast, char digit);
 
 
 #endif /* _SIG_WAT_H */
