@@ -2673,7 +2673,8 @@ static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int star
 				p->channel, audio, strerror(errno));
 	}
 		
-	return dahdi_new(p, state, startpbx, dahdi_sub, DAHDI_LAW_ALAW, requestor ? requestor->linkedid : "");
+	dahdi_setlaw(p->subs[SUB_REAL].dfd, p->law_default);
+	return dahdi_new(p, state, startpbx, dahdi_sub, p->law_default, requestor ? requestor->linkedid : "");
 }
 #endif /* defined (HAVE_WAT) */
 
