@@ -337,7 +337,7 @@ static struct ast_jb_conf global_jbconf;
 #define NEED_MFDETECT(p) (((p)->sig == SIG_FEATDMF) || ((p)->sig == SIG_FEATDMF_TA) || ((p)->sig == SIG_E911) || ((p)->sig == SIG_FGC_CAMA) || ((p)->sig == SIG_FGC_CAMAMF) || ((p)->sig == SIG_FEATB))
 
 static const char tdesc[] = "DAHDI Telephony Driver"
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_OPENR2) || HAVE_WAT
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_OPENR2) || defined(HAVE_WAT)
 	" w/"
 	#if defined(HAVE_PRI)
 		"PRI"
@@ -18081,19 +18081,19 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 					ast_log(LOG_ERROR, "Unknown signalling method '%s' at line %d.\n", v->value, v->lineno);
 				}
 #ifdef HAVE_WAT
-			} else if (!strcasecmp(v->name, "moduletype")) {
+			} else if (!strcasecmp(v->name, "wat_moduletype")) {
 				if (!strcasecmp(v->value, "telit")) {
 					confp->wat.wat.wat_cfg.moduletype = WAT_MODULE_TELIT;
 				} else {
 					ast_log(LOG_WARNING, "Unknown WAT moduletype '%s' at line %d.\n", v->value, v->lineno);
 				 }
-			} else if (!strcasecmp(v->name, "timeout_cid_name")) {
+			} else if (!strcasecmp(v->name, "wat_timeout_cid_name")) {
 					if (atoi(v->value) >= 0) {
 						confp->wat.wat.wat_cfg.timeout_cid_num = atoi(v->value);
 					} else {
 						ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
 					}
-			} else if (!strcasecmp(v->name, "signal_poll_interval")) {
+			} else if (!strcasecmp(v->name, "wat_signal_poll_interval")) {
 				if (atoi(v->value) >= 0) {
 					confp->wat.wat.wat_cfg.signal_poll_interval = atoi(v->value);
 				} else {
