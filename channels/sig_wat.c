@@ -64,7 +64,6 @@ void sig_wat_rel_ind(unsigned char span_id, uint8_t call_id, wat_rel_event_t *re
 void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id);
 void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event);
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status);
-void sig_wat_cmd_sts(unsigned char span_id, wat_cmd_status_t *status);
 
 static void sig_wat_handle_sigchan_exception(struct sig_wat_span *wat);
 static void sig_wat_handle_sigchan_data(struct sig_wat_span *wat);
@@ -355,7 +354,9 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 
 void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
-	WAT_NOT_IMPL
+	struct sig_wat_span *wat = wat_spans[span_id];
+	ast_assert(wat != NULL);
+	ast_verb(3, "Span %d: SMS received\n %s\n", wat->span + 1, sms_event->message);
 }
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
@@ -391,11 +392,6 @@ void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sm
 	wat->smss[sms_id] = NULL;
 	sig_wat_unlock_private(wat->pvt);
 	return;
-}
-
-void sig_wat_cmd_sts(unsigned char span_id, wat_cmd_status_t *status)
-{
-	WAT_NOT_IMPL
 }
 
 int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
@@ -772,7 +768,6 @@ void sig_wat_load(int maxspans)
 	wat_intf.wat_rel_cfm = sig_wat_rel_cfm;
 	wat_intf.wat_sms_ind = sig_wat_sms_ind;
 	wat_intf.wat_sms_sts = sig_wat_sms_sts;
-	//wat_intf.wat_cmd_sts = sig_wat_cmd_sts;
 
 	if (wat_register(&wat_intf)) {
 		ast_log(LOG_ERROR, "Unable to register to libwat\n");
@@ -849,7 +844,11 @@ void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat)
 		ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
 	}
 
-	ast_cli(fd, "WAT span %d: %5s (%14s)\n", span, status, (sim_info) ? sim_info->subscriber.digits:"(unknown)");
+	if (sim_info && strlen(sim_info->subscriber.digits) > 0) {
+		ast_cli(fd, "WAT span %d: %5s (%14s)\n", span, status, sim_info->subscriber.digits);
+	} else {
+		ast_cli(fd, "WAT span %d: %5s\n", span, status);
+	}
 }
 
 void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
@@ -859,16 +858,25 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	const wat_sim_info_t *sim_info = NULL;
 	const wat_sig_info_t *sig_info = NULL;
 	const wat_net_info_t *net_info = NULL;
+	const wat_pin_stat_t *pin_status = NULL;
 	
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 
 	ast_cli(fd, "WAT span %d: %s\n", wat->span + 1, status);
-
+	
+	pin_status = wat_span_get_pin_info(wat->wat_span_id);
+	if (pin_status == NULL) {
+		ast_cli(fd, "Span %d:Failed to get PIN status\n", wat->span + 1);
+	} else if (*pin_status != WAT_PIN_READY) {
+		ast_cli(fd, "   PIN Error:%s\n\n", wat_decode_pin_status(*pin_status));
+	}
+	
 	net_info = wat_span_get_net_info(wat->wat_span_id);
 	if (net_info == NULL) {
 		ast_cli(fd, "Span %d:Failed to get Network information\n", wat->span +1);
 	} else {
-		ast_cli(fd, "   Status: %s\n\n", wat_net_stat2str(net_info->stat));
+		ast_cli(fd, "   Status: %s\n", wat_net_stat2str(net_info->stat));
+		ast_cli(fd, "   Operator: %s\n\n", net_info->operator_name);
 	}
 
 	sig_info = wat_span_get_sig_info(wat->wat_span_id);
@@ -909,7 +917,7 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_at_response)
 {
 	int i = 0;
 	while (tokens[i]) {
-		ast_log(LOG_DEBUG, "AT response: %s\n", tokens[i]);
+		ast_verb(1, "AT response: %s\n", tokens[i]);
 		i++;
 	}
 	return i;
