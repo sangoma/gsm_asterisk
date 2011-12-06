@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337600 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 323669 $")
 
 #include "asterisk/_private.h"
 
@@ -264,10 +264,6 @@ static const struct ie_map {
 	[AST_EVENT_IE_CHALLENGE]           = { AST_EVENT_IE_PLTYPE_STR,  "Challenge" },
 	[AST_EVENT_IE_RESPONSE]            = { AST_EVENT_IE_PLTYPE_STR,  "Response" },
 	[AST_EVENT_IE_EXPECTED_RESPONSE]   = { AST_EVENT_IE_PLTYPE_STR,  "ExpectedResponse" },
-	[AST_EVENT_IE_RECEIVED_CHALLENGE]  = { AST_EVENT_IE_PLTYPE_STR,  "ReceivedChallenge" },
-	[AST_EVENT_IE_RECEIVED_HASH]       = { AST_EVENT_IE_PLTYPE_STR,  "ReceivedHash" },
-	[AST_EVENT_IE_USING_PASSWORD]      = { AST_EVENT_IE_PLTYPE_UINT, "UsingPassword" },
-
 };
 
 const char *ast_event_get_type_name(const struct ast_event *event)
@@ -1772,9 +1768,4 @@ int ast_event_init(void)
 	ast_cli_register_multiple(event_cli, ARRAY_LEN(event_cli));
 
 	return 0;
-}
-
-size_t ast_event_minimum_length(void)
-{
-	return sizeof(struct ast_event);
 }

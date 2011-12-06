@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 333789 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 333784 $")
 
 #include <pthread.h>
 #include <signal.h>
@@ -72,7 +72,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 333789 $")
 #define DEVICE_FRAME_FORMAT AST_FORMAT_SLINEAR
 #define CHANNEL_FRAME_SIZE 320
 
-static struct ast_format prefformat;
+static format_t prefformat = DEVICE_FRAME_FORMAT;
 
 static int discovery_interval = 60;			/* The device discovery interval, default 60 seconds. */
 static pthread_t discovery_thread = AST_PTHREADT_NULL;	/* The discovery thread */
@@ -137,7 +137,7 @@ struct mbl_pvt {
 	int alignment_count;
 	int ring_sched_id;
 	struct ast_dsp *dsp;
-	struct ast_sched_context *sched;
+	struct sched_context *sched;
 
 	/* flags */
 	unsigned int outgoing:1;	/*!< outgoing call */
@@ -197,7 +197,7 @@ static char *mblsendsms_desc =
 
 static struct ast_channel *mbl_new(int state, struct mbl_pvt *pvt, char *cid_num,
 		const struct ast_channel *requestor);
-static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *cap,
+static struct ast_channel *mbl_request(const char *type, format_t format,
 		const struct ast_channel *requestor, void *data, int *cause);
 static int mbl_call(struct ast_channel *ast, char *dest, int timeout);
 static int mbl_hangup(struct ast_channel *ast);
@@ -451,9 +451,10 @@ static struct msg_queue_entry *msg_queue_head(struct mbl_pvt *pvt);
  * channel stuff
  */
 
-static struct ast_channel_tech mbl_tech = {
+static const struct ast_channel_tech mbl_tech = {
 	.type = "Mobile",
 	.description = "Bluetooth Mobile Device Channel Driver",
+	.capabilities = AST_FORMAT_SLINEAR,
 	.requester = mbl_request,
 	.call = mbl_call,
 	.hangup = mbl_hangup,
@@ -844,11 +845,11 @@ static struct ast_channel *mbl_new(int state, struct mbl_pvt *pvt, char *cid_num
 	}
 
 	chn->tech = &mbl_tech;
-	ast_format_cap_add(chn->nativeformats, &prefformat);
-	ast_format_copy(&chn->rawreadformat, &prefformat);
-	ast_format_copy(&chn->rawwriteformat, &prefformat);
-	ast_format_copy(&chn->writeformat, &prefformat);
-	ast_format_copy(&chn->readformat, &prefformat);
+	chn->nativeformats = prefformat;
+	chn->rawreadformat = prefformat;
+	chn->rawwriteformat = prefformat;
+	chn->writeformat = prefformat;
+	chn->readformat = prefformat;
 	chn->tech_pvt = pvt;
 
 	if (state == AST_STATE_RING)
@@ -867,7 +868,7 @@ e_return:
 	return NULL;
 }
 
-static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *cap,
+static struct ast_channel *mbl_request(const char *type, format_t format,
 		const struct ast_channel *requestor, void *data, int *cause)
 {
 
@@ -875,6 +876,7 @@ static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *
 	struct mbl_pvt *pvt;
 	char *dest_dev = NULL;
 	char *dest_num = NULL;
+	format_t oldformat;
 	int group = -1;
 
 	if (!data) {
@@ -883,9 +885,10 @@ static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *
 		return NULL;
 	}
 
-	if (!(ast_format_cap_iscompatible(cap, &prefformat))) {
-		char tmp[256];
-		ast_log(LOG_WARNING, "Asked to get a channel of unsupported format '%s'\n", ast_getformatname_multiple(tmp, sizeof(tmp), cap));
+	oldformat = format;
+	format &= (AST_FORMAT_SLINEAR);
+	if (!format) {
+		ast_log(LOG_WARNING, "Asked to get a channel of unsupported format '%s'\n", ast_getformatname(oldformat));
 		*cause = AST_CAUSE_FACILITY_NOT_IMPLEMENTED;
 		return NULL;
 	}
@@ -1097,7 +1100,7 @@ static struct ast_frame *mbl_read(struct ast_channel *ast)
 
 	memset(&pvt->fr, 0x00, sizeof(struct ast_frame));
 	pvt->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&pvt->fr.subclass.format, DEVICE_FRAME_FORMAT, 0);
+	pvt->fr.subclass.codec = DEVICE_FRAME_FORMAT;
 	pvt->fr.src = "Mobile";
 	pvt->fr.offset = AST_FRIENDLY_OFFSET;
 	pvt->fr.mallocd = 0;
@@ -4311,7 +4314,7 @@ static struct mbl_pvt *mbl_load_device(struct ast_config *cfg, const char *cat)
 	}
 
 	/* setup the scheduler */
-	if (!(pvt->sched = ast_sched_context_create())) {
+	if (!(pvt->sched = sched_context_create())) {
 		ast_log(LOG_ERROR, "Unable to create scheduler context for headset device\n");
 		goto e_free_dsp;
 	}
@@ -4364,7 +4367,7 @@ static struct mbl_pvt *mbl_load_device(struct ast_config *cfg, const char *cat)
 	return pvt;
 
 e_free_sched:
-	ast_sched_context_destroy(pvt->sched);
+	sched_context_destroy(pvt->sched);
 e_free_dsp:
 	ast_dsp_free(pvt->dsp);
 e_free_smoother:
@@ -4502,7 +4505,7 @@ static int unload_module(void)
 
 		ast_smoother_free(pvt->smoother);
 		ast_dsp_free(pvt->dsp);
-		ast_sched_context_destroy(pvt->sched);
+		sched_context_destroy(pvt->sched);
 		ast_free(pvt);
 	}
 	AST_RWLIST_UNLOCK(&devices);
@@ -4521,7 +4524,6 @@ static int unload_module(void)
 	if (sdp_session)
 		sdp_close(sdp_session);
 
-	mbl_tech.capabilities = ast_format_cap_destroy(mbl_tech.capabilities);
 	return 0;
 }
 
@@ -4530,11 +4532,6 @@ static int load_module(void)
 
 	int dev_id, s;
 
-	if (!(mbl_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_set(&prefformat, DEVICE_FRAME_FORMAT, 0);
-	ast_format_cap_add(mbl_tech.capabilities, &prefformat);
 	/* Check if we have Bluetooth, no point loading otherwise... */
 	dev_id = hci_get_route(NULL);
 	s = hci_open_dev(dev_id);

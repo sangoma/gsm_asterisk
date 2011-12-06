@@ -28,7 +28,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342330 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sys/stat.h>
 #include <time.h>
@@ -78,7 +78,7 @@ struct outgoing {
 	int retrytime;                            /*!< How long to wait between retries (in seconds) */
 	int waittime;                             /*!< How long to wait for an answer */
 	long callingpid;                          /*!< PID which is currently calling */
-	struct ast_format_cap *capabilities;                 /*!< Formats (codecs) for this call */
+	format_t format;                          /*!< Formats (codecs) for this call */
 	AST_DECLARE_STRING_FIELDS (
 		AST_STRING_FIELD(fn);                 /*!< File name of call file */
 		AST_STRING_FIELD(tech);               /*!< Which channel technology to use for outgoing call */
@@ -103,16 +103,10 @@ static void queue_file(const char *filename, time_t when);
 
 static int init_outgoing(struct outgoing *o)
 {
-	struct ast_format tmpfmt;
 	o->priority = 1;
 	o->retrytime = 300;
 	o->waittime = 45;
-
-	if (!(o->capabilities = ast_format_cap_alloc_nolock())) {
-		return -1;
-	}
-	ast_format_cap_add(o->capabilities, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-
+	o->format = AST_FORMAT_SLINEAR;
 	ast_set_flag(&o->options, SPOOL_FLAG_ALWAYS_DELETE);
 	if (ast_string_field_init(o, 128)) {
 		return -1;
@@ -126,7 +120,6 @@ static void free_outgoing(struct outgoing *o)
 		ast_variables_destroy(o->vars);
 	}
 	ast_string_field_free_memory(o);
-	o->capabilities = ast_format_cap_destroy(o->capabilities);
 	ast_free(o);
 }
 
@@ -200,7 +193,7 @@ static int apply_outgoing(struct outgoing *o, const char *fn, FILE *f)
 						o->maxretries = 0;
 					}
 				} else if (!strcasecmp(buf, "codecs")) {
-					ast_parse_allow_disallow(NULL, o->capabilities, c, 1);
+					ast_parse_allow_disallow(NULL, &o->format, c, 1);
 				} else if (!strcasecmp(buf, "context")) {
 					ast_string_field_set(o, context, c);
 				} else if (!strcasecmp(buf, "extension")) {
@@ -349,11 +342,11 @@ static void *attempt_thread(void *data)
 	int res, reason;
 	if (!ast_strlen_zero(o->app)) {
 		ast_verb(3, "Attempting call on %s/%s for application %s(%s) (Retry %d)\n", o->tech, o->dest, o->app, o->data, o->retries);
-		res = ast_pbx_outgoing_app(o->tech, o->capabilities, (void *) o->dest, o->waittime * 1000, o->app, o->data, &reason, 2 /* wait to finish */, o->cid_num, o->cid_name, o->vars, o->account, NULL);
+		res = ast_pbx_outgoing_app(o->tech, o->format, (void *) o->dest, o->waittime * 1000, o->app, o->data, &reason, 2 /* wait to finish */, o->cid_num, o->cid_name, o->vars, o->account, NULL);
 		o->vars = NULL;
 	} else {
 		ast_verb(3, "Attempting call on %s/%s for %s@%s:%d (Retry %d)\n", o->tech, o->dest, o->exten, o->context,o->priority, o->retries);
-		res = ast_pbx_outgoing_exten(o->tech, o->capabilities, (void *) o->dest, o->waittime * 1000, o->context, o->exten, o->priority, &reason, 2 /* wait to finish */, o->cid_num, o->cid_name, o->vars, o->account, NULL);
+		res = ast_pbx_outgoing_exten(o->tech, o->format, (void *) o->dest, o->waittime * 1000, o->context, o->exten, o->priority, &reason, 2 /* wait to finish */, o->cid_num, o->cid_name, o->vars, o->account, NULL);
 		o->vars = NULL;
 	}
 	if (res) {
@@ -436,7 +429,7 @@ static int scan_service(const char *fn, time_t now)
 		now += o->retrytime;
 		if (o->callingpid && (o->callingpid == ast_mainpid)) {
 			safe_append(o, time(NULL), "DelayedRetry");
-			ast_debug(1, "Delaying retry since we're currently running '%s'\n", o->fn);
+			ast_log(LOG_DEBUG, "Delaying retry since we're currently running '%s'\n", o->fn);
 			free_outgoing(o);
 		} else {
 			/* Increment retries */
@@ -471,7 +464,6 @@ static AST_LIST_HEAD_STATIC(dirlist, direntry);
 #if defined(HAVE_INOTIFY)
 /* Only one thread is accessing this list, so no lock is necessary */
 static AST_LIST_HEAD_NOLOCK_STATIC(createlist, direntry);
-static AST_LIST_HEAD_NOLOCK_STATIC(openlist, direntry);
 #endif
 
 static void queue_file(const char *filename, time_t when)
@@ -552,47 +544,14 @@ static void queue_file_create(const char *filename)
 		return;
 	}
 	strcpy(cur->name, filename);
-	/* We'll handle this file unless an IN_OPEN event occurs within 2 seconds */
-	cur->mtime = time(NULL) + 2;
 	AST_LIST_INSERT_TAIL(&createlist, cur, list);
-}
-
-static void queue_file_open(const char *filename)
-{
-	struct direntry *cur;
-
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&createlist, cur, list) {
-		if (!strcmp(cur->name, filename)) {
-			AST_LIST_REMOVE_CURRENT(list);
-			AST_LIST_INSERT_TAIL(&openlist, cur, list);
-			break;
-		}
-	}
-	AST_LIST_TRAVERSE_SAFE_END
-}
-
-static void queue_created_files(void)
-{
-	struct direntry *cur;
-	time_t now = time(NULL);
-
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&createlist, cur, list) {
-		if (cur->mtime > now) {
-			break;
-		}
-
-		AST_LIST_REMOVE_CURRENT(list);
-		queue_file(cur->name, 0);
-		ast_free(cur);
-	}
-	AST_LIST_TRAVERSE_SAFE_END
 }
 
 static void queue_file_write(const char *filename)
 {
 	struct direntry *cur;
 	/* Only queue entries where an IN_CREATE preceded the IN_CLOSE_WRITE */
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&openlist, cur, list) {
+	AST_LIST_TRAVERSE_SAFE_BEGIN(&createlist, cur, list) {
 		if (!strcmp(cur->name, filename)) {
 			AST_LIST_REMOVE_CURRENT(list);
 			ast_free(cur);
@@ -639,7 +598,7 @@ static void *scan_thread(void *unused)
 	}
 
 #ifdef HAVE_INOTIFY
-	inotify_add_watch(inotify_fd, qdir, IN_CREATE | IN_OPEN | IN_CLOSE_WRITE | IN_MOVED_TO);
+	inotify_add_watch(inotify_fd, qdir, IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO);
 #endif
 
 	/* First, run through the directory and clear existing entries */
@@ -675,35 +634,14 @@ static void *scan_thread(void *unused)
 			/* Convert from seconds to milliseconds, unless there's nothing
 			 * in the queue already, in which case, we wait forever. */
 			int waittime = next == INT_MAX ? -1 : (next - now) * 1000;
-			if (!AST_LIST_EMPTY(&createlist)) {
-				waittime = 1000;
-			}
 			/* When a file arrives, add it to the queue, in mtime order. */
 			if ((res = poll(&pfd, 1, waittime)) > 0 && (stage = 1) &&
 				(res = read(inotify_fd, &buf, sizeof(buf))) >= sizeof(*iev)) {
 				ssize_t len = 0;
 				/* File(s) added to directory, add them to my list */
 				for (iev = (void *) buf; res >= sizeof(*iev); iev = (struct inotify_event *) (((char *) iev) + len)) {
-					/* For an IN_MOVED_TO event, simply process the file. However, if
-					 * we get an IN_CREATE event it *might* be an open(O_CREAT) or it
-					 * might be a hardlink (like smsq does, since rename() might
-					 * overwrite an existing file). So we have to see if we get a
-					 * subsequent IN_OPEN event on the same file. If we do, keep it
-					 * on the openlist and wait for the corresponding IN_CLOSE_WRITE.
-					 * If we *don't* see an IN_OPEN event, then it was a hard link so
-					 * it can be processed immediately.
-					 *
-					 * Unfortunately, although open(O_CREAT) is an atomic file system
-					 * operation, the inotify subsystem doesn't give it to us in a
-					 * single event with both IN_CREATE|IN_OPEN set. It's two separate
-					 * events, and the kernel doesn't even give them to us at the same
-					 * time. We can read() from inotify_fd after the IN_CREATE event,
-					 * and get *nothing* from it. The IN_OPEN arrives only later! So
-					 * we have a very short timeout of 2 seconds. */
 					if (iev->mask & IN_CREATE) {
 						queue_file_create(iev->name);
-					} else if (iev->mask & IN_OPEN) {
-						queue_file_open(iev->name);
 					} else if (iev->mask & IN_CLOSE_WRITE) {
 						queue_file_write(iev->name);
 					} else if (iev->mask & IN_MOVED_TO) {
@@ -718,9 +656,6 @@ static void *scan_thread(void *unused)
 			} else if (res < 0 && errno != EINTR && errno != EAGAIN) {
 				ast_debug(1, "Got an error back from %s(2): %s\n", stage ? "read" : "poll", strerror(errno));
 			}
-			time(&now);
-		}
-		queue_created_files();
 #else
 			struct timespec ts2 = { next - now, 0 };
 			if (kevent(inotify_fd, NULL, 0, &kev, 1, &ts2) <= 0) {
@@ -733,9 +668,9 @@ static void *scan_thread(void *unused)
 					queue_file(de->d_name, 0);
 				}
 			}
+#endif
 			time(&now);
 		}
-#endif
 
 		/* Empty the list of all entries ready to be processed */
 		AST_LIST_LOCK(&dirlist);

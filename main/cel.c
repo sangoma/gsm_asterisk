@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 283230 $")
 
 #include "asterisk/_private.h"
 
@@ -417,7 +417,7 @@ struct ast_channel *ast_cel_fabricate_channel_from_event(const struct ast_event 
 
 	/* first, get the variables from the event */
 	if (ast_cel_fill_record(event, &record)) {
-		ast_channel_unref(tchan);
+		ast_channel_release(tchan);
 		return NULL;
 	}
 

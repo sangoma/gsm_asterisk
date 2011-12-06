@@ -23,13 +23,13 @@
 
 /*** MODULEINFO
 	<depend>zlib</depend>
-	<use type="external">crypto</use>
+	<use>crypto</use>
 	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/network.h"
 #include <sys/ioctl.h>
@@ -174,7 +174,7 @@ enum {
 #endif
 
 static struct io_context *io;
-static struct ast_sched_context *sched;
+static struct sched_context *sched;
 static int netsocket = -1;
 static pthread_t netthreadid = AST_PTHREADT_NULL;
 static pthread_t precachethreadid = AST_PTHREADT_NULL;
@@ -4805,7 +4805,7 @@ static int unload_module(void)
 	ast_custom_function_unregister(&dundi_result_function);
 	close(netsocket);
 	io_context_destroy(io);
-	ast_sched_context_destroy(sched);
+	sched_context_destroy(sched);
 
 	mark_mappings();
 	prune_mappings();
@@ -4838,7 +4838,7 @@ static int load_module(void)
 
 	/* Make a UDP socket */
 	io = io_context_create();
-	sched = ast_sched_context_create();
+	sched = sched_context_create();
 
 	if (!io || !sched)
 		return AST_MODULE_LOAD_DECLINE;

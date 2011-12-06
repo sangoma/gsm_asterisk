@@ -77,7 +77,7 @@
  ***/
 
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340665 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sqlite.h>
 
@@ -1154,9 +1154,8 @@ static int add_rt_multi_cfg_entry(void *arg, int argc, char **argv, char **colum
 	ast_category_append(args->cfg, cat);
 
 	for (i = 0; i < argc; i++) {
-		if (!argv[i]) {
+		if (!argv[i] || !strcmp(args->initfield, columnNames[i]))
 			continue;
-		}
 
 		if (!(var = ast_variable_new(columnNames[i], argv[i], ""))) {
 			ast_log(LOG_WARNING, "Unable to allocate variable\n");

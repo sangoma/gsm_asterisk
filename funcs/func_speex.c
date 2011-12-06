@@ -33,13 +33,13 @@
 /*** MODULEINFO
 	<depend>speex</depend>
 	<depend>speex_preprocess</depend>
-	<use type="external">speexdsp</use>
+	<use>speexdsp</use>
 	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <speex/speex_preprocess.h>
 #include "asterisk/module.h"
@@ -106,7 +106,6 @@ struct speex_direction_info {
 
 struct speex_info {
 	struct ast_audiohook audiohook;
-	int lastrate;
 	struct speex_direction_info *tx, *rx;
 };
 
@@ -165,13 +164,12 @@ static int speex_callback(struct ast_audiohook *audiohook, struct ast_channel *c
 		return -1;
 	}
 
-	if ((sdi->samples != frame->samples) || (ast_format_rate(&frame->subclass.format) != si->lastrate)) {
-		si->lastrate = ast_format_rate(&frame->subclass.format);
+	if (sdi->samples != frame->samples) {
 		if (sdi->state) {
 			speex_preprocess_state_destroy(sdi->state);
 		}
 
-		if (!(sdi->state = speex_preprocess_state_init((sdi->samples = frame->samples), si->lastrate))) {
+		if (!(sdi->state = speex_preprocess_state_init((sdi->samples = frame->samples), 8000))) {
 			return -1;
 		}
 
@@ -215,9 +213,9 @@ static int speex_write(struct ast_channel *chan, const char *cmd, char *data, co
 			return 0;
 		}
 
-		ast_audiohook_init(&si->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "speex", AST_AUDIOHOOK_MANIPULATE_ALL_RATES);
+		ast_audiohook_init(&si->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "speex");
 		si->audiohook.manipulate_callback = speex_callback;
-		si->lastrate = 8000;
+
 		is_new = 1;
 	} else {
 		ast_channel_unlock(chan);

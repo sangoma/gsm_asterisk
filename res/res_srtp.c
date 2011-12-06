@@ -37,7 +37,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337543 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <srtp/srtp.h>
 
@@ -54,7 +54,6 @@ struct ast_srtp {
 	srtp_t session;
 	const struct ast_srtp_cb *cb;
 	void *data;
-	int warned;
 	unsigned char buf[8192 + AST_FRIENDLY_OFFSET];
 };
 
@@ -180,8 +179,6 @@ static struct ast_srtp *res_srtp_new(void)
 		ast_free(srtp);
 		return NULL;
 	}
-	
-	srtp->warned = 1;
 
 	return srtp;
 }
@@ -385,12 +382,7 @@ static int ast_srtp_unprotect(struct ast_srtp *srtp, void *buf, int *len, int rt
 	}
 
 	if (res != err_status_ok && res != err_status_replay_fail ) {
-		if ((srtp->warned >= 10) && !((srtp->warned - 10) % 100)) {
-			ast_log(LOG_WARNING, "SRTP unprotect: %s %d\n", srtp_errstr(res), srtp->warned);
-			srtp->warned = 11;
-		} else {
-			srtp->warned++;
-		}
+		ast_log(LOG_WARNING, "SRTP unprotect: %s\n", srtp_errstr(res));
 		errno = EAGAIN;
 		return -1;
 	}

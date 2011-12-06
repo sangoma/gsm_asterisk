@@ -41,7 +41,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sqlite3.h>
 
@@ -262,7 +262,7 @@ static void write_cel(const struct ast_event *event, void *userdata)
 		}
 		sql = sqlite3_mprintf("INSERT INTO %q (%s) VALUES (%s)", table, columns, ast_str_buffer(value_string));
 		ast_debug(1, "About to log: %s\n", sql);
-		dummy = ast_channel_unref(dummy);
+		dummy = ast_channel_release(dummy);
 		ast_free(value_string);
 	}
 

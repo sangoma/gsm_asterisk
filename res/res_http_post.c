@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -136,7 +136,7 @@ static void process_message_callback(GMimeObject *part, gpointer user_data)
 	} else if (GMIME_IS_MULTIPART(part)) {
 #ifndef AST_GMIME_VER_24
 		GList *l;
-
+		
 		ast_log(LOG_WARNING, "Got unexpected GMIME_IS_MULTIPART, trying to process subparts\n");
 		l = GMIME_MULTIPART(part)->subparts;
 		while (l) {
@@ -385,7 +385,9 @@ static int http_post_callback(struct ast_tcptls_session_instance *ser, const str
 	fprintf(f, "\r\n");
 
 	if (0 > readmimefile(ser->f, f, boundary_marker, content_len)) {
-		ast_debug(1, "Cannot find boundary marker in POST request.\n");
+		if (option_debug) {
+			ast_log(LOG_DEBUG, "Cannot find boundary marker in POST request.\n");
+		}
 		fclose(f);
 
 		return -1;

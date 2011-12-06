@@ -1062,7 +1062,6 @@ void memHeapAddRef (void** ppvMemHeap)
 void memHeapRelease (void** ppvMemHeap)
 {
    OSMemHeap** ppMemHeap = (OSMemHeap**)ppvMemHeap;
-   OSMemHeap* pMemHeap = *ppMemHeap;
 
    if (ppMemHeap != 0 && *ppMemHeap != 0 && --(*ppMemHeap)->refCnt == 0) {
       OSMemLink* pMemLink, *pMemLink2;
@@ -1079,10 +1078,9 @@ void memHeapRelease (void** ppvMemHeap)
          free (pMemLink2);
       }
 
-      if ((*ppMemHeap)->flags & RT_MH_FREEHEAPDESC) {
-         ast_mutex_destroy(&pMemHeap->pLock);
+      if ((*ppMemHeap)->flags & RT_MH_FREEHEAPDESC)
          free (*ppMemHeap);
-      }
+
       *ppMemHeap = 0;
    }
 }

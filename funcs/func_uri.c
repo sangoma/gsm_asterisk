@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -80,7 +80,7 @@ static int uriencode(struct ast_channel *chan, const char *cmd, char *data,
 		return -1;
 	}
 
-	ast_uri_encode(data, buf, len, ast_uri_http);
+	ast_uri_encode(data, buf, len, 1);
 
 	return 0;
 }
@@ -95,7 +95,7 @@ static int uridecode(struct ast_channel *chan, const char *cmd, char *data,
 	}
 
 	ast_copy_string(buf, data, len);
-	ast_uri_decode(buf, ast_uri_http);
+	ast_uri_decode(buf);
 
 	return 0;
 }

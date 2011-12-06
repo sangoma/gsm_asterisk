@@ -89,11 +89,11 @@ struct multicast_rtp {
 	/*! Synchronization source value, used when creating/sending the RTP packet */
 	unsigned int ssrc;
 	/*! Sequence number, used when creating/sending the RTP packet */
-	uint16_t seqno;
+	unsigned int seqno;
 };
 
 /* Forward Declarations */
-static int multicast_rtp_new(struct ast_rtp_instance *instance, struct ast_sched_context *sched, struct ast_sockaddr *addr, void *data);
+static int multicast_rtp_new(struct ast_rtp_instance *instance, struct sched_context *sched, struct ast_sockaddr *addr, void *data);
 static int multicast_rtp_activate(struct ast_rtp_instance *instance);
 static int multicast_rtp_destroy(struct ast_rtp_instance *instance);
 static int multicast_rtp_write(struct ast_rtp_instance *instance, struct ast_frame *frame);
@@ -110,7 +110,7 @@ static struct ast_rtp_engine multicast_rtp_engine = {
 };
 
 /*! \brief Function called to create a new multicast instance */
-static int multicast_rtp_new(struct ast_rtp_instance *instance, struct ast_sched_context *sched, struct ast_sockaddr *addr, void *data)
+static int multicast_rtp_new(struct ast_rtp_instance *instance, struct sched_context *sched, struct ast_sockaddr *addr, void *data)
 {
 	struct multicast_rtp *multicast;
 	const char *type = data;
@@ -217,7 +217,7 @@ static int multicast_rtp_write(struct ast_rtp_instance *instance, struct ast_fra
 	}
 
 	/* Grab the actual payload number for when we create the RTP packet */
-	if ((codec = ast_rtp_codecs_payload_code(ast_rtp_instance_get_codecs(instance), 1, &frame->subclass.format, 0)) < 0) {
+	if ((codec = ast_rtp_codecs_payload_code(ast_rtp_instance_get_codecs(instance), 1, frame->subclass.codec)) < 0) {
 		return -1;
 	}
 
@@ -228,12 +228,9 @@ static int multicast_rtp_write(struct ast_rtp_instance *instance, struct ast_fra
 
 	/* Construct an RTP header for our packet */
 	rtpheader = (unsigned char *)(f->data.ptr - hdrlen);
-	put_unaligned_uint32(rtpheader, htonl((2 << 30) | (codec << 16) | (multicast->seqno)));
+	put_unaligned_uint32(rtpheader, htonl((2 << 30) | (codec << 16) | (multicast->seqno++) | (0 << 23)));
 	put_unaligned_uint32(rtpheader + 4, htonl(f->ts * 8));
 	put_unaligned_uint32(rtpheader + 8, htonl(multicast->ssrc));
-
-	/* Increment sequence number and wrap to 0 if it overflows 16 bits. */
-	multicast->seqno = 0xFFFF & (multicast->seqno + 1);
 
 	/* Finally send it out to the eager phones listening for us */
 	ast_rtp_instance_get_remote_address(instance, &remote_address);

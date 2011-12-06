@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <ctype.h>
 
@@ -906,7 +906,6 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 	int iprior = -2;
 	char *cidmatch, *app, *app_data;
 	char *start, *end;
-	const char *into_context;
 
 	switch (cmd) {
 	case CLI_INIT:
@@ -970,22 +969,10 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 
 	if (!exten || !prior || !app || (!app_data && iprior != PRIORITY_HINT))
 		return CLI_SHOWUSAGE;
-	
-	into_context = a->argv[5];
-
-	if (!ast_context_find(into_context)) {
-		ast_cli(a->fd, "Context '%s' did not exist prior to add extension - the context will be created.\n", into_context);
-	}
-
-	if (!ast_context_find_or_create(NULL, NULL, into_context, registrar)) {
-		ast_cli(a->fd, "ast_context_find_or_create() failed\n");
-		ast_cli(a->fd, "Failed to add '%s,%s,%s,%s' extension into '%s' context\n", exten, prior, app, app_data, into_context);
-		return CLI_FAILURE;
-	}
 
 	if (!app_data)
 		app_data="";
-	if (ast_add_extension(into_context, a->argc == 7 ? 1 : 0, exten, iprior, NULL, cidmatch, app,
+	if (ast_add_extension(a->argv[5], a->argc == 7 ? 1 : 0, exten, iprior, NULL, cidmatch, app,
 		(void *)strdup(app_data), ast_free_ptr, registrar)) {
 		switch (errno) {
 		case ENOMEM:
@@ -997,17 +984,17 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 			break;
 
 		case ENOENT:
-			ast_cli(a->fd, "No existence of '%s' context\n", into_context);
+			ast_cli(a->fd, "No existence of '%s' context\n", a->argv[5]);
 			break;
 
 		case EEXIST:
 			ast_cli(a->fd, "Extension %s@%s with priority %s already exists\n",
-				exten, into_context, prior);
+				exten, a->argv[5], prior);
 			break;
 
 		default:
 			ast_cli(a->fd, "Failed to add '%s,%s,%s,%s' extension into '%s' context\n",
-					exten, prior, app, app_data, into_context);
+					exten, prior, app, app_data, a->argv[5]);
 			break;
 		}
 		return CLI_FAILURE;
@@ -1015,10 +1002,10 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 
 	if (a->argc == 7)
 		ast_cli(a->fd, "Extension %s@%s (%s) replace by '%s,%s,%s,%s'\n",
-			exten, into_context, prior, exten, prior, app, app_data);
+			exten, a->argv[5], prior, exten, prior, app, app_data);
 	else
 		ast_cli(a->fd, "Extension '%s,%s,%s,%s' added into '%s' context\n",
-			exten, prior, app, app_data, into_context);
+			exten, prior, app, app_data, a->argv[5]);
 
 	return CLI_SUCCESS;
 }

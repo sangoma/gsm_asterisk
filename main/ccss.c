@@ -23,7 +23,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321925 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321924 $")
 
 #include "asterisk/astobj2.h"
 #include "asterisk/strings.h"
@@ -33,7 +33,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321925 $")
 #include "asterisk/utils.h"
 #include "asterisk/taskprocessor.h"
 #include "asterisk/event.h"
-#include "asterisk/devicestate.h"
 #include "asterisk/module.h"
 #include "asterisk/app.h"
 #include "asterisk/cli.h"
@@ -98,9 +97,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321925 $")
  */
 
 /*!
- * The ast_sched_context used for all generic CC timeouts
+ * The sched_thread ID used for all generic CC timeouts
  */
-static struct ast_sched_context *cc_sched_context;
+static struct ast_sched_thread *cc_sched_thread;
 /*!
  * Counter used to create core IDs for CC calls. Each new
  * core ID is created by atomically adding 1 to the core_id_counter
@@ -529,111 +528,6 @@ static int count_agents_cb(void *obj, void *arg, void *data, int flags)
 		cb_data->count++;
 	}
 	return 0;
-}
-
-/* default values mapping from cc_state to ast_dev_state */
-
-#define CC_AVAILABLE_DEVSTATE_DEFAULT        AST_DEVICE_NOT_INUSE
-#define CC_CALLER_OFFERED_DEVSTATE_DEFAULT   AST_DEVICE_NOT_INUSE
-#define CC_CALLER_REQUESTED_DEVSTATE_DEFAULT AST_DEVICE_NOT_INUSE
-#define CC_ACTIVE_DEVSTATE_DEFAULT           AST_DEVICE_INUSE
-#define CC_CALLEE_READY_DEVSTATE_DEFAULT     AST_DEVICE_RINGING
-#define CC_CALLER_BUSY_DEVSTATE_DEFAULT      AST_DEVICE_ONHOLD
-#define CC_RECALLING_DEVSTATE_DEFAULT        AST_DEVICE_RINGING
-#define CC_COMPLETE_DEVSTATE_DEFAULT         AST_DEVICE_NOT_INUSE
-#define CC_FAILED_DEVSTATE_DEFAULT           AST_DEVICE_NOT_INUSE
-
-/*!
- * \internal
- * \brief initialization of defaults for CC_STATE to DEVICE_STATE map
- */
-static enum ast_device_state cc_state_to_devstate_map[] = {
-	[CC_AVAILABLE] =        CC_AVAILABLE_DEVSTATE_DEFAULT,
-	[CC_CALLER_OFFERED] =   CC_CALLER_OFFERED_DEVSTATE_DEFAULT,
-	[CC_CALLER_REQUESTED] = CC_CALLER_REQUESTED_DEVSTATE_DEFAULT,
-	[CC_ACTIVE] =           CC_ACTIVE_DEVSTATE_DEFAULT,
-	[CC_CALLEE_READY] =     CC_CALLEE_READY_DEVSTATE_DEFAULT,
-	[CC_CALLER_BUSY] =      CC_CALLER_BUSY_DEVSTATE_DEFAULT,
-	[CC_RECALLING] =        CC_RECALLING_DEVSTATE_DEFAULT,
-	[CC_COMPLETE] =         CC_COMPLETE_DEVSTATE_DEFAULT,
-	[CC_FAILED] =           CC_FAILED_DEVSTATE_DEFAULT,
-};
-
-/*!
- * \intenral
- * \brief lookup the ast_device_state mapped to cc_state
- *
- * \return the correponding DEVICE STATE from the cc_state_to_devstate_map
- * when passed an internal state.
- */
-static enum ast_device_state cc_state_to_devstate(enum cc_state state)
-{
-	return cc_state_to_devstate_map[state];
-}
-
-/*!
- * \internal
- * \brief Callback for devicestate providers
- *
- * \details
- * Initialize with ast_devstate_prov_add() and returns the corresponding
- * DEVICE STATE based on the current CC_STATE state machine if the requested
- * device is found and is a generic device. Returns the equivalent of
- * CC_FAILED, which defaults to NOT_INUSE, if no device is found.  NOT_INUSE would
- * indicate that there is no presence of any pending call back.
- */
-static enum ast_device_state ccss_device_state(const char *device_name)
-{
-	struct cc_core_instance *core_instance;
-	unsigned long match_flags;
-	enum ast_device_state cc_current_state;
-
-	match_flags = MATCH_NO_REQUEST;
-	core_instance = ao2_t_callback_data(cc_core_instances, 0, match_agent,
-		(char *) device_name, &match_flags,
-		"Find Core Instance for ccss_device_state reqeust.");
-	if (!core_instance) {
-		ast_log_dynamic_level(cc_logger_level,
-			"Couldn't find a core instance for caller %s\n", device_name);
-		return cc_state_to_devstate(CC_FAILED);
-	}
-
-	ast_log_dynamic_level(cc_logger_level,
-		"Core %d: Found core_instance for caller %s in state %s\n",
-		core_instance->core_id, device_name, cc_state_to_string(core_instance->current_state));
-
-	if (strcmp(core_instance->agent->callbacks->type, "generic")) {
-		ast_log_dynamic_level(cc_logger_level,
-			"Core %d: Device State is only for generic agent types.\n",
-			core_instance->core_id);
-		cc_unref(core_instance, "Unref core_instance since ccss_device_state was called with native agent");
-		return cc_state_to_devstate(CC_FAILED);
-	}
-	cc_current_state = cc_state_to_devstate(core_instance->current_state);
-	cc_unref(core_instance, "Unref core_instance done with ccss_device_state");
-	return cc_current_state;
-}
-
-/*!
- * \internal
- * \brief Notify Device State Changes from CC STATE MACHINE
- *
- * \details
- * Any time a state is changed, we call this function to notify the DEVICE STATE
- * subsystem of the change so that subscribed phones to any corresponding hints that
- * are using that state are updated.
- */
-static void ccss_notify_device_state_change(const char *device, enum cc_state state)
-{
-	enum ast_device_state devstate;
-
-	devstate = cc_state_to_devstate(state);
-
-	ast_log_dynamic_level(cc_logger_level,
-		"Notification of CCSS state change to '%s', device state '%s' for device '%s'",
-		cc_state_to_string(state), ast_devstate2str(devstate), device);
-
-	ast_devstate_changed(devstate, "ccss:%s", device);
 }
 
 #define CC_OFFER_TIMER_DEFAULT			20		/* Seconds */
@@ -1386,7 +1280,7 @@ static int cc_generic_monitor_request_cc(struct ast_cc_monitor *monitor, int *av
 	when = service == AST_CC_CCBS ? ast_get_ccbs_available_timer(monitor->interface->config_params) :
 		ast_get_ccnr_available_timer(monitor->interface->config_params);
 
-	*available_timer_id = ast_sched_add(cc_sched_context, when * 1000,
+	*available_timer_id = ast_sched_thread_add(cc_sched_thread, when * 1000,
 			ast_cc_available_timer_expire, cc_ref(monitor, "Give the scheduler a monitor reference"));
 	if (*available_timer_id == -1) {
 		cc_unref(monitor, "Failed to schedule available timer. (monitor)");
@@ -1484,7 +1378,7 @@ static int cc_generic_monitor_cancel_available_timer(struct ast_cc_monitor *moni
 
 	ast_log_dynamic_level(cc_logger_level, "Core %d: Canceling generic monitor available timer for monitor %s\n",
 			monitor->core_id, monitor->interface->device_name);
-	if (!ast_sched_del(cc_sched_context, *sched_id)) {
+	if (!ast_sched_thread_del(cc_sched_thread, *sched_id)) {
 		cc_unref(monitor, "Remove scheduler's reference to the monitor");
 	}
 	*sched_id = -1;
@@ -2539,13 +2433,13 @@ static int cc_generic_agent_start_offer_timer(struct ast_cc_agent *agent)
 	int sched_id;
 	struct cc_generic_agent_pvt *generic_pvt = agent->private_data;
 
-	ast_assert(cc_sched_context != NULL);
+	ast_assert(cc_sched_thread != NULL);
 	ast_assert(agent->cc_params != NULL);
 
 	when = ast_get_cc_offer_timer(agent->cc_params) * 1000;
 	ast_log_dynamic_level(cc_logger_level, "Core %d: About to schedule offer timer expiration for %d ms\n",
 			agent->core_id, when);
-	if ((sched_id = ast_sched_add(cc_sched_context, when, offer_timer_expire, cc_ref(agent, "Give scheduler an agent ref"))) == -1) {
+	if ((sched_id = ast_sched_thread_add(cc_sched_thread, when, offer_timer_expire, cc_ref(agent, "Give scheduler an agent ref"))) == -1) {
 		return -1;
 	}
 	generic_pvt->offer_timer_id = sched_id;
@@ -2557,7 +2451,7 @@ static int cc_generic_agent_stop_offer_timer(struct ast_cc_agent *agent)
 	struct cc_generic_agent_pvt *generic_pvt = agent->private_data;
 
 	if (generic_pvt->offer_timer_id != -1) {
-		if (!ast_sched_del(cc_sched_context, generic_pvt->offer_timer_id)) {
+		if (!ast_sched_thread_del(cc_sched_thread, generic_pvt->offer_timer_id)) {
 			cc_unref(agent, "Remove scheduler's reference to the agent");
 		}
 		generic_pvt->offer_timer_id = -1;
@@ -2652,29 +2546,19 @@ static void *generic_recall(void *data)
 	struct ast_channel *chan;
 	const char *callback_macro = ast_get_cc_callback_macro(agent->cc_params);
 	unsigned int recall_timer = ast_get_cc_recall_timer(agent->cc_params) * 1000;
-	struct ast_format tmp_fmt;
-	struct ast_format_cap *tmp_cap = ast_format_cap_alloc_nolock();
-
-	if (!tmp_cap) {
-		return NULL;
-	}
 
 	tech = interface;
 	if ((target = strchr(interface, '/'))) {
 		*target++ = '\0';
 	}
-
-	ast_format_cap_add(tmp_cap, ast_format_set(&tmp_fmt, AST_FORMAT_SLINEAR, 0));
-	if (!(chan = ast_request_and_dial(tech, tmp_cap, NULL, target, recall_timer, &reason, generic_pvt->cid_num, generic_pvt->cid_name))) {
+	if (!(chan = ast_request_and_dial(tech, AST_FORMAT_SLINEAR, NULL, target, recall_timer, &reason, generic_pvt->cid_num, generic_pvt->cid_name))) {
 		/* Hmm, no channel. Sucks for you, bud.
 		 */
 		ast_log_dynamic_level(cc_logger_level, "Core %d: Failed to call back %s for reason %d\n",
 				agent->core_id, agent->device_name, reason);
 		ast_cc_failed(agent->core_id, "Failed to call back device %s/%s", tech, target);
-		ast_format_cap_destroy(tmp_cap);
 		return NULL;
 	}
-	ast_format_cap_destroy(tmp_cap);
 	
 	/* We have a channel. It's time now to set up the datastore of recalled CC interfaces.
 	 * This will be a common task for all recall functions. If it were possible, I'd have
@@ -3154,11 +3038,6 @@ static int cc_do_state_change(void *datap)
 	previous_state = core_instance->current_state;
 	core_instance->current_state = args->state;
 	res = state_change_funcs[core_instance->current_state](core_instance, args, previous_state);
-
-	/* If state change successful then notify any device state watchers of the change */
-	if (!res && !strcmp(core_instance->agent->callbacks->type, "generic")) {
-		ccss_notify_device_state_change(core_instance->agent->device_name, core_instance->current_state);
-	}
 
 	ast_free(args);
 	cc_unref(core_instance, "Unref since state change has completed"); /* From ao2_find */
@@ -4248,59 +4127,6 @@ static void initialize_cc_max_requests(void)
 	return;
 }
 
-/*!
- * \internal
- * \brief helper function to parse and configure each devstate map
- */
-static void initialize_cc_devstate_map_helper(struct ast_config *cc_config, enum cc_state state, const char *cc_setting)
-{
-	const char *cc_devstate_str;
-	enum ast_device_state this_devstate;
-
-	if ((cc_devstate_str = ast_variable_retrieve(cc_config, "general", cc_setting))) {
-		this_devstate = ast_devstate_val(cc_devstate_str);
-		if (this_devstate != AST_DEVICE_UNKNOWN) {
-			cc_state_to_devstate_map[state] = this_devstate;
-		}
-	}
-}
-
-/*!
- * \internal
- * \brief initializes cc_state_to_devstate_map from ccss.conf
- *
- * \details
- * The cc_state_to_devstate_map[] is already initialized with all the
- * default values. This will update that structure with any changes
- * from the ccss.conf file. The configuration parameters in ccss.conf
- * should use any valid device state form that is recognized by
- * ast_devstate_val() function.
- */
-static void initialize_cc_devstate_map(void)
-{
-	struct ast_config *cc_config;
-	struct ast_flags config_flags = { 0, };
-
-	cc_config = ast_config_load2("ccss.conf", "ccss", config_flags);
-	if (!cc_config || cc_config == CONFIG_STATUS_FILEINVALID) {
-		ast_log(LOG_WARNING,
-			"Could not find valid ccss.conf file. Using cc_[state]_devstate defaults\n");
-		return;
-	}
-
-	initialize_cc_devstate_map_helper(cc_config, CC_AVAILABLE, "cc_available_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_CALLER_OFFERED, "cc_caller_offered_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_CALLER_REQUESTED, "cc_caller_requested_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_ACTIVE, "cc_active_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_CALLEE_READY, "cc_callee_ready_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_CALLER_BUSY, "cc_caller_busy_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_RECALLING, "cc_recalling_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_COMPLETE, "cc_complete_devstate");
-	initialize_cc_devstate_map_helper(cc_config, CC_FAILED, "cc_failed_devstate");
-
-	ast_config_destroy(cc_config);
-}
-
 static void cc_cli_print_monitor_stats(struct ast_cc_monitor *monitor, int fd, int parent_id)
 {
 	struct ast_cc_monitor *child_monitor_iter = monitor;
@@ -4486,25 +4312,16 @@ int ast_cc_init(void)
 	if (!(cc_core_taskprocessor = ast_taskprocessor_get("CCSS core", TPS_REF_DEFAULT))) {
 		return -1;
 	}
-	if (!(cc_sched_context = ast_sched_context_create())) {
-		return -1;
-	}
-	if (ast_sched_start_thread(cc_sched_context)) {
+	if (!(cc_sched_thread = ast_sched_thread_create())) {
 		return -1;
 	}
 	res = ast_register_application2(ccreq_app, ccreq_exec, NULL, NULL, NULL);
 	res |= ast_register_application2(cccancel_app, cccancel_exec, NULL, NULL, NULL);
 	res |= ast_cc_monitor_register(&generic_monitor_cbs);
 	res |= ast_cc_agent_register(&generic_agent_callbacks);
-
 	ast_cli_register_multiple(cc_cli, ARRAY_LEN(cc_cli));
 	cc_logger_level = ast_logger_register_level(CC_LOGGER_LEVEL_NAME);
 	dialed_cc_interface_counter = 1;
 	initialize_cc_max_requests();
-
-	/* Read the map and register the device state callback for generic agents */
-	initialize_cc_devstate_map();
-	res |= ast_devstate_prov_add("ccss", ccss_device_state);
-
 	return res;
 }

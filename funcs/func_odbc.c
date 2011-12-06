@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328540 $")
 
 #include "asterisk/module.h"
 #include "asterisk/file.h"
@@ -267,7 +267,7 @@ static int acf_odbc_write(struct ast_channel *chan, const char *cmd, char *s, co
 			ast_autoservice_stop(chan);
 			pbx_builtin_setvar_helper(chan, "ODBCSTATUS", status);
 		} else {
-			ast_channel_unref(chan);
+			ast_channel_release(chan);
 		}
 		return -1;
 	}
@@ -292,7 +292,7 @@ static int acf_odbc_write(struct ast_channel *chan, const char *cmd, char *s, co
 	ast_str_substitute_variables(&insertbuf, 0, chan, query->sql_insert);
 
 	if (bogus_chan) {
-		chan = ast_channel_unref(chan);
+		chan = ast_channel_release(chan);
 	} else {
 		/* Restore prior values */
 		for (i = 0; i < args.argc; i++) {
@@ -474,7 +474,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 	ast_str_substitute_variables(&sql, 0, chan, query->sql_read);
 
 	if (bogus_chan) {
-		chan = ast_channel_unref(chan);
+		chan = ast_channel_release(chan);
 	} else {
 		/* Restore prior values */
 		for (x = 0; x < args.argc; x++) {
@@ -596,9 +596,11 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 				ast_odbc_release_obj(obj);
 				obj = NULL;
-				if (!bogus_chan) {
-					pbx_builtin_setvar_helper(chan, "ODBCSTATUS", "MEMERROR");
+				pbx_builtin_setvar_helper(chan, "ODBCSTATUS", "MEMERROR");
+				if (chan)
 					ast_autoservice_stop(chan);
+				if (bogus_chan) {
+					ast_channel_release(chan);
 				}
 				return -1;
 			}
@@ -629,11 +631,9 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 						SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 						ast_odbc_release_obj(obj);
 						obj = NULL;
-						if (!bogus_chan) {
-							pbx_builtin_setvar_helper(chan, "ODBCROWS", rowcount);
-							pbx_builtin_setvar_helper(chan, "ODBCSTATUS", "MEMERROR");
-							ast_autoservice_stop(chan);
-						}
+						pbx_builtin_setvar_helper(chan, "ODBCROWS", rowcount);
+						pbx_builtin_setvar_helper(chan, "ODBCSTATUS", "MEMERROR");
+						ast_autoservice_stop(chan);
 						return -1;
 					}
 					resultset = tmp;
@@ -1142,10 +1142,6 @@ static char *cli_odbc_read(struct ast_cli_entry *e, int cmd, struct ast_cli_args
 	char_args = ast_strdupa(a->argv[3]);
 
 	chan = ast_dummy_channel_alloc();
-	if (!chan) {
-		AST_RWLIST_UNLOCK(&queries);
-		return CLI_FAILURE;
-	}
 
 	AST_STANDARD_APP_ARGS(args, char_args);
 	for (i = 0; i < args.argc; i++) {
@@ -1154,7 +1150,7 @@ static char *cli_odbc_read(struct ast_cli_entry *e, int cmd, struct ast_cli_args
 	}
 
 	ast_str_substitute_variables(&sql, 0, chan, query->sql_read);
-	chan = ast_channel_unref(chan);
+	chan = ast_channel_release(chan);
 
 	if (a->argc == 5 && !strcmp(a->argv[4], "exec")) {
 		/* Execute the query */
@@ -1356,10 +1352,6 @@ static char *cli_odbc_write(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 	char_values = ast_strdupa(a->argv[4]);
 
 	chan = ast_dummy_channel_alloc();
-	if (!chan) {
-		AST_RWLIST_UNLOCK(&queries);
-		return CLI_FAILURE;
-	}
 
 	AST_STANDARD_APP_ARGS(args, char_args);
 	for (i = 0; i < args.argc; i++) {
@@ -1378,8 +1370,7 @@ static char *cli_odbc_write(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 	pbx_builtin_pushvar_helper(chan, "VALUE", S_OR(a->argv[4], ""));
 	ast_str_substitute_variables(&sql, 0, chan, query->sql_write);
 	ast_debug(1, "SQL is %s\n", ast_str_buffer(sql));
-
-	chan = ast_channel_unref(chan);
+	chan = ast_channel_release(chan);
 
 	if (a->argc == 6 && !strcmp(a->argv[5], "exec")) {
 		/* Execute the query */

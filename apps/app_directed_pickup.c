@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335722 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 329199 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -101,6 +101,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335722 $")
 
 static const char app[] = "Pickup";
 static const char app2[] = "PickupChan";
+/*! \todo This application should return a result code, like PICKUPRESULT */
 
 struct pickup_by_name_args {
 	const char *name;

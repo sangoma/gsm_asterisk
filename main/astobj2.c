@@ -19,7 +19,7 @@
  */
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342489 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 307273 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/astobj2.h"
@@ -137,7 +137,7 @@ enum ao2_callback_type {
 static int internal_ao2_ref(void *user_data, const int delta);
 static struct ao2_container *internal_ao2_container_alloc(struct ao2_container *c, const uint n_buckets, ao2_hash_fn *hash_fn,
 							  ao2_callback_fn *cmp_fn);
-static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *user_data, int flags, const char *file, int line, const char *func);
+static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *user_data, const char *file, int line, const char *func);
 static void *internal_ao2_callback(struct ao2_container *c,
 				   const enum search_flags flags, void *cb_fn, void *arg, void *data, enum ao2_callback_type type,
 				   char *tag, char *file, int line, const char *funcname);
@@ -210,19 +210,14 @@ int __ao2_ref_debug(void *user_data, const int delta, char *tag, char *file, int
 		return -1;
 
 	if (delta != 0) {
-		FILE *refo = fopen(REF_FILE, "a");
-		if (refo) {
-			fprintf(refo, "%p %s%d   %s:%d:%s (%s) [@%d]\n", user_data, (delta < 0 ? "" : "+"),
-				delta, file, line, funcname, tag, obj ? obj->priv_data.ref_counter : -1);
-			fclose(refo);
-		}
+		FILE *refo = fopen(REF_FILE,"a");
+		fprintf(refo, "%p %s%d   %s:%d:%s (%s) [@%d]\n", user_data, (delta<0? "":"+"), delta, file, line, funcname, tag, obj ? obj->priv_data.ref_counter : -1);
+		fclose(refo);
 	}
 	if (obj->priv_data.ref_counter + delta == 0 && obj->priv_data.destructor_fn != NULL) { /* this isn't protected with lock; just for o/p */
-		FILE *refo = fopen(REF_FILE, "a");
-		if (refo) {
-			fprintf(refo, "%p **call destructor** %s:%d:%s (%s)\n", user_data, file, line, funcname, tag);
+			FILE *refo = fopen(REF_FILE,"a"); 	 
+			fprintf(refo, "%p **call destructor** %s:%d:%s (%s)\n", user_data, file, line, funcname, tag); 	 
 			fclose(refo);
-		}
 	}
 	return internal_ao2_ref(user_data, delta);
 }
@@ -324,13 +319,14 @@ void *__ao2_alloc_debug(size_t data_size, ao2_destructor_fn destructor_fn, char 
 {
 	/* allocation */
 	void *obj;
-	FILE *refo;
+	FILE *refo = ref_debug ? fopen(REF_FILE,"a") : NULL;
 
 	if ((obj = internal_ao2_alloc(data_size, destructor_fn, file, line, funcname)) == NULL) {
+		fclose(refo);
 		return NULL;
 	}
 
-	if (ref_debug && (refo = fopen(REF_FILE, "a"))) {
+	if (refo) {
 		fprintf(refo, "%p =1   %s:%d:%s (%s)\n", obj, file, line, funcname, tag);
 		fclose(refo);
 	}
@@ -475,7 +471,7 @@ struct bucket_entry {
  * link an object to a container
  */
 
-static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *user_data, int flags, const char *file, int line, const char *func)
+static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *user_data, const char *file, int line, const char *func)
 {
 	int i;
 	/* create a new list entry */
@@ -494,9 +490,7 @@ static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *use
 
 	i = abs(c->hash_fn(user_data, OBJ_POINTER));
 
-	if (!(flags & OBJ_NOLOCK)) {
-		ao2_lock(c);
-	}
+	ao2_lock(c);
 	i %= c->n_buckets;
 	p->astobj = obj;
 	p->version = ast_atomic_fetchadd_int(&c->version, 1);
@@ -507,28 +501,24 @@ static struct bucket_entry *internal_ao2_link(struct ao2_container *c, void *use
 	return p;
 }
 
-void *__ao2_link_debug(struct ao2_container *c, void *user_data, int flags, char *tag, char *file, int line, const char *funcname)
+void *__ao2_link_debug(struct ao2_container *c, void *user_data, char *tag, char *file, int line, const char *funcname)
 {
-	struct bucket_entry *p = internal_ao2_link(c, user_data, flags, file, line, funcname);
+	struct bucket_entry *p = internal_ao2_link(c, user_data, file, line, funcname);
 
 	if (p) {
 		__ao2_ref_debug(user_data, +1, tag, file, line, funcname);
-		if (!(flags & OBJ_NOLOCK)) {
-			ao2_unlock(c);
-		}
+		ao2_unlock(c);
 	}
 	return p;
 }
 
-void *__ao2_link(struct ao2_container *c, void *user_data, int flags)
+void *__ao2_link(struct ao2_container *c, void *user_data)
 {
-	struct bucket_entry *p = internal_ao2_link(c, user_data, flags, __FILE__, __LINE__, __PRETTY_FUNCTION__);
+	struct bucket_entry *p = internal_ao2_link(c, user_data, __FILE__, __LINE__, __PRETTY_FUNCTION__);
 
 	if (p) {
 		__ao2_ref(user_data, +1);
-		if (!(flags & OBJ_NOLOCK)) {
-			ao2_unlock(c);
-		}
+		ao2_unlock(c);
 	}
 	return p;
 }
@@ -545,26 +535,23 @@ int ao2_match_by_addr(void *user_data, void *arg, int flags)
  * Unlink an object from the container
  * and destroy the associated * bucket_entry structure.
  */
-void *__ao2_unlink_debug(struct ao2_container *c, void *user_data, int flags, char *tag,
+void *__ao2_unlink_debug(struct ao2_container *c, void *user_data, char *tag,
 			 char *file, int line, const char *funcname)
 {
 	if (INTERNAL_OBJ(user_data) == NULL)	/* safety check on the argument */
 		return NULL;
 
-	flags |= (OBJ_UNLINK | OBJ_POINTER | OBJ_NODATA);
-
-	__ao2_callback_debug(c, flags, ao2_match_by_addr, user_data, tag, file, line, funcname);
+	__ao2_callback_debug(c, OBJ_UNLINK | OBJ_POINTER | OBJ_NODATA, ao2_match_by_addr, user_data, tag, file, line, funcname);
 
 	return NULL;
 }
 
-void *__ao2_unlink(struct ao2_container *c, void *user_data, int flags)
+void *__ao2_unlink(struct ao2_container *c, void *user_data)
 {
 	if (INTERNAL_OBJ(user_data) == NULL)	/* safety check on the argument */
 		return NULL;
 
-	flags |= (OBJ_UNLINK | OBJ_POINTER | OBJ_NODATA);
-	__ao2_callback(c, flags, ao2_match_by_addr, user_data);
+	__ao2_callback(c, OBJ_UNLINK | OBJ_POINTER | OBJ_NODATA, ao2_match_by_addr, user_data);
 
 	return NULL;
 }
@@ -652,8 +639,8 @@ static void *internal_ao2_callback(struct ao2_container *c,
 	 * run the hash function. Otherwise, scan the whole container
 	 * (this only for the time being. We need to optimize this.)
 	 */
-	if ((flags & (OBJ_POINTER | OBJ_KEY)))	/* we know hash can handle this case */
-		start = i = c->hash_fn(arg, flags & (OBJ_POINTER | OBJ_KEY)) % c->n_buckets;
+	if ((flags & OBJ_POINTER))	/* we know hash can handle this case */
+		start = i = c->hash_fn(arg, flags & OBJ_POINTER) % c->n_buckets;
 	else			/* don't know, let's scan all buckets */
 		start = i = -1;		/* XXX this must be fixed later. */
 
@@ -667,10 +654,7 @@ static void *internal_ao2_callback(struct ao2_container *c,
 		last = i + 1;
 	}
 
-
-	if (!(flags & OBJ_NOLOCK)) {
-		ao2_lock(c);	/* avoid modifications to the content */
-	}
+	ao2_lock(c);	/* avoid modifications to the content */
 
 	for (; i < last ; i++) {
 		/* scan the list with prev-cur pointers */
@@ -710,9 +694,9 @@ static void *internal_ao2_callback(struct ao2_container *c,
 			 */
 			if (ret && (multi_container != NULL)) {
 				if (tag) {
-					__ao2_link_debug(multi_container, ret, flags, tag, file, line, funcname);
+					__ao2_link_debug(multi_container, ret, tag, file, line, funcname);
 				} else {
-					__ao2_link(multi_container, ret, flags);
+					__ao2_link(multi_container, ret);
 				}
 				ret = NULL;
 			}
@@ -758,10 +742,7 @@ static void *internal_ao2_callback(struct ao2_container *c,
 			last = start;
 		}
 	}
-
-	if (!(flags & OBJ_NOLOCK)) {
-		ao2_unlock(c);
-	}
+	ao2_unlock(c);
 
 	/* if multi_container was created, we are returning multiple objects */
 	if (multi_container != NULL) {
@@ -774,15 +755,16 @@ static void *internal_ao2_callback(struct ao2_container *c,
 	}
 }
 
-void *__ao2_callback_debug(struct ao2_container *c, enum search_flags flags,
-	ao2_callback_fn *cb_fn, void *arg, char *tag, char *file, int line,
-	const char *funcname)
+void *__ao2_callback_debug(struct ao2_container *c,
+			   const enum search_flags flags,
+			   ao2_callback_fn *cb_fn, void *arg,
+			   char *tag, char *file, int line, const char *funcname)
 {
 	return internal_ao2_callback(c,flags, cb_fn, arg, NULL, DEFAULT, tag, file, line, funcname);
 }
 
-void *__ao2_callback(struct ao2_container *c, enum search_flags flags,
-	ao2_callback_fn *cb_fn, void *arg)
+void *__ao2_callback(struct ao2_container *c, const enum search_flags flags,
+		     ao2_callback_fn *cb_fn, void *arg)
 {
 	return internal_ao2_callback(c,flags, cb_fn, arg, NULL, DEFAULT, NULL, NULL, 0, NULL);
 }
@@ -804,18 +786,14 @@ void *__ao2_callback_data(struct ao2_container *c, const enum search_flags flags
 /*!
  * the find function just invokes the default callback with some reasonable flags.
  */
-void *__ao2_find_debug(struct ao2_container *c, const void *arg, enum search_flags flags, char *tag, char *file, int line, const char *funcname)
+void *__ao2_find_debug(struct ao2_container *c, void *arg, enum search_flags flags, char *tag, char *file, int line, const char *funcname)
 {
-	void *arged = (void *) arg;/* Done to avoid compiler const warning */
-
-	return __ao2_callback_debug(c, flags, c->cmp_fn, arged, tag, file, line, funcname);
+	return __ao2_callback_debug(c, flags, c->cmp_fn, arg, tag, file, line, funcname);
 }
 
-void *__ao2_find(struct ao2_container *c, const void *arg, enum search_flags flags)
+void *__ao2_find(struct ao2_container *c, void *arg, enum search_flags flags)
 {
-	void *arged = (void *) arg;/* Done to avoid compiler const warning */
-
-	return __ao2_callback(c, flags, c->cmp_fn, arged);
+	return __ao2_callback(c, flags, c->cmp_fn, arg);
 }
 
 /*!

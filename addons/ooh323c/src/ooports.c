@@ -16,8 +16,6 @@
 
 #include "asterisk.h"
 #include "asterisk/lock.h"
-#include "asterisk/netsock2.h"
-#include "asterisk/config.h"
 
 #include "ooports.h"
 #include "ooh323ep.h"
@@ -73,7 +71,7 @@ int ooBindPort (OOH323PortType type, OOSOCKET socket, char *ip)
    initialPort = ooGetNextPort (type);
    bindPort = initialPort;
 
-   ret=ast_parse_arg(ip, PARSE_ADDR, &ipAddrs);
+   ret= ooSocketStrToAddr (ip, &ipAddrs);
 
    while(1)
    {

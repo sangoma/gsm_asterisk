@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sys/socket.h>
 #include <netdb.h>
@@ -168,7 +168,7 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 	int res = 0;
 	int fds[2];
 	int needed = 0;
-	struct ast_format owriteformat;
+	int owriteformat;
 	struct ast_frame *f;
 	struct myframe {
 		struct ast_frame f;
@@ -178,7 +178,6 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 		.f = { 0, },
 	};
 
-	ast_format_clear(&owriteformat);
 	if (pipe(fds)) {
 		ast_log(LOG_WARNING, "Unable to create pipe\n");
 		return -1;
@@ -190,8 +189,8 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 	ast_stopstream(chan);
 	ast_indicate(chan, -1);
 	
-	ast_format_copy(&owriteformat, &chan->writeformat);
-	res = ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR);
+	owriteformat = chan->writeformat;
+	res = ast_set_write_format(chan, AST_FORMAT_SLINEAR);
 	if (res < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
 		return -1;
@@ -232,7 +231,7 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 				res = read(fds[0], myf.frdata, needed);
 				if (res > 0) {
 					myf.f.frametype = AST_FRAME_VOICE;
-					ast_format_set(&myf.f.subclass.format, AST_FORMAT_SLINEAR, 0);
+					myf.f.subclass.codec = AST_FORMAT_SLINEAR;
 					myf.f.datalen = res;
 					myf.f.samples = res / 2;
 					myf.f.offset = AST_FRIENDLY_OFFSET;
@@ -260,8 +259,8 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 	close(fds[0]);
 	close(fds[1]);
 
-	if (!res && owriteformat.id)
-		ast_set_write_format(chan, &owriteformat);
+	if (!res && owriteformat)
+		ast_set_write_format(chan, owriteformat);
 	return res;
 }
 

@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339354 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 330433 $")
 
 #include <netinet/in.h>
 #include <time.h>
@@ -429,8 +429,8 @@ static int wait_file(struct ast_channel *chan, const char *ints, const char *fil
 	return res;
 }
 
-/*! \brief  ast_say_number_full: call language-specific functions 
-     \note Called from AGI */
+/*! \brief  ast_say_number_full: call language-specific functions */
+/* Called from AGI */
 static int say_number_full(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
 	if (!strncasecmp(language, "en_GB", 5)) {     /* British syntax */
@@ -507,8 +507,8 @@ static int say_number_full(struct ast_channel *chan, int num, const char *ints, 
 	return ast_say_number_full_en(chan, num, ints, language, audiofd, ctrlfd);
 }
 
-/*! \brief  ast_say_number_full_en: English syntax 
-	\note This is the default syntax, if no other syntax defined in this file is used */
+/*! \brief  ast_say_number_full_en: English syntax */
+/* This is the default syntax, if no other syntax defined in this file is used */
 static int ast_say_number_full_en(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
 	int res = 0;
@@ -581,15 +581,14 @@ static int exp10_int(int power)
 	return res;
 }
 
-/*! \brief  ast_say_number_full_cs: Czech syntax 
- *
- * files needed:
- * - 1m,2m - gender male
- * - 1w,2w - gender female
- * - 3,4,...,20
- * - 30,40,...,90
+/*! \brief  ast_say_number_full_cs: Czech syntax */
+/* files needed:
+ * 1m,2m - gender male
+ * 1w,2w - gender female
+ * 3,4,...,20
+ * 30,40,...,90
  * 
- * - hundereds - 100 - sto, 200 - 2ste, 300,400 3,4sta, 500,600,...,900 5,6,...9set 
+ * hundereds - 100 - sto, 200 - 2ste, 300,400 3,4sta, 500,600,...,900 5,6,...9set 
  * 
  * for each number 10^(3n + 3) exist 3 files represented as:
  * 		1 tousand = jeden tisic = 1_E3
@@ -697,9 +696,9 @@ static int ast_say_number_full_cs(struct ast_channel *chan, int num, const char 
 	return res; 
 }
 
-/*! \brief  ast_say_number_full_da: Danish syntax
- New files:
- - In addition to English, the following sounds are required: "1N", "millions", "and" and "1-and" through "9-and" 
+/*! \brief  ast_say_number_full_da: Danish syntax */
+/* New files:
+ In addition to English, the following sounds are required: "1N", "millions", "and" and "1-and" through "9-and" 
  */
 static int ast_say_number_full_da(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
@@ -794,9 +793,9 @@ static int ast_say_number_full_da(struct ast_channel *chan, int num, const char 
 		}
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -805,15 +804,14 @@ static int ast_say_number_full_da(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_de: German syntax 
- 
- New files:
+/*! \brief  ast_say_number_full_de: German syntax */
+/* New files:
  In addition to English, the following sounds are required:
- - "millions"
- - "1-and" through "9-and" 
- - "1F" (eine)
- - "1N" (ein)
- - NB "1" is recorded as 'eins'
+ "millions"
+ "1-and" through "9-and" 
+ "1F" (eine)
+ "1N" (ein)
+ NB "1" is recorded as 'eins'
  */
 static int ast_say_number_full_de(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
@@ -837,9 +835,6 @@ static int ast_say_number_full_de(struct ast_channel *chan, int num, const char 
 		* - 1000 is 'tausend', however all other instances are 'ein tausend'
 		* - 1000000 is always 'eine million'
 		* - "million" is different in singular and plural form
-		* - 'and' should not go between a hundreds place value and any
-		*   tens/ones place values that follows it. i.e 136 is ein hundert
-		*   sechs und dreizig, not ein hundert und sechs und dreizig.
 		*/
 		if (num < 0) {
 			ast_copy_string(fn, "digits/minus", sizeof(fn));
@@ -847,7 +842,10 @@ static int ast_say_number_full_de(struct ast_channel *chan, int num, const char 
 				num = -num;
 			} else {
 				num = 0;
-			}
+			}	
+		} else if (num < 100 && t) {
+			ast_copy_string(fn, "digits/and", sizeof(fn));
+			t = 0;
 		} else if (num == 1 && mf == -1) {
 			snprintf(fn, sizeof(fn), "digits/%dF", num);
 			num = 0;
@@ -875,6 +873,7 @@ static int ast_say_number_full_de(struct ast_channel *chan, int num, const char 
 				snprintf(fn, sizeof(fn), "digits/%d", hundreds);
 			}
 			ast_copy_string(fna, "digits/hundred", sizeof(fna));
+			t = 1;
 		} else if (num == 1000 && t == 0) {
 			ast_copy_string(fn, "digits/thousand", sizeof(fn));
 			num = 0;
@@ -924,9 +923,9 @@ static int ast_say_number_full_de(struct ast_channel *chan, int num, const char 
 		}
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -945,9 +944,9 @@ static int ast_say_number_full_de(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_en_GB: British syntax 
- New files:
-  - In addition to American English, the following sounds are required:  "and"
+/*! \brief  ast_say_number_full_en_GB: British and Norwegian syntax */
+/* New files:
+ In addition to American English, the following sounds are required:  "and"
  */
 static int ast_say_number_full_en_GB(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
@@ -986,7 +985,7 @@ static int ast_say_number_full_en_GB(struct ast_channel *chan, int num, const ch
 			num -= 100 * hundreds;
 			if (num)
 				playa++;
-		} else if (num < 1000000) {
+		} else 	if (num < 1000000) {
 			res = ast_say_number_full_en_GB(chan, num / 1000, ints, language, audiofd, ctrlfd);
 			if (res)
 				return res;
@@ -994,7 +993,7 @@ static int ast_say_number_full_en_GB(struct ast_channel *chan, int num, const ch
 			num %= 1000;
 			if (num && num < 100)
 				playa++;
-		} else if (num < 1000000000) {
+		} else 	if (num < 1000000000) {
 				int millions = num / 1000000;
 				res = ast_say_number_full_en_GB(chan, millions, ints, language, audiofd, ctrlfd);
 				if (res)
@@ -1007,12 +1006,12 @@ static int ast_say_number_full_en_GB(struct ast_channel *chan, int num, const ch
 				ast_debug(1, "Number '%d' is too big for me\n", num);
 				res = -1;
 		}
-
+		
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -1021,9 +1020,8 @@ static int ast_say_number_full_en_GB(struct ast_channel *chan, int num, const ch
 	return res;
 }
 
-/*! \brief  ast_say_number_full_es: Spanish syntax 
-
- New files:
+/*! \brief  ast_say_number_full_es: Spanish syntax */
+/* New files:
  Requires a few new audios:
    1F.gsm: feminine 'una'
    21.gsm thru 29.gsm, cien.gsm, mil.gsm, millon.gsm, millones.gsm, 100.gsm, 200.gsm, 300.gsm, 400.gsm, 500.gsm, 600.gsm, 700.gsm, 800.gsm, 900.gsm, y.gsm 
@@ -1123,13 +1121,13 @@ static int ast_say_number_full_es(struct ast_channel *chan, int num, const char 
 			ast_stopstream(chan);
 
 		}
-
+			
 	}
 	return res;
 }
 
-/*! \brief  ast_say_number_full_fr: French syntax
- 	Extra sounds needed:
+/*! \brief  ast_say_number_full_fr: French syntax */
+/* 	Extra sounds needed:
  	1F: feminin 'une'
  	et: 'and' */
 static int ast_say_number_full_fr(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
@@ -1220,8 +1218,8 @@ static int ast_say_number_full_fr(struct ast_channel *chan, int num, const char 
 
 
 
-/* Hebrew syntax
- * Check doc/lang/hebrew-digits.txt for information about the various
+/* Hebrew syntax */
+/* Check doc/lang/hebrew-digits.txt for information about the various
  * recordings required to make this translation work properly */
 #define SAY_NUM_BUF_SIZE 256
 static int ast_say_number_full_he(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
@@ -1390,9 +1388,8 @@ static int ast_say_number_full_he(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_hu: Hungarian syntax 
-
-  Extra sounds needed:
+/*! \brief  ast_say_number_full_hu: Hungarian syntax */
+/* Extra sounds need:
 	10en: "tizen"
 	20on: "huszon"
 */
@@ -1625,8 +1622,8 @@ static int ast_say_number_full_it(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_nl: dutch syntax 
- * New files: digits/nl-en
+/*! \brief  ast_say_number_full_nl: dutch syntax */
+/* New files: digits/nl-en
  */
 static int ast_say_number_full_nl(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
@@ -1716,15 +1713,9 @@ static int ast_say_number_full_nl(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_no: Norwegian syntax 
- * New files:
- * In addition to American English, the following sounds are required:  "and", "1N"
- *
- * The grammar for Norwegian numbers is the same as for English except
- * for the following:
- * - 1 exists in both commune ("en", file "1") and neuter ("ett", file "1N")
- *   "and" before the last two digits, i.e. 2034 is "two thousand and
- *   thirty-four" and 1000012 is "one million and twelve".
+/*! \brief  ast_say_number_full_no: Norwegian syntax */
+/* New files:
+ In addition to American English, the following sounds are required:  "and", "1N"
  */
 static int ast_say_number_full_no(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
@@ -1740,6 +1731,12 @@ static int ast_say_number_full_no(struct ast_channel *chan, int num, const char 
 	if (options && !strncasecmp(options, "n", 1)) cn = -1;
 
 	while (!res && (num || playh || playa )) {
+		/* The grammar for Norwegian numbers is the same as for English except
+		* for the following:
+		* - 1 exists in both commune ("en", file "1") and neuter ("ett", file "1N")
+		*   "and" before the last two digits, i.e. 2034 is "two thousand and
+		*   thirty-four" and 1000012 is "one million and twelve".
+		*/
 		if (num < 0) {
 			ast_copy_string(fn, "digits/minus", sizeof(fn));
 			if ( num > INT_MIN ) {
@@ -1773,7 +1770,7 @@ static int ast_say_number_full_no(struct ast_channel *chan, int num, const char 
 			num -= 100 * hundreds;
 			if (num)
 				playa++;
-		} else if (num < 1000000) {
+		} else 	if (num < 1000000) {
 			res = ast_say_number_full_no(chan, num / 1000, ints, language, "n", audiofd, ctrlfd);
 			if (res)
 				return res;
@@ -1781,7 +1778,7 @@ static int ast_say_number_full_no(struct ast_channel *chan, int num, const char 
 			num %= 1000;
 			if (num && num < 100)
 				playa++;
-		} else if (num < 1000000000) {
+		} else 	if (num < 1000000000) {
 				int millions = num / 1000000;
 				res = ast_say_number_full_no(chan, millions, ints, language, "c", audiofd, ctrlfd);
 				if (res)
@@ -1794,12 +1791,12 @@ static int ast_say_number_full_no(struct ast_channel *chan, int num, const char 
 				ast_debug(1, "Number '%d' is too big for me\n", num);
 				res = -1;
 		}
-
+		
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -1834,12 +1831,12 @@ static char *pl_rzad_na_tekst(odmiana *odm, int i, int rzad)
 static char* pl_append(char* buffer, char* str)
 {
 	strcpy(buffer, str);
-	buffer += strlen(str);
+	buffer += strlen(str); 
 	return buffer;
 }
 
 static void pl_odtworz_plik(struct ast_channel *chan, const char *language, int audiofd, int ctrlfd, const char *ints, char *fn)
-{
+{    
 	char file_name[255] = "digits/";
 	strcat(file_name, fn);
 	ast_debug(1, "Trying to play: %s\n", file_name);
@@ -1921,8 +1918,9 @@ static void powiedz(struct ast_channel *chan, const char *language, int audiofd,
 	}
 }
 
-/* ast_say_number_full_pl: Polish syntax 
-
+/* ast_say_number_full_pl: Polish syntax */
+static int ast_say_number_full_pl(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
+/*
 Sounds needed:
 0		zero
 1		jeden
@@ -2013,7 +2011,6 @@ Sounds needed:
 and combinations of eg.: 20_1, 30m_3m, etc...
 
 */
-static int ast_say_number_full_pl(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
 	char *zenski_cyfry[] = {"0", "1z", "2z", "3", "4", "5", "6", "7", "8", "9"};
 
@@ -2101,14 +2098,12 @@ static int ast_say_number_full_pl(struct ast_channel *chan, int num, const char 
 	return 0;
 }
 
-/* ast_say_number_full_pt: Portuguese syntax 
-
- * 	Extra sounds needed:
- * 	For feminin all sound files ends with F
- *	100E for 100+ something
- *	1000000S for plural
- *	pt-e for 'and' 
- */
+/* ast_say_number_full_pt: Portuguese syntax */
+/* 	Extra sounds needed: */
+/* 	For feminin all sound files end with F */
+/*	100E for 100+ something */
+/*	1000000S for plural */
+/*	pt-e for 'and' */
 static int ast_say_number_full_pt(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
 	int res = 0;
@@ -2204,11 +2199,8 @@ static int ast_say_number_full_pt(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_number_full_se: Swedish syntax 
 
- Sound files needed
- - 1N
-*/
+/*! \brief  ast_say_number_full_se: Swedish syntax */
 static int ast_say_number_full_se(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
 	int playh = 0;
@@ -2268,7 +2260,7 @@ static int ast_say_number_full_se(struct ast_channel *chan, int num, const char 
 			num %= 1000000;
 			ast_copy_string(fn, "digits/million", sizeof(fn));
 		} else {	/* Miljarder - Billions */
-			ast_debug(1, "Number '%d' is too big for me\n", num);
+			ast_log(LOG_DEBUG, "Number '%d' is too big for me\n", num);
 			return -1;
 		}
 
@@ -2349,7 +2341,7 @@ static int ast_say_number_full_zh(struct ast_channel *chan, int num, const char 
 					snprintf(fn, sizeof(fn), "digits/%d", (num / 100));
 					playh++;
 					snprintf(buf, 10, "%d", num);
-					ast_debug(1, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
+					ast_log(LOG_DEBUG, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
 					last_length = strlen(buf);
 					num -= ((num / 100) * 100);
 				} else if (num < 10000){
@@ -2357,7 +2349,7 @@ static int ast_say_number_full_zh(struct ast_channel *chan, int num, const char 
 					snprintf(fn, sizeof(fn), "digits/%d", (num / 1000));
 					playt++;
 					snprintf(buf, 10, "%d", num);
-					ast_debug(1, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
+					ast_log(LOG_DEBUG, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
 					last_length = strlen(buf);
 					num -= ((num / 1000) * 1000);
 				} else if (num < 100000000) { /* 100,000,000 */
@@ -2365,7 +2357,7 @@ static int ast_say_number_full_zh(struct ast_channel *chan, int num, const char 
 						if (res)
 							return res;
 						snprintf(buf, 10, "%d", num);
-						ast_debug(1, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
+						ast_log(LOG_DEBUG, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
 						num -= ((num / 10000) * 10000);
 						last_length = strlen(buf);
 						snprintf(fn, sizeof(fn), "digits/wan");
@@ -2375,7 +2367,7 @@ static int ast_say_number_full_zh(struct ast_channel *chan, int num, const char 
 						if (res)
 							return res;
 						snprintf(buf, 10, "%d", num);
-						ast_debug(1, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
+						ast_log(LOG_DEBUG, "Number '%d' %d %d\n", num, (int)strlen(buf), last_length);
 						last_length = strlen(buf);
 						num -= ((num / 100000000) * 100000000);
 						snprintf(fn, sizeof(fn), "digits/yi");
@@ -2442,7 +2434,7 @@ static int ast_say_number_full_ur(struct ast_channel *chan, int num, const char 
 			num = num % 10000000;
 			snprintf(fn, sizeof(fn), "digits/crore");
 		} else {
-			ast_debug(1, "Number '%d' is too big for me\n", num);
+			ast_log(LOG_DEBUG, "Number '%d' is too big for me\n", num);
 			res = -1;
 		}
 
@@ -2473,9 +2465,8 @@ static int get_lastdigits_ru(int num) {
 }
 
 
-/*! \brief  ast_say_number_full_ru: Russian syntax 
-
- additional files:
+/*! \brief  ast_say_number_full_ru: Russian syntax */
+/*! \brief  additional files:
 	n00.gsm			(one hundred, two hundred, ...)
 	thousand.gsm
 	million.gsm
@@ -2535,7 +2526,7 @@ static int ast_say_number_full_ru(struct ast_channel *chan, int num, const char 
 				ast_copy_string(fn, "digits/thousands", sizeof(fn));
 			}
 			num %= 1000;
-		} else if (num < 1000000000) {	/* 1,000,000,000 */
+		} else 	if (num < 1000000000) {	/* 1,000,000,000 */
 			lastdigits = get_lastdigits_ru(num / 1000000);
 			/* say millions */
 			res = ast_say_number_full_ru(chan, num / 1000000, ints, language, NULL, audiofd, ctrlfd);
@@ -2566,7 +2557,6 @@ static int ast_say_number_full_ru(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief Thai syntax */
 static int ast_say_number_full_th(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
 	int res = 0;
@@ -2731,8 +2721,8 @@ static int ast_say_number_full_vi(struct ast_channel *chan, int num, const char 
 	return res;
 }
 
-/*! \brief  ast_say_enumeration_full: call language-specific functions 
- * \note Called from AGI */
+/*! \brief  ast_say_enumeration_full: call language-specific functions */
+/* Called from AGI */
 static int say_enumeration_full(struct ast_channel *chan, int num, const char *ints, const char *language, const char *options, int audiofd, int ctrlfd)
 {
 	if (!strncasecmp(language, "en", 2)) {        /* English syntax */
@@ -2751,8 +2741,8 @@ static int say_enumeration_full(struct ast_channel *chan, int num, const char *i
 	return ast_say_enumeration_full_en(chan, num, ints, language, audiofd, ctrlfd);
 }
 
-/*! \brief  ast_say_enumeration_full_en: English syntax 
- \note This is the default syntax, if no other syntax defined in this file is used */
+/*! \brief  ast_say_enumeration_full_en: English syntax */
+/* This is the default syntax, if no other syntax defined in this file is used */
 static int ast_say_enumeration_full_en(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
 	int res = 0, t = 0;
@@ -2823,7 +2813,7 @@ static int ast_say_enumeration_full_en(struct ast_channel *chan, int num, const 
 			res = ast_say_number_full_en(chan, billions, ints, language, audiofd, ctrlfd);
 			if (res)
 				return res;
-			if (num) {
+			if (num) {					
 				ast_copy_string(fn, "digits/billion", sizeof(fn));
 			} else {
 				ast_copy_string(fn, "digits/h-billion", sizeof(fn));
@@ -2993,7 +2983,7 @@ static int ast_say_enumeration_full_da(struct ast_channel *chan, int num, const 
 				res = ast_say_number_full_de(chan, billions, ints, language, options, audiofd, ctrlfd);
 				if (res)
 					return res;
-				if (num) {
+				if (num) {					
 					ast_copy_string(fn, "digits/milliards", sizeof(fna));
 				} else {
 					snprintf(fn, sizeof(fna), "digits/h-milliard%s", gender);
@@ -3010,9 +3000,9 @@ static int ast_say_enumeration_full_da(struct ast_channel *chan, int num, const 
 
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -3156,7 +3146,7 @@ static int ast_say_enumeration_full_de(struct ast_channel *chan, int num, const 
 				res = ast_say_number_full_de(chan, billions, ints, language, options, audiofd, ctrlfd);
 				if (res)
 					return res;
-				if (num) {
+				if (num) {					
 					ast_copy_string(fn, "digits/milliards", sizeof(fna));
 				} else {
 					snprintf(fn, sizeof(fna), "digits/h-milliard%s", gender);
@@ -3173,9 +3163,9 @@ static int ast_say_enumeration_full_de(struct ast_channel *chan, int num, const 
 
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
-				if ((audiofd > -1) && (ctrlfd > -1))
+				if ((audiofd > -1) && (ctrlfd > -1)) 
 					res = ast_waitstream_full(chan, ints, audiofd, ctrlfd);
-				else
+				else  
 					res = ast_waitstream(chan, ints);
 			}
 			ast_stopstream(chan);
@@ -3266,7 +3256,7 @@ static int ast_say_enumeration_full_he(struct ast_channel *chan, int num, const 
 			snprintf(fn, sizeof(fn), "digits/1m");
 			num = num % 1000000;
 		} else {
-			ast_debug(1, "Number '%d' is too big for me\n", num);
+			ast_log(LOG_DEBUG, "Number '%d' is too big for me\n", num);
 			res = -1;
 		}
 		if (!res) {
@@ -3319,7 +3309,7 @@ static int say_date(struct ast_channel *chan, time_t t, const char *ints, const 
 	return ast_say_date_en(chan, t, ints, lang);
 }
 
-/*! \brief English syntax */
+/* English syntax */
 int ast_say_date_en(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct ast_tm tm;
@@ -3348,7 +3338,7 @@ int ast_say_date_en(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Danish syntax */
+/* Danish syntax */
 int ast_say_date_da(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3397,7 +3387,7 @@ int ast_say_date_da(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief German syntax */
+/* German syntax */
 int ast_say_date_de(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3447,7 +3437,7 @@ int ast_say_date_de(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Hungarian syntax */
+/* Hungarian syntax */
 int ast_say_date_hu(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3479,7 +3469,7 @@ int ast_say_date_hu(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief French syntax */
+/* French syntax */
 int ast_say_date_fr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3508,7 +3498,7 @@ int ast_say_date_fr(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Dutch syntax */
+/* Dutch syntax */
 int ast_say_date_nl(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3537,7 +3527,7 @@ int ast_say_date_nl(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Thai syntax */
+/* Thai syntax */
 int ast_say_date_th(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3573,7 +3563,7 @@ int ast_say_date_th(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Portuguese syntax */
+/* Portuguese syntax */
 int ast_say_date_pt(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3600,7 +3590,7 @@ int ast_say_date_pt(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Hebrew syntax */
+/* Hebrew syntax */
 int ast_say_date_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -3682,7 +3672,7 @@ static int say_date_with_format(struct ast_channel *chan, time_t t, const char *
 	return ast_say_date_with_format_en(chan, t, ints, lang, format, tzone);
 }
 
-/*! \brief English syntax */
+/* English syntax */
 int ast_say_date_with_format_en(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -3732,7 +3722,7 @@ int ast_say_date_with_format_en(struct ast_channel *chan, time_t t, const char *
 			case 'Y':
 				/* Year */
 				if (tm.tm_year > 99) {
-					res = ast_say_number(chan, tm.tm_year + 1900, ints, lang, (char *) NULL);
+				        res = ast_say_number(chan, tm.tm_year + 1900, ints, lang, (char *) NULL);
 				} else if (tm.tm_year < 1) {
 					/* I'm not going to handle 1900 and prior */
 					/* We'll just be silent on the year, instead of bombing out. */
@@ -3929,7 +3919,7 @@ static char next_item(const char *format)
 	return *next;
 }
 
-/*! \brief Danish syntax */
+/* Danish syntax */
 int ast_say_date_with_format_da(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -4131,7 +4121,7 @@ int ast_say_date_with_format_da(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief German syntax */
+/* German syntax */
 int ast_say_date_with_format_de(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -4334,7 +4324,7 @@ int ast_say_date_with_format_de(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Thai syntax */
+/* Thai syntax */
 int ast_say_date_with_format_th(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -4348,7 +4338,7 @@ int ast_say_date_with_format_th(struct ast_channel *chan, time_t t, const char *
 	ast_localtime(&when, &tm, tzone);
 
 	for (offset=0 ; format[offset] != '\0' ; offset++) {
-		ast_debug(1, "Parsing %c (offset %d) in %s\n", format[offset], offset, format);
+		ast_log(LOG_DEBUG, "Parsing %c (offset %d) in %s\n", format[offset], offset, format);
 		switch (format[offset]) {
 			/* NOTE:  if you add more options here, please try to be consistent with strftime(3) */
 			case '\'':
@@ -4502,29 +4492,31 @@ int ast_say_date_with_format_th(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief ast_say_date_with_format_he Say formatted date in Hebrew
+/* TODO: this probably is not the correct format for doxygen remarks */
+
+/** ast_say_date_with_format_he Say formatted date in Hebrew
  *
  * \ref ast_say_date_with_format_en for the details of the options 
  *
  * Changes from the English version: 
  *
- * - don't replicate in here the logic of ast_say_number_full_he
+ * * don't replicate in here the logic of ast_say_number_full_he
  *
- * - year is always 4-digit (because it's simpler)
+ * * year is always 4-digit (because it's simpler)
  *
- * - added c, x, and X. Mainly for my tests
+ * * added c, x, and X. Mainly for my tests
  *
- * - The standard "long" format used in Hebrew is AdBY, rather than ABdY
+ * * The standard "long" format used in Hebrew is AdBY, rather than ABdY
  *
- * \todo 
- * - A "ha" is missing in the standard date format, before the 'd'.
- * - The numbers of 3000--19000 are not handled well
- */
-int ast_say_date_with_format_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
-{
+ * TODO: 
+ * * A "ha" is missing in the standard date format, before the 'd'.
+ * * The numbers of 3000--19000 are not handled well
+ **/
 #define IL_DATE_STR "AdBY"
 #define IL_TIME_STR "HM"		/* NOTE: In Hebrew we do not support 12 hours, only 24. No AM or PM exists in the Hebrew language */
 #define IL_DATE_STR_FULL IL_DATE_STR " 'digits/at' " IL_TIME_STR
+int ast_say_date_with_format_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
+{
 	/* TODO: This whole function is cut&paste from 
 	 * ast_say_date_with_format_en . Is that considered acceptable?
 	 **/
@@ -4566,13 +4558,13 @@ int ast_say_date_with_format_he(struct ast_channel *chan, time_t t, const char *
 				break;
 			case 'd':
 			case 'e': /* Day of the month */
-				/* I'm not sure exactly what the parameters 
- 				* audiofd and ctrlfd to 
- 				* ast_say_number_full_he mean, but it seems
- 				* safe to pass -1 there. 
- 				*
- 				* At least in one of the pathes :-( 
- 				*/
+                                /* I'm not sure exactly what the parameters 
+                                 * audiofd and ctrlfd to 
+                                 * ast_say_number_full_he mean, but it seems
+                                 * safe to pass -1 there. 
+                                 *
+                                 * At least in one of the pathes :-( 
+                                 */
 				res = ast_say_number_full_he(chan, tm.tm_mday, ints, lang, "m", -1, -1);
 				break;
 			case 'Y': /* Year */
@@ -4666,7 +4658,7 @@ int ast_say_date_with_format_he(struct ast_channel *chan, time_t t, const char *
 }
 
 
-/*! \brief Spanish syntax */
+/* Spanish syntax */
 int ast_say_date_with_format_es(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -4855,7 +4847,7 @@ int ast_say_date_with_format_es(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief French syntax 
+/* French syntax 
 oclock = heure
 */
 int ast_say_date_with_format_fr(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
@@ -5053,7 +5045,6 @@ int ast_say_date_with_format_fr(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Italian syntax */
 int ast_say_date_with_format_it(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -5234,7 +5225,7 @@ int ast_say_date_with_format_it(struct ast_channel *chan, time_t t, const char *
 				break;
 			case 'R':
 				res = ast_say_date_with_format_it(chan, t, ints, lang, "HM", tzone);
-				break;
+	        	break;
 			case 'S':
 				/* Seconds */
 				if (tm.tm_sec == 0) {
@@ -5263,7 +5254,7 @@ int ast_say_date_with_format_it(struct ast_channel *chan, time_t t, const char *
 						}
 					}
 				}
-				break;
+		        break;
 			case 'T':
 				res = ast_say_date_with_format_it(chan, t, ints, lang, "HMS", tzone);
 				break;
@@ -5283,7 +5274,7 @@ int ast_say_date_with_format_it(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Dutch syntax */
+/* Dutch syntax */
 int ast_say_date_with_format_nl(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -5488,7 +5479,7 @@ int ast_say_date_with_format_nl(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Polish syntax */
+/* Polish syntax */
 int ast_say_date_with_format_pl(struct ast_channel *chan, time_t thetime, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { thetime, 0 };
@@ -5705,7 +5696,7 @@ int ast_say_date_with_format_pl(struct ast_channel *chan, time_t thetime, const 
 	return res;
 }
 
-/*! \brief Portuguese syntax */
+/* Portuguese syntax */
 int ast_say_date_with_format_pt(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -5997,7 +5988,7 @@ int ast_say_date_with_format_pt(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Taiwanese / Chinese syntax */
+/* Taiwanese / Chinese syntax */
 int ast_say_date_with_format_zh(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -6307,7 +6298,7 @@ static int say_time(struct ast_channel *chan, time_t t, const char *ints, const 
 	return ast_say_time_en(chan, t, ints, lang);
 }
 
-/*! \brief English syntax */
+/* English syntax */
 int ast_say_time_en(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6356,7 +6347,7 @@ int ast_say_time_en(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief German syntax */
+/* German syntax */
 int ast_say_time_de(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6376,7 +6367,7 @@ int ast_say_time_de(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Hungarian syntax */
+/* Hungarian syntax */
 int ast_say_time_hu(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6399,7 +6390,7 @@ int ast_say_time_hu(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief French syntax */
+/* French syntax */
 int ast_say_time_fr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6418,7 +6409,7 @@ int ast_say_time_fr(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Dutch syntax */
+/* Dutch syntax */
 int ast_say_time_nl(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6438,7 +6429,7 @@ int ast_say_time_nl(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Portuguese syntax */
+/* Portuguese syntax */
 int ast_say_time_pt(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6467,7 +6458,7 @@ int ast_say_time_pt(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Brazilian Portuguese syntax */
+/* Brazilian Portuguese syntax */
 int ast_say_time_pt_BR(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6497,7 +6488,7 @@ int ast_say_time_pt_BR(struct ast_channel *chan, time_t t, const char *ints, con
 	return res;
 }
 
-/*! \brief Thai  syntax */
+/* Thai  syntax */
 int ast_say_time_th(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6515,7 +6506,7 @@ int ast_say_time_th(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Taiwanese / Chinese  syntax */
+/* Taiwanese / Chinese  syntax */
 int ast_say_time_zh(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6557,7 +6548,7 @@ int ast_say_time_zh(struct ast_channel *chan, time_t t, const char *ints, const 
 	return res;
 }
 
-/*! \brief Hebrew syntax */
+/* Hebrew syntax */
 int ast_say_time_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6592,8 +6583,6 @@ int ast_say_time_he(struct ast_channel *chan, time_t t, const char *ints, const 
 		res = ast_waitstream(chan, ints);
 	return res;
 }
-
-
 static int say_datetime(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	if (!strncasecmp(lang, "en", 2)) {        /* English syntax */
@@ -6638,7 +6627,7 @@ static int say_datetime(struct ast_channel *chan, time_t t, const char *ints, co
 	return ast_say_datetime_en(chan, t, ints, lang);
 }
 
-/*! \brief English syntax */
+/* English syntax */
 int ast_say_datetime_en(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6705,7 +6694,7 @@ int ast_say_datetime_en(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief German syntax */
+/* German syntax */
 int ast_say_datetime_de(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6720,7 +6709,7 @@ int ast_say_datetime_de(struct ast_channel *chan, time_t t, const char *ints, co
 
 }
 
-/*! \brief Hungarian syntax */
+/* Hungarian syntax */
 int ast_say_datetime_hu(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6734,7 +6723,7 @@ int ast_say_datetime_hu(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief French syntax */
+/* French syntax */
 int ast_say_datetime_fr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6775,7 +6764,7 @@ int ast_say_datetime_fr(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief Dutch syntax */
+/* Dutch syntax */
 int ast_say_datetime_nl(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6794,7 +6783,7 @@ int ast_say_datetime_nl(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief Portuguese syntax */
+/* Portuguese syntax */
 int ast_say_datetime_pt(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6861,7 +6850,7 @@ int ast_say_datetime_pt(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief Brazilian Portuguese syntax */
+/* Brazilian Portuguese syntax */
 int ast_say_datetime_pt_BR(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6875,7 +6864,7 @@ int ast_say_datetime_pt_BR(struct ast_channel *chan, time_t t, const char *ints,
 	return res;
 }
 
-/*! \brief Thai syntax */
+/* Thai syntax */
 int ast_say_datetime_th(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6918,7 +6907,7 @@ int ast_say_datetime_th(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief Taiwanese / Chinese syntax */
+/* Taiwanese / Chinese syntax */
 int ast_say_datetime_zh(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -6978,7 +6967,7 @@ int ast_say_datetime_zh(struct ast_channel *chan, time_t t, const char *ints, co
 	return res;
 }
 
-/*! \brief Hebrew syntax */
+/* Hebrew syntax */
 int ast_say_datetime_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -7043,7 +7032,6 @@ int ast_say_datetime_he(struct ast_channel *chan, time_t t, const char *ints, co
 	}
 	return res;
 }
-
 static int say_datetime_from_now(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	if (!strncasecmp(lang, "en", 2)) {        /* English syntax */
@@ -7068,7 +7056,7 @@ static int say_datetime_from_now(struct ast_channel *chan, time_t t, const char 
 	return ast_say_datetime_from_now_en(chan, t, ints, lang);
 }
 
-/*! \brief English syntax */
+/* English syntax */
 int ast_say_datetime_from_now_en(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	int res=0;
@@ -7106,7 +7094,7 @@ int ast_say_datetime_from_now_en(struct ast_channel *chan, time_t t, const char 
 	return res;
 }
 
-/*! \brief French syntax */
+/* French syntax */
 int ast_say_datetime_from_now_fr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	int res=0;
@@ -7144,7 +7132,7 @@ int ast_say_datetime_from_now_fr(struct ast_channel *chan, time_t t, const char 
 	return res;
 }
 
-/*! \brief Portuguese syntax */
+/* Portuguese syntax */
 int ast_say_datetime_from_now_pt(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	int res=0;
@@ -7194,7 +7182,7 @@ int ast_say_datetime_from_now_pt(struct ast_channel *chan, time_t t, const char 
 	return res;
 }
 
-/*! \brief Hebrew syntax */
+/* Hebrew syntax */
 int ast_say_datetime_from_now_he(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	int res = 0;
@@ -7234,9 +7222,10 @@ int ast_say_datetime_from_now_he(struct ast_channel *chan, time_t t, const char 
 	return res;
 }
 
+/*********************************** GREEK SUPPORT ***************************************/
 
 
-/*! \brief Greek
+/*
  * digits/female-[1..4] : "Mia, dyo , treis, tessereis"
  */
 static int gr_say_number_female(int num, struct ast_channel *chan, const char *ints, const char *lang){
@@ -7251,7 +7240,7 @@ static int gr_say_number_female(int num, struct ast_channel *chan, const char *i
 		res = wait_file(chan, ints, fn, lang);
 	} else if (num < 13) {
 		res = ast_say_number(chan, num, ints, lang, (char *) NULL);
-	} else if (num <100 ) {
+	} else if (num <100 ) { 
 		tmp = (num/10) * 10;
 		left = num - tmp;
 		snprintf(fn, sizeof(fn), "digits/%d", tmp);
@@ -7260,7 +7249,7 @@ static int gr_say_number_female(int num, struct ast_channel *chan, const char *i
 			res = ast_waitstream(chan, ints);
 		if (left)
 			gr_say_number_female(left, chan, ints, lang);
-
+			
 	} else {
 		return -1;
 	}
@@ -7269,7 +7258,7 @@ static int gr_say_number_female(int num, struct ast_channel *chan, const char *i
 
 
 
-/*! \brief Greek support
+/*
  *  	A list of the files that you need to create
  ->  	digits/xilia = "xilia"
  ->  	digits/myrio = "ekatomyrio"
@@ -7277,13 +7266,14 @@ static int gr_say_number_female(int num, struct ast_channel *chan, const char *i
  ->  	digits/millions = "ektatomyria"
  ->  	digits/[1..12]   :: A pronunciation of th digits form 1 to 12 e.g. "tria"
  ->  	digits/[10..100]  :: A pronunciation of the tens from 10 to 90 
-				 e.g. 80 = "ogdonta" 
-				 Here we must note that we use digits/tens/100 to utter "ekato"
-				 and digits/hundred-100 to utter "ekaton"
+															 e.g. 80 = "ogdonta" 
+						 Here we must note that we use digits/tens/100 to utter "ekato"
+						 and digits/hundred-100 to utter "ekaton"
  ->  	digits/hundred-[100...1000] :: A pronunciation of  hundreds from 100 to 1000 e.g 400 = 
-				 "terakosia". Here again we use hundreds/1000 for "xilia" 
-				 and digits/thousnds for "xiliades"
+																		 "terakosia". Here again we use hundreds/1000 for "xilia" 
+						 and digits/thousnds for "xiliades"
 */
+
 static int ast_say_number_full_gr(struct ast_channel *chan, int num, const char *ints, const char *language, int audiofd, int ctrlfd)
 {
 	int res = 0;
@@ -7319,7 +7309,7 @@ static int ast_say_number_full_gr(struct ast_channel *chan, int num, const char 
 			snprintf(fn, sizeof(fn), "digits/xilia");
 			num %= 1000;
 		} else {
-			/* num >  1000 */
+			/* num >  1000 */ 
 			if (num < 1000000) {
 				res = ast_say_number_full_gr(chan, (num / 1000), ints, chan->language, audiofd, ctrlfd);
 				if (res)
@@ -7338,7 +7328,7 @@ static int ast_say_number_full_gr(struct ast_channel *chan, int num, const char 
 					res = -1;
 				}
 			}
-		}
+		} 
 		if (!res) {
 			if (!ast_streamfile(chan, fn, language)) {
 				if ((audiofd > -1) && (ctrlfd > -1))
@@ -7353,15 +7343,17 @@ static int ast_say_number_full_gr(struct ast_channel *chan, int num, const char 
 }
 
 
-/*! \brief Greek support
- *
+/*
  * The format is  weekday - day - month -year
  * 
  * A list of the files that you need to create
  * digits/day-[1..7]  : "Deytera .. Paraskeyh"
  * digits/months/1..12 : "Ianouariou .. Dekembriou"  
-	Attention the months are in "gekinh klhsh"
+													Attention the months are in 
+				"gekinh klhsh"
  */
+
+
 static int ast_say_date_gr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct ast_tm tm;
@@ -7398,15 +7390,14 @@ static int ast_say_date_gr(struct ast_channel *chan, time_t t, const char *ints,
 
 
  
-/*! \brief Greek support
- *
- * A list of the files that you need to create
- * - digits/female/1..4 : "Mia, dyo , treis, tesseris "
- * - digits/kai : "KAI"
- * - didgits : "h wra"
- * - digits/p-m : "meta meshmbrias" 
- * - digits/a-m : "pro meshmbrias"
+/* A list of the files that you need to create
+ * digits/female/1..4 : "Mia, dyo , treis, tesseris "
+ * digits/kai : "KAI"
+ * didgits : "h wra"
+ * digits/p-m : "meta meshmbrias" 
+ * digits/a-m : "pro meshmbrias"
  */
+
 static int ast_say_time_gr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 
@@ -7455,8 +7446,6 @@ static int ast_say_time_gr(struct ast_channel *chan, time_t t, const char *ints,
 
 
 
-/*! \brief Greek support
- */
 static int ast_say_datetime_gr(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -7489,8 +7478,6 @@ static int ast_say_datetime_gr(struct ast_channel *chan, time_t t, const char *i
 	return res;
 }
 
-/*! \brief Greek support
- */
 static int ast_say_date_with_format_gr(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -7502,7 +7489,7 @@ static int ast_say_date_with_format_gr(struct ast_channel *chan, time_t t, const
 		format = "AdBY 'digits/at' IMp";
 
 	ast_localtime(&when, &tm, tzone);
-
+	
 	for (offset=0 ; format[offset] != '\0' ; offset++) {
 		ast_debug(1, "Parsing %c (offset %d) in %s\n", format[offset], offset, format);
 		switch (format[offset]) {
@@ -7662,7 +7649,7 @@ static int ast_say_date_with_format_gr(struct ast_channel *chan, time_t t, const
 	return res;
 }
 
-/*! \brief Vietnamese syntax */
+/* Vietnamese syntax */
 int ast_say_date_with_format_vi(struct ast_channel *chan, time_t t, const char *ints, const char *lang, const char *format, const char *tzone)
 {
 	struct timeval when = { t, 0 };
@@ -7712,7 +7699,7 @@ int ast_say_date_with_format_vi(struct ast_channel *chan, time_t t, const char *
 			case 'Y':
 				/* Year */
 				if (tm.tm_year > 99) {
-					res = ast_say_number(chan, tm.tm_year + 1900, ints, lang, (char *) NULL);
+				        res = ast_say_number(chan, tm.tm_year + 1900, ints, lang, (char *) NULL);
 				} else if (tm.tm_year < 1) {
 					/* I'm not going to handle 1900 and prior */
 					/* We'll just be silent on the year, instead of bombing out. */
@@ -7878,8 +7865,8 @@ int ast_say_date_with_format_vi(struct ast_channel *chan, time_t t, const char *
 	return res;
 }
 
-/*! \brief Georgian support
-
+/*********************************** Georgian Support ***************************************/
+/*
 	Convert a number into a semi-localized string. Only for Georgian.
 	res must be of at least 256 bytes, preallocated.
 	The output corresponds to Georgian spoken numbers, so
@@ -8102,16 +8089,19 @@ static int ast_say_number_full_ka(struct ast_channel *chan, int num, const char 
 
 
 
-/*! \brief Georgian syntax. e.g. "oriatas xuti tslis 5 noemberi". 
-
+/*
 Georgian support for date/time requires the following files (*.gsm):
 
- - mon-1, mon-2, ... (ianvari, tebervali, ...)
- - day-1, day-2, ... (orshabati, samshabati, ...)
- - saati_da
- - tsuti
- - tslis
+mon-1, mon-2, ... (ianvari, tebervali, ...)
+day-1, day-2, ... (orshabati, samshabati, ...)
+saati_da
+tsuti
+tslis
 */
+
+
+
+/* Georgian syntax. e.g. "oriatas xuti tslis 5 noemberi". */
 static int ast_say_date_ka(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -8151,7 +8141,7 @@ static int ast_say_date_ka(struct ast_channel *chan, time_t t, const char *ints,
 
 
 
-/*! \brief Georgian syntax. e.g. "otxi saati da eqvsi tsuti" */
+/* Georgian syntax. e.g. "otxi saati da eqvsi tsuti" */
 static int ast_say_time_ka(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -8183,7 +8173,7 @@ static int ast_say_time_ka(struct ast_channel *chan, time_t t, const char *ints,
 
 
 
-/*! \brief Georgian syntax. Say date, then say time. */
+/* Georgian syntax. Say date, then say time. */
 static int ast_say_datetime_ka(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	struct timeval when = { t, 0 };
@@ -8201,7 +8191,7 @@ static int ast_say_datetime_ka(struct ast_channel *chan, time_t t, const char *i
 
 
 
-/*! \brief Georgian syntax */
+/* Georgian syntax */
 static int ast_say_datetime_from_now_ka(struct ast_channel *chan, time_t t, const char *ints, const char *lang)
 {
 	int res=0;
@@ -8240,16 +8230,15 @@ static int ast_say_datetime_from_now_ka(struct ast_channel *chan, time_t t, cons
 	return res;
 }
 
-/*! \brief 
- * In English, we use the plural for everything but one. For example:
- *  - 1 degree
- *  - 2 degrees
- *  - 5 degrees
+/* In English, we use the plural for everything but one. For example:
+ *  1 degree
+ *  2 degrees
+ *  5 degrees
  * The filename for the plural form is generated by appending "s". Note that
  * purpose is to generate a unique filename, not to implement irregular 
  * declensions. Thus:
- *  - 1 man
- *  - 2 mans (the "mans" soundfile will of course say "men")
+ *  1 man
+ *  2 mans (the "mans" soundfile will of course say "men")
  */
 static const char *counted_noun_ending_en(int num)
 {
@@ -8260,19 +8249,18 @@ static const char *counted_noun_ending_en(int num)
 	}
 }
 
-/*! \brief
- * Counting of objects in slavic languages such as Russian and Ukrainian the
+/* Counting of objects in slavic languages such as Russian and Ukrainian the
  * rules are more complicated. There are two plural forms used in counting.
  * They are the genative singular which we represent with the suffix "x1" and 
  * the genative plural which we represent with the suffix "x2". The base names
  * of the soundfiles remain in English. For example:
- *  - 1 degree (soudfile says "gradus")
- *  - 2 degreex1 (soundfile says "gradusa")
- *  - 5 degreex2 (soundfile says "gradusov")
+ *  1 degree (soudfile says "gradus")
+ *  2 degreex1 (soundfile says "gradusa")
+ *  5 degreex2 (soundfile says "gradusov")
  */
 static const char *counted_noun_ending_slavic(int num)
 {
-	if (num < 0) {
+    	if (num < 0) {
 	    num *= -1;
 	}
 	num %= 100;			/* never pay attention to more than two digits */
@@ -8308,7 +8296,7 @@ int ast_say_counted_noun(struct ast_channel *chan, int num, const char noun[])
 	return ast_play_and_wait(chan, temp);
 }
 
-/*! \brief
+/*
  * In slavic languages such as Russian and Ukrainian the rules for declining
  * adjectives are simpler than those for nouns.  When counting we use only
  * the singular (to which we give no suffix) and the genative plural (which
@@ -8352,7 +8340,7 @@ int ast_say_counted_adjective(struct ast_channel *chan, int num, const char adje
 
 
 
-/*! \brief
+/*
  * remap the 'say' functions to use those in this file
  */
 static void __attribute__((constructor)) __say_init(void)

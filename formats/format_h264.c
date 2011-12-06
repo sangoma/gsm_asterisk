@@ -30,7 +30,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -60,7 +60,7 @@ static int h264_open(struct ast_filestream *s)
 static struct ast_frame *h264_read(struct ast_filestream *s, int *whennext)
 {
 	int res;
-	int mark = 0;
+	int mark=0;
 	unsigned short len;
 	unsigned int ts;
 	struct h264_desc *fs = (struct h264_desc *)s->_private;
@@ -76,7 +76,7 @@ static struct ast_frame *h264_read(struct ast_filestream *s, int *whennext)
 		len = BUF_SIZE;	/* XXX truncate */
 	}
 	s->fr.frametype = AST_FRAME_VIDEO;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_H264, 0);
+	s->fr.subclass.codec = AST_FORMAT_H264;
 	s->fr.mallocd = 0;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, len);
 	if ((res = fread(s->fr.data.ptr, 1, s->fr.datalen, s->f)) != s->fr.datalen) {
@@ -86,9 +86,7 @@ static struct ast_frame *h264_read(struct ast_filestream *s, int *whennext)
 	}
 	s->fr.samples = fs->lastts;
 	s->fr.datalen = len;
-	if (mark) {
-		ast_format_set_video_mark(&s->fr.subclass.format);
-	}
+	s->fr.subclass.codec |= mark;
 	s->fr.delivery.tv_sec = 0;
 	s->fr.delivery.tv_usec = 0;
 	if ((res = fread(&ts, 1, sizeof(ts), s->f)) == sizeof(ts)) {
@@ -110,9 +108,9 @@ static int h264_write(struct ast_filestream *s, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-video frame!\n");
 		return -1;
 	}
-	mark = ast_format_get_video_mark(&f->subclass.format) ? 0x8000 : 0;
-	if (f->subclass.format.id != AST_FORMAT_H264) {
-		ast_log(LOG_WARNING, "Asked to write non-h264 frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	mark = (f->subclass.codec & 0x1) ? 0x8000 : 0;
+	if ((f->subclass.codec & ~0x1) != AST_FORMAT_H264) {
+		ast_log(LOG_WARNING, "Asked to write non-h264 frame (%s)!\n", ast_getformatname(f->subclass.codec));
 		return -1;
 	}
 	ts = htonl(f->samples);
@@ -152,9 +150,10 @@ static off_t h264_tell(struct ast_filestream *fs)
 	return offset; /* XXX totally bogus, needs fixing */
 }
 
-static struct ast_format_def h264_f = {
+static const struct ast_format h264_f = {
 	.name = "h264",
 	.exts = "h264",
+	.format = AST_FORMAT_H264,
 	.open = h264_open,
 	.write = h264_write,
 	.seek = h264_seek,
@@ -167,15 +166,14 @@ static struct ast_format_def h264_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&h264_f.format, AST_FORMAT_H264, 0);
-	if (ast_format_def_register(&h264_f))
+	if (ast_format_register(&h264_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(h264_f.name);
+	return ast_format_unregister(h264_f.name);
 }
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw H.264 data",

@@ -88,38 +88,14 @@ enum sig_ss7_law {
 enum sig_ss7_call_level {
 	/*! Call does not exist. */
 	SIG_SS7_CALL_LEVEL_IDLE,
-	/*!
-	 * Call is allocated to the channel.
-	 * We have not sent or responded to IAM yet.
-	 */
-	SIG_SS7_CALL_LEVEL_ALLOCATED,
-	/*!
-	 * Call is performing continuity check after receiving IAM.
-	 * We are waiting for COT to proceed further.
-	 */
-	SIG_SS7_CALL_LEVEL_CONTINUITY,
-	/*!
-	 * Call is present.
-	 * We have not seen a response or sent further call progress to an IAM yet.
-	 */
+	/*! Call is present but has no response yet. (SETUP) */
 	SIG_SS7_CALL_LEVEL_SETUP,
-	/*!
-	 * Call routing is happening.
-	 * We have sent or received ACM.
-	 */
+	/*! Call routing is happening. (PROCEEDING) */
 	SIG_SS7_CALL_LEVEL_PROCEEDING,
-	/*!
-	 * Called party is being alerted of the call.
-	 * We have sent or received CPG(ALERTING)/ACM(ALERTING).
-	 */
+	/*! Called party is being alerted of the call. (ALERTING) */
 	SIG_SS7_CALL_LEVEL_ALERTING,
-	/*!
-	 * Call is connected/answered.
-	 * We have sent or received CON/ANM.
-	 */
+	/*! Call is connected/answered. (CONNECT) */
 	SIG_SS7_CALL_LEVEL_CONNECT,
-	/*! Call has collided with incoming call. */
-	SIG_SS7_CALL_LEVEL_GLARE,
 };
 
 struct sig_ss7_linkset;
@@ -129,8 +105,6 @@ struct sig_ss7_callback {
 	void (* const unlock_private)(void *pvt);
 	/* Lock the private in the signaling private structure. */
 	void (* const lock_private)(void *pvt);
-	/* Do deadlock avoidance for the private signaling structure lock.  */
-	void (* const deadlock_avoidance_private)(void *pvt);
 
 	int (* const set_echocanceller)(void *pvt, int enable);
 	void (* const set_loopback)(void *pvt, int enable);
@@ -256,7 +230,6 @@ struct sig_ss7_linkset {
 	int linkstate[SIG_SS7_NUM_DCHANS];
 	int numchans;
 	int span;							/*!< span number put into user output messages */
-	int debug;							/*!< set to true if to dump SS7 event info */
 	enum {
 		LINKSET_STATE_DOWN = 0,
 		LINKSET_STATE_UP
@@ -291,9 +264,6 @@ struct ast_channel *sig_ss7_request(struct sig_ss7_chan *p, enum sig_ss7_law law
 void sig_ss7_chan_delete(struct sig_ss7_chan *doomed);
 struct sig_ss7_chan *sig_ss7_chan_new(void *pvt_data, struct sig_ss7_callback *callback, struct sig_ss7_linkset *ss7);
 void sig_ss7_init_linkset(struct sig_ss7_linkset *ss7);
-
-void sig_ss7_cli_show_channels_header(int fd);
-void sig_ss7_cli_show_channels(int fd, struct sig_ss7_linkset *linkset);
 
 
 /* ------------------------------------------------------------------- */

@@ -40,7 +40,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <ctype.h>		/* isalnum() used here */
 #include <math.h>
@@ -48,7 +48,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
 
 #ifdef __linux
 #include <linux/soundcard.h>
-#elif defined(__FreeBSD__) || defined(__CYGWIN__) || defined(__GLIBC__)
+#elif defined(__FreeBSD__) || defined(__CYGWIN__)
 #include <sys/soundcard.h>
 #else
 #include <soundcard.h>
@@ -328,7 +328,7 @@ static struct chan_oss_pvt oss_default = {
 
 static int setformat(struct chan_oss_pvt *o, int mode);
 
-static struct ast_channel *oss_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor,
+static struct ast_channel *oss_request(const char *type, format_t format, const struct ast_channel *requestor,
 									   void *data, int *cause);
 static int oss_digit_begin(struct ast_channel *c, char digit);
 static int oss_digit_end(struct ast_channel *c, char digit, unsigned int duration);
@@ -346,6 +346,7 @@ static char tdesc[] = "OSS Console Channel Driver";
 static struct ast_channel_tech oss_tech = {
 	.type = "Console",
 	.description = tdesc,
+	.capabilities = AST_FORMAT_SLINEAR, /* overwritten later */
 	.requester = oss_request,
 	.send_digit_begin = oss_digit_begin,
 	.send_digit_end = oss_digit_end,
@@ -720,7 +721,7 @@ static struct ast_frame *oss_read(struct ast_channel *c)
 		return f;
 	/* ok we can build and deliver the frame to the caller */
 	f->frametype = AST_FRAME_VOICE;
-	ast_format_set(&f->subclass.format, AST_FORMAT_SLINEAR, 0);
+	f->subclass.codec = AST_FORMAT_SLINEAR;
 	f->samples = FRAME_SIZE;
 	f->datalen = FRAME_SIZE * 2;
 	f->data.ptr = o->oss_read_buf + AST_FRIENDLY_OFFSET;
@@ -754,7 +755,6 @@ static int oss_indicate(struct ast_channel *c, int cond, const void *data, size_
 	int res = 0;
 
 	switch (cond) {
-	case AST_CONTROL_INCOMPLETE:
 	case AST_CONTROL_BUSY:
 	case AST_CONTROL_CONGESTION:
 	case AST_CONTROL_RINGING:
@@ -796,15 +796,13 @@ static struct ast_channel *oss_new(struct chan_oss_pvt *o, char *ext, char *ctx,
 	if (o->sounddev < 0)
 		setformat(o, O_RDWR);
 	ast_channel_set_fd(c, 0, o->sounddev); /* -1 if device closed, override later */
-
-	ast_format_set(&c->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&c->writeformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_cap_add(c->nativeformats, &c->readformat);
-
+	c->nativeformats = AST_FORMAT_SLINEAR;
 	/* if the console makes the call, add video to the offer */
-	/* if (state == AST_STATE_RINGING) TODO XXX CONSOLE VIDEO IS DISABLED UNTIL IT GETS A MAINTAINER
-		c->nativeformats |= console_video_formats; */
+	if (state == AST_STATE_RINGING)
+		c->nativeformats |= console_video_formats;
 
+	c->readformat = AST_FORMAT_SLINEAR;
+	c->writeformat = AST_FORMAT_SLINEAR;
 	c->tech_pvt = o;
 
 	if (!ast_strlen_zero(o->language))
@@ -834,7 +832,7 @@ static struct ast_channel *oss_new(struct chan_oss_pvt *o, char *ext, char *ctx,
 	return c;
 }
 
-static struct ast_channel *oss_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *oss_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
 {
 	struct ast_channel *c;
 	struct chan_oss_pvt *o;
@@ -844,7 +842,6 @@ static struct ast_channel *oss_request(const char *type, struct ast_format_cap *
 	);
 	char *parse = ast_strdupa(data);
 	char buf[256];
-	struct ast_format tmpfmt;
 
 	AST_NONSTANDARD_APP_ARGS(args, parse, '/');
 	o = find_desc(args.name);
@@ -855,8 +852,8 @@ static struct ast_channel *oss_request(const char *type, struct ast_format_cap *
 		/* XXX we could default to 'dsp' perhaps ? */
 		return NULL;
 	}
-	if (!(ast_format_cap_iscompatible(cap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0)))) {
-		ast_log(LOG_NOTICE, "Format %s unsupported\n", ast_getformatname_multiple(buf, sizeof(buf), cap));
+	if ((format & AST_FORMAT_SLINEAR) == 0) {
+		ast_log(LOG_NOTICE, "Format %s unsupported\n", ast_getformatname_multiple(buf, sizeof(buf), format));
 		return NULL;
 	}
 	if (o->owner) {
@@ -1442,7 +1439,6 @@ static int load_module(void)
 	struct ast_config *cfg = NULL;
 	char *ctg = NULL;
 	struct ast_flags config_flags = { 0 };
-	struct ast_format tmpfmt;
 
 	/* Copy the default jb config over global_jbconf */
 	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
@@ -1469,13 +1465,7 @@ static int load_module(void)
 		return AST_MODULE_LOAD_FAILURE;
 	}
 
-	if (!(oss_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_FAILURE;
-	}
-	ast_format_cap_add(oss_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-
-	/* TODO XXX CONSOLE VIDEO IS DISABLE UNTIL IT HAS A MAINTAINER
-	 * add console_video_formats to oss_tech.capabilities once this occurs. */
+	oss_tech.capabilities |= console_video_formats;
 
 	if (ast_channel_register(&oss_tech)) {
 		ast_log(LOG_ERROR, "Unable to register channel type 'OSS'\n");
@@ -1507,7 +1497,6 @@ static int unload_module(void)
 		ast_free(o);
 		o = next;
 	}
-	oss_tech.capabilities = ast_format_cap_destroy(oss_tech.capabilities);
 	return 0;
 }
 

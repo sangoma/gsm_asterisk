@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336317 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -213,21 +213,21 @@ static void print_frame(struct ast_frame *frame)
 		break;
 	case AST_FRAME_VOICE:
 		ast_verbose("FrameType: VOICE\n");
-		ast_verbose("Codec: %s\n", ast_getformatname(&frame->subclass.format));
+		ast_verbose("Codec: %s\n", ast_getformatname(frame->subclass.codec));
 		ast_verbose("MS: %ld\n", frame->len);
 		ast_verbose("Samples: %d\n", frame->samples);
 		ast_verbose("Bytes: %d\n", frame->datalen);
 		break;
 	case AST_FRAME_VIDEO:
 		ast_verbose("FrameType: VIDEO\n");
-		ast_verbose("Codec: %s\n", ast_getformatname(&frame->subclass.format));
+		ast_verbose("Codec: %s\n", ast_getformatname(frame->subclass.codec));
 		ast_verbose("MS: %ld\n", frame->len);
 		ast_verbose("Samples: %d\n", frame->samples);
 		ast_verbose("Bytes: %d\n", frame->datalen);
 		break;
 	case AST_FRAME_CONTROL:
 		ast_verbose("FrameType: CONTROL\n");
-		switch ((enum ast_control_frame_type) frame->subclass.integer) {
+		switch (frame->subclass.integer) {
 		case AST_CONTROL_HANGUP:
 			ast_verbose("SubClass: HANGUP\n");
 			break;
@@ -312,20 +312,7 @@ static void print_frame(struct ast_frame *frame)
 		case AST_CONTROL_AOC:
 			ast_verbose("SubClass: AOC\n");
 			break;
-		case AST_CONTROL_MCID:
-			ast_verbose("SubClass: MCID\n");
-			break;
-		case AST_CONTROL_INCOMPLETE:
-			ast_verbose("SubClass: INCOMPLETE\n");
-			break;
-		case AST_CONTROL_END_OF_Q:
-			ast_verbose("SubClass: END_OF_Q\n");
-			break;
-		case AST_CONTROL_UPDATE_RTP_PEER:
-			ast_verbose("SubClass: UPDATE_RTP_PEER\n");
-			break;
 		}
-		
 		if (frame->subclass.integer == -1) {
 			ast_verbose("SubClass: %d\n", frame->subclass.integer);
 		}

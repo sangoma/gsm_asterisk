@@ -42,7 +42,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <limits.h>
 
@@ -605,12 +605,12 @@ static void handle_jack_audio(struct ast_channel *chan, struct jack_data *jack_d
 	short buf[160];
 	struct ast_frame f = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SLINEAR,
 		.src = "JACK",
 		.data.ptr = buf,
 		.datalen = sizeof(buf),
 		.samples = ARRAY_LEN(buf),
 	};
-	ast_format_set(&f.subclass.format, AST_FORMAT_SLINEAR, 0);
 
 	for (;;) {
 		size_t res, read_len;
@@ -755,12 +755,12 @@ static int jack_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_read_format(chan, AST_FORMAT_SLINEAR)) {
 		destroy_jack_data(jack_data);
 		return -1;
 	}
 
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR)) {
 		destroy_jack_data(jack_data);
 		return -1;
 	}
@@ -824,9 +824,9 @@ static int jack_hook_callback(struct ast_audiohook *audiohook, struct ast_channe
 	if (frame->frametype != AST_FRAME_VOICE)
 		return 0;
 
-	if (frame->subclass.format.id != AST_FORMAT_SLINEAR) {
+	if (frame->subclass.codec != AST_FORMAT_SLINEAR) {
 		ast_log(LOG_WARNING, "Expected frame in SLINEAR for the audiohook, but got format %s\n",
-			ast_getformatname(&frame->subclass.format));
+			ast_getformatname(frame->subclass.codec));
 		return 0;
 	}
 
@@ -886,7 +886,7 @@ static int enable_jack_hook(struct ast_channel *chan, char *data)
 		goto return_error;
 
 	jack_data->has_audiohook = 1;
-	ast_audiohook_init(&jack_data->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "JACK_HOOK", 0);
+	ast_audiohook_init(&jack_data->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "JACK_HOOK");
 	jack_data->audiohook.manipulate_callback = jack_hook_callback;
 
 	datastore->data = jack_data;

@@ -248,45 +248,30 @@ int ast_base64encode(char *dst, const unsigned char *src, int srclen, int max);
  */
 int ast_base64decode(unsigned char *dst, const char *src, int max);
 
-#define AST_URI_ALPHANUM     (1 << 0)
-#define AST_URI_MARK         (1 << 1)
-#define AST_URI_UNRESERVED   (AST_URI_ALPHANUM | AST_URI_MARK)
-#define AST_URI_LEGACY_SPACE (1 << 2)
-
-#define AST_URI_SIP_USER_UNRESERVED (1 << 20)
-
-extern const struct ast_flags ast_uri_http;
-extern const struct ast_flags ast_uri_http_legacy;
-extern const struct ast_flags ast_uri_sip_user;
-
-/*!
- * \brief Turn text string to URI-encoded %XX version
+/*! \brief Turn text string to URI-encoded %XX version 
  *
- * This function encodes characters according to the rules presented in RFC
- * 2396 and/or RFC 3261 section 19.1.2 and section 25.1.
+ * \note 
+ *  At this point, this function is encoding agnostic; it does not
+ *  check whether it is fed legal UTF-8. We escape control
+ *  characters (\x00-\x1F\x7F), '%', and all characters above 0x7F.
+ *  If do_special_char == 1 we will convert all characters except alnum
+ *  and the mark set.
+ *  Outbuf needs to have more memory allocated than the instring
+ *  to have room for the expansion. Every char that is converted
+ *  is replaced by three ASCII characters.
  *
- * Outbuf needs to have more memory allocated than the instring to have room
- * for the expansion. Every byte that is converted is replaced by three ASCII
- * characters.
- *
- * \param string string to be converted
- * \param outbuf resulting encoded string
- * \param buflen size of output buffer
- * \param spec flags describing how the encoding should be performed
- * \return a pointer to the uri encoded string
+ *  \param string	String to be converted
+ *  \param outbuf	Resulting encoded string
+ *  \param buflen	Size of output buffer
+ *  \param do_special_char	Convert all non alphanum characters execept
+ *         those in the mark set as defined by rfc 3261 section 25.1
  */
-char *ast_uri_encode(const char *string, char *outbuf, int buflen, struct ast_flags spec);
+char *ast_uri_encode(const char *string, char *outbuf, int buflen, int do_special_char);
 
-/*!
- * \brief Decode URI, URN, URL (overwrite string)
- *
- * \note The ast_uri_http_legacy decode spec flag will cause this function to
- * decode '+' as ' '.
- *
- * \param s string to be decoded
- * \param spec flags describing how the decoding should be performed
+/*!	\brief Decode URI, URN, URL (overwrite string)
+	\param s	String to be decoded 
  */
-void ast_uri_decode(char *s, struct ast_flags spec);
+void ast_uri_decode(char *s);
 
 /*!
  * \brief Escape characters found in a quoted string.
@@ -785,13 +770,6 @@ int ast_str_to_eid(struct ast_eid *eid, const char *s);
  * \since 1.6.1
  */
 int ast_eid_cmp(const struct ast_eid *eid1, const struct ast_eid *eid2);
-
-/*!
- * \brief Get current thread ID
- * \param None
- * \return the ID if platform is supported, else -1
- */
-int ast_get_tid(void);
 
 /*!\brief Resolve a binary to a full pathname
  * \param binary Name of the executable to resolve

@@ -18,10 +18,10 @@
 	<conflict>res_fax</conflict>
 	<support_level>extended</support_level>
 ***/
-
+ 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340110 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <string.h>
 #include <stdlib.h>
@@ -46,7 +46,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340110 $")
 #include "asterisk/manager.h"
 
 /*** DOCUMENTATION
-	<application name="SendFAX" language="en_US" module="app_fax">
+	<application name="SendFAX" language="en_US">
 		<synopsis>
 			Send a Fax
 		</synopsis>
@@ -91,7 +91,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340110 $")
 			</variablelist>
 		</description>
 	</application>
-	<application name="ReceiveFAX" language="en_US" module="app_fax">
+	<application name="ReceiveFAX" language="en_US">
 		<synopsis>
 			Receive a Fax
 		</synopsis>
@@ -173,7 +173,7 @@ static void span_message(int level, const char *msg)
 	} else if (level == SPAN_LOG_WARNING) {
 		ast_log(LOG_WARNING, "%s", msg);
 	} else {
-		ast_debug(1, "%s", msg);
+		ast_log(LOG_DEBUG, "%s", msg);
 	}
 }
 
@@ -225,13 +225,13 @@ static void phase_e_handler(t30_state_t *f, void *user_data, int result)
 
 		return;
 	}
-
-	s->finished = 1;
-
+	
+	s->finished = 1; 
+	
 	local_ident = S_OR(t30_get_tx_ident(f), "");
 	far_ident = S_OR(t30_get_rx_ident(f), "");
-	pbx_builtin_setvar_helper(s->chan, "FAXSTATUS", "SUCCESS");
-	pbx_builtin_setvar_helper(s->chan, "FAXERROR", NULL);
+	pbx_builtin_setvar_helper(s->chan, "FAXSTATUS", "SUCCESS"); 
+	pbx_builtin_setvar_helper(s->chan, "FAXERROR", NULL); 
 	pbx_builtin_setvar_helper(s->chan, "REMOTESTATIONID", far_ident);
 #if SPANDSP_RELEASE_DATE >= 20090220
 	pages_transferred = (s->direction) ? stat.pages_tx : stat.pages_rx;
@@ -243,14 +243,14 @@ static void phase_e_handler(t30_state_t *f, void *user_data, int result)
 	snprintf(buf, sizeof(buf), "%d", stat.y_resolution);
 	pbx_builtin_setvar_helper(s->chan, "FAXRESOLUTION", buf);
 	snprintf(buf, sizeof(buf), "%d", stat.bit_rate);
-	pbx_builtin_setvar_helper(s->chan, "FAXBITRATE", buf);
-
+	pbx_builtin_setvar_helper(s->chan, "FAXBITRATE", buf); 
+	
 	ast_debug(1, "Fax transmitted successfully.\n");
 	ast_debug(1, "  Remote station ID: %s\n", far_ident);
 	ast_debug(1, "  Pages transferred: %d\n", pages_transferred);
 	ast_debug(1, "  Image resolution:  %d x %d\n", stat.x_resolution, stat.y_resolution);
 	ast_debug(1, "  Transfer Rate:     %d\n", stat.bit_rate);
-
+	
 	ast_manager_event(s->chan, EVENT_FLAG_CALL,
 		s->direction ? "FaxSent" : "FaxReceived",
 		"Channel: %s\r\n"
@@ -336,9 +336,9 @@ static int fax_generator_generate(struct ast_channel *chan, void *data, int len,
     
 	struct ast_frame outf = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SLINEAR,
 		.src = __FUNCTION__,
 	};
-	ast_format_set(&outf.subclass.format, AST_FORMAT_SLINEAR, 0);
 
 	if (samples > MAX_SAMPLES) {
 		ast_log(LOG_WARNING, "Only generating %d samples, where %d requested\n", MAX_SAMPLES, samples);
@@ -369,8 +369,8 @@ static struct ast_generator generator = {
 static int transmit_audio(fax_session *s)
 {
 	int res = -1;
-	struct ast_format original_read_fmt;
-	struct ast_format original_write_fmt;
+	int original_read_fmt = AST_FORMAT_SLINEAR;
+	int original_write_fmt = AST_FORMAT_SLINEAR;
 	fax_state_t fax;
 	t30_state_t *t30state;
 	struct ast_frame *inf = NULL;
@@ -390,9 +390,6 @@ static int transmit_audio(fax_session *s)
 */
 	};
 
-	ast_format_clear(&original_read_fmt);
-	ast_format_clear(&original_write_fmt);
-
 	/* if in called party mode, try to use T.38 */
 	if (s->caller_mode == FALSE) {
 		/* check if we are already in T.38 mode (unlikely), or if we can request
@@ -407,7 +404,7 @@ static int transmit_audio(fax_session *s)
 			/* wait up to five seconds for negotiation to complete */
 			unsigned int timeout = 5000;
 			int ms;
-
+			
 			ast_debug(1, "Negotiating T.38 for receive on %s\n", s->chan->name);
 			while (timeout > 0) {
 				ms = ast_waitfor(s->chan, 1000);
@@ -432,7 +429,7 @@ static int transmit_audio(fax_session *s)
 				    (inf->subclass.integer == AST_CONTROL_T38_PARAMETERS) &&
 				    (inf->datalen == sizeof(t38_parameters))) {
 					struct ast_control_t38_parameters *parameters = inf->data.ptr;
-
+					
 					switch (parameters->request_response) {
 					case AST_T38_NEGOTIATED:
 						ast_debug(1, "Negotiated T.38 for receive on %s\n", s->chan->name);
@@ -465,18 +462,18 @@ static int transmit_audio(fax_session *s)
         t30state = &fax.t30_state;
 #endif
 
-	ast_format_copy(&original_read_fmt, &s->chan->readformat);
-	if (original_read_fmt.id != AST_FORMAT_SLINEAR) {
-		res = ast_set_read_format_by_id(s->chan, AST_FORMAT_SLINEAR);
+	original_read_fmt = s->chan->readformat;
+	if (original_read_fmt != AST_FORMAT_SLINEAR) {
+		res = ast_set_read_format(s->chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear read mode, giving up\n");
 			goto done;
 		}
 	}
 
-	ast_format_copy(&original_write_fmt, &s->chan->writeformat);
-	if (original_write_fmt.id != AST_FORMAT_SLINEAR) {
-		res = ast_set_write_format_by_id(s->chan, AST_FORMAT_SLINEAR);
+	original_write_fmt = s->chan->writeformat;
+	if (original_write_fmt != AST_FORMAT_SLINEAR) {
+		res = ast_set_write_format(s->chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear write mode, giving up\n");
 			goto done;
@@ -533,12 +530,12 @@ static int transmit_audio(fax_session *s)
 			break;
 		}
 
-		ast_debug(10, "frame %d/%u, len=%d\n", inf->frametype, (unsigned int) inf->subclass.format.id, inf->datalen);
+		ast_debug(10, "frame %d/%llu, len=%d\n", inf->frametype, (unsigned long long) inf->subclass.codec, inf->datalen);
 
 		/* Check the frame type. Format also must be checked because there is a chance
 		   that a frame in old format was already queued before we set channel format
 		   to slinear so it will still be received by ast_read */
-		if (inf->frametype == AST_FRAME_VOICE && inf->subclass.format.id == AST_FORMAT_SLINEAR) {
+		if (inf->frametype == AST_FRAME_VOICE && inf->subclass.codec == AST_FORMAT_SLINEAR) {
 			if (fax_rx(&fax, inf->data.ptr, inf->samples) < 0) {
 				/* I know fax_rx never returns errors. The check here is for good style only */
 				ast_log(LOG_WARNING, "fax_rx returned error\n");
@@ -592,13 +589,13 @@ static int transmit_audio(fax_session *s)
 	fax_release(&fax);
 
 done:
-	if (original_write_fmt.id != AST_FORMAT_SLINEAR) {
-		if (ast_set_write_format(s->chan, &original_write_fmt) < 0)
+	if (original_write_fmt != AST_FORMAT_SLINEAR) {
+		if (ast_set_write_format(s->chan, original_write_fmt) < 0)
 			ast_log(LOG_WARNING, "Unable to restore write format on '%s'\n", s->chan->name);
 	}
 
-	if (original_read_fmt.id != AST_FORMAT_SLINEAR) {
-		if (ast_set_read_format(s->chan, &original_read_fmt) < 0)
+	if (original_read_fmt != AST_FORMAT_SLINEAR) {
+		if (ast_set_read_format(s->chan, original_read_fmt) < 0)
 			ast_log(LOG_WARNING, "Unable to restore read format on '%s'\n", s->chan->name);
 	}
 
@@ -677,7 +674,7 @@ static int transmit_t38(fax_session *s)
 			res = -1;
 			break;
 		}
-
+		
 		t38_terminal_send_timeout(&t38, ast_tvdiff_us(now, last_frame) / (1000000 / 8000));
 
 		if (!res) {
@@ -734,7 +731,7 @@ disable_t38:
 			/* wait up to five seconds for negotiation to complete */
 			unsigned int timeout = 5000;
 			int ms;
-
+			
 			ast_debug(1, "Shutting down T.38 on %s\n", s->chan->name);
 			while (timeout > 0) {
 				ms = ast_waitfor(s->chan, 1000);
@@ -759,7 +756,7 @@ disable_t38:
 				    (inf->subclass.integer == AST_CONTROL_T38_PARAMETERS) &&
 				    (inf->datalen == sizeof(t38_parameters))) {
 					struct ast_control_t38_parameters *parameters = inf->data.ptr;
-
+					
 					switch (parameters->request_response) {
 					case AST_T38_TERMINATED:
 						ast_debug(1, "Shut down T.38 on %s\n", s->chan->name);

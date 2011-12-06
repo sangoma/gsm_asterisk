@@ -21,7 +21,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 324689 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 324685 $")
 
 #include "include/sip.h"
 #include "include/sip_utils.h"
@@ -873,7 +873,7 @@ int get_name_and_number(const char *hdr, char **name, char **number)
 
 	/* number is not option, and must be present at this point */
 	*number = ast_strdup(tmp_number);
-	ast_uri_decode(*number, ast_uri_sip_user);
+	ast_uri_decode(*number);
 
 	/* name is optional and may not be present at this point */
 	if (!ast_strlen_zero(tmp_name)) {
@@ -2077,8 +2077,8 @@ int sip_uri_cmp(const char *input1, const char *input2)
 	uri1 = ast_strdupa(input1);
 	uri2 = ast_strdupa(input2);
 
-	ast_uri_decode(uri1, ast_uri_sip_user);
-	ast_uri_decode(uri2, ast_uri_sip_user);
+	ast_uri_decode(uri1);
+	ast_uri_decode(uri2);
 
 	uri_scheme1 = strsep(&uri1, ":");
 	uri_scheme2 = strsep(&uri2, ":");

@@ -24,7 +24,7 @@
  */
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342771 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 334234 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/paths.h"	/* use ast_config_AST_SYSTEM_NAME */
@@ -946,133 +946,12 @@ struct ast_hint {
 	char exten_name[AST_MAX_EXTENSION];/*!< Extension of destroyed hint extension. */
 };
 
-
-#define HINTDEVICE_DATA_LENGTH 16
-AST_THREADSTORAGE(hintdevice_data);
-
 /* --- Hash tables of various objects --------*/
 #ifdef LOW_MEMORY
 static const int HASH_EXTENHINT_SIZE = 17;
 #else
 static const int HASH_EXTENHINT_SIZE = 563;
 #endif
-
-
-/*! \brief Container for hint devices */
-static struct ao2_container *hintdevices;
-
-/*!
- * \brief Structure for dial plan hint devices
- * \note hintdevice is one device pointing to a hint.
- */
-struct ast_hintdevice {
-	/*!
-	 * \brief Hint this hintdevice belongs to.
-	 * \note Holds a reference to the hint object.
-	 */
-	struct ast_hint *hint;
-	/*! Name of the hint device. */
-	char hintdevice[1];
-};
-
-
-/*!
- * \note Using the device for hash
- */
-static int hintdevice_hash_cb(const void *obj, const int flags)
-{
-	const struct ast_hintdevice *ext = obj;
-
-	return ast_str_case_hash(ext->hintdevice);
-}
-/*!
- * \note Devices on hints are not unique so no CMP_STOP is returned
- * Dont use ao2_find against hintdevices container cause there always
- * could be more than one result.
- */
-static int hintdevice_cmp_multiple(void *obj, void *arg, int flags)
-{
-	struct ast_hintdevice *ext = obj, *ext2 = arg;
-
-	return !strcasecmp(ext->hintdevice, ext2->hintdevice) ? CMP_MATCH  : 0;
-}
-
-/*
- * \details This is used with ao2_callback to remove old devices
- * when they are linked to the hint
-*/
-static int hintdevice_remove_cb(void *deviceobj, void *arg, int flags)
-{
-	struct ast_hintdevice *device = deviceobj;
-	struct ast_hint *hint = arg;
-
-	return (device->hint == hint) ? CMP_MATCH : 0;
-}
-
-static int remove_hintdevice(struct ast_hint *hint)
-{
-	/* iterate through all devices and remove the devices which are linked to this hint */
-	ao2_t_callback(hintdevices, OBJ_NODATA | OBJ_MULTIPLE | OBJ_UNLINK,
-		hintdevice_remove_cb, hint,
-		"callback to remove all devices which are linked to a hint");
-	return 0;
-}
-
-/*!
- * \internal
- * \brief Destroy the given hintdevice object.
- *
- * \param obj Hint device to destroy.
- *
- * \return Nothing
- */
-static void hintdevice_destroy(void *obj)
-{
-	struct ast_hintdevice *doomed = obj;
-
-	if (doomed->hint) {
-		ao2_ref(doomed->hint, -1);
-		doomed->hint = NULL;
-	}
-}
-
-/*! \brief add hintdevice structure and link it into the container.
- */
-static int add_hintdevice(struct ast_hint *hint, const char *devicelist)
-{
-	struct ast_str *str;
-	char *parse;
-	char *cur;
-	struct ast_hintdevice *device;
-	int devicelength;
-
-	if (!hint || !devicelist) {
-		/* Trying to add garbage? Don't bother. */
-		return 0;
-	}
-	if (!(str = ast_str_thread_get(&hintdevice_data, 16))) {
-		return -1;
-	}
-	ast_str_set(&str, 0, "%s", devicelist);
-	parse = ast_str_buffer(str);
-
-	while ((cur = strsep(&parse, "&"))) {
-		devicelength = strlen(cur);
-		device = ao2_t_alloc(sizeof(*device) + devicelength, hintdevice_destroy,
-			"allocating a hintdevice structure");
-		if (!device) {
-			return -1;
-		}
-		strcpy(device->hintdevice, cur);
-		ao2_ref(hint, +1);
-		device->hint = hint;
-		ao2_t_link(hintdevices, device, "Linking device into hintdevice container.");
-		ao2_t_ref(device, -1, "hintdevice is linked so we can unref");
-	}
-
-	return 0;
-}
-
 
 static const struct cfextension_states {
 	int extension_state;
@@ -1855,10 +1734,10 @@ static void new_find_extension(const char *str, struct scoreboard *score, struct
 							}                                                                                                            \
 						}                                                                                                                \
 					}
-
+					
 #define	NEW_MATCHER_RECURSE	           \
 					if (p->next_char && (*(str + 1) || (p->next_char->x[0] == '/' && p->next_char->x[1] == 0)                 \
-		                                       || p->next_char->x[0] == '!')) {                                          \
+        	                                       || p->next_char->x[0] == '!')) {                                          \
 						if (*(str + 1) || p->next_char->x[0] == '!') {                                                         \
 							new_find_extension(str + 1, score, p->next_char, length + 1, spec + p->specificity, callerid, label, action); \
 							if (score->exten)  {                                                                             \
@@ -1869,11 +1748,11 @@ static void new_find_extension(const char *str, struct scoreboard *score, struct
 							new_find_extension("/", score, p->next_char, length + 1, spec + p->specificity, callerid, label, action);	 \
 							if (score->exten || ((action == E_CANMATCH || action == E_MATCHMORE) && score->canmatch)) {      \
 						        ast_debug(4,"returning a (can/more) match--- %s\n", score->exten ? score->exten->exten :     \
-		                               "NULL");                                                                        \
+        	                               "NULL");                                                                        \
 								return; /* the first match is all we need */                                                 \
 							}												                                                 \
 						}                                                                                                    \
-					} else if ((p->next_char || action == E_CANMATCH) && !*(str + 1)) {                                                                  \
+					} else if (p->next_char && !*(str + 1)) {                                                                  \
 						score->canmatch = 1;                                                                                 \
 						score->canmatch_exten = get_canmatch_exten(p);                                                       \
 						if (action == E_CANMATCH || action == E_MATCHMORE) {                                                 \
@@ -1881,7 +1760,7 @@ static void new_find_extension(const char *str, struct scoreboard *score, struct
 							return;                                                                                          \
 						}												                                                     \
 					}
-
+					
 					NEW_MATCHER_CHK_MATCH;
 					NEW_MATCHER_RECURSE;
 				}
@@ -1890,7 +1769,7 @@ static void new_find_extension(const char *str, struct scoreboard *score, struct
 					NEW_MATCHER_CHK_MATCH;
 					NEW_MATCHER_RECURSE;
 				}
-			} else if (p->x[0] == 'X') {
+			} else if (p->x[0] == 'X') { 
 				if (p->x[1] == 0 && *str >= '0' && *str <= '9' ) {
 					NEW_MATCHER_CHK_MATCH;
 					NEW_MATCHER_RECURSE;
@@ -2098,7 +1977,7 @@ static struct match_char *add_exten_to_pattern_tree(struct ast_context *con, str
 		return 0;
 	}
 #ifdef NEED_DEBUG
-	ast_debug(1, "Adding exten %s%c%s to tree\n", s1, e1->matchcid ? '/' : ' ', e1->matchcid ? e1->cidmatch : "");
+	ast_log(LOG_DEBUG, "Adding exten %s%c%s to tree\n", s1, e1->matchcid ? '/' : ' ', e1->matchcid ? e1->cidmatch : "");
 #endif
 	m1 = con->pattern_tree; /* each pattern starts over at the root of the pattern tree */
 	m0 = &con->pattern_tree;
@@ -2176,11 +2055,8 @@ static struct match_char *add_exten_to_pattern_tree(struct ast_context *con, str
 		if (already && (m2 = already_in_tree(m1, buf, pattern)) && m2->next_char) {
 			if (!(*(s1 + 1))) {  /* if this is the end of the pattern, but not the end of the tree, then mark this node with the exten...
 								a shorter pattern might win if the longer one doesn't match */
-				if (findonly) {
-					return m2;
-				}
 				if (m2->exten) {
-					ast_log(LOG_WARNING, "Found duplicate exten. Had %s found %s\n", m2->deleted ? "(deleted/invalid)" : m2->exten->exten, e1->exten);
+					ast_log(LOG_WARNING, "Found duplicate exten. Had %s found %s\n", m2->exten->exten, e1->exten);
 				}
 				m2->exten = e1;
 				m2->deleted = 0;
@@ -2204,7 +2080,7 @@ static struct match_char *add_exten_to_pattern_tree(struct ast_context *con, str
 			}
 			if (!(*(s1 + 1))) {
 				if (m2 && m2->exten) {
-					ast_log(LOG_WARNING, "Found duplicate exten. Had %s found %s\n", m2->deleted ? "(deleted/invalid)" : m2->exten->exten, e1->exten);
+					ast_log(LOG_WARNING, "Found duplicate exten. Had %s found %s\n", m2->exten->exten, e1->exten);
 				}
 				m1->deleted = 0;
 				m1->exten = e1;
@@ -2227,9 +2103,9 @@ static void create_match_char_tree(struct ast_context *con)
 #ifdef NEED_DEBUG
 	int biggest_bucket, resizes, numobjs, numbucks;
 
-	ast_debug(1, "Creating Extension Trie for context %s(%p)\n", con->name, con);
+	ast_log(LOG_DEBUG,"Creating Extension Trie for context %s(%p)\n", con->name, con);
 	ast_hashtab_get_stats(con->root_table, &biggest_bucket, &resizes, &numobjs, &numbucks);
-	ast_debug(1, "This tree has %d objects in %d bucket lists, longest list=%d objects, and has resized %d times\n",
+	ast_log(LOG_DEBUG,"This tree has %d objects in %d bucket lists, longest list=%d objects, and has resized %d times\n",
 			numobjs, numbucks, biggest_bucket, resizes);
 #endif
 	t1 = ast_hashtab_start_traversal(con->root_table);
@@ -2747,7 +2623,7 @@ struct ast_exten *pbx_find_extension(struct ast_channel *chan,
 	if (!tmp->pattern_tree && tmp->root_table) {
 		create_match_char_tree(tmp);
 #ifdef NEED_DEBUG
-		ast_debug(1, "Tree Created in context %s:\n", context);
+		ast_log(LOG_DEBUG, "Tree Created in context %s:\n", context);
 		log_match_char_tree(tmp->pattern_tree," ");
 #endif
 	}
@@ -3204,26 +3080,6 @@ const char *ast_str_retrieve_variable(struct ast_str **str, ssize_t maxlen, stru
 			s = ast_str_buffer(*str);
 		} else if (!strcmp(var, "SYSTEMNAME")) {
 			s = ast_config_AST_SYSTEM_NAME;
-		} else if (!strcmp(var, "ASTETCDIR")) {
-			s = ast_config_AST_CONFIG_DIR;
-		} else if (!strcmp(var, "ASTMODDIR")) {
-			s = ast_config_AST_MODULE_DIR;
-		} else if (!strcmp(var, "ASTVARLIBDIR")) {
-			s = ast_config_AST_VAR_DIR;
-		} else if (!strcmp(var, "ASTDBDIR")) {
-			s = ast_config_AST_DB;
-		} else if (!strcmp(var, "ASTKEYDIR")) {
-			s = ast_config_AST_KEY_DIR;
-		} else if (!strcmp(var, "ASTDATADIR")) {
-			s = ast_config_AST_DATA_DIR;
-		} else if (!strcmp(var, "ASTAGIDIR")) {
-			s = ast_config_AST_AGI_DIR;
-		} else if (!strcmp(var, "ASTSPOOLDIR")) {
-			s = ast_config_AST_SPOOL_DIR;
-		} else if (!strcmp(var, "ASTRUNDIR")) {
-			s = ast_config_AST_RUN_DIR;
-		} else if (!strcmp(var, "ASTLOGDIR")) {
-			s = ast_config_AST_LOG_DIR;
 		} else if (!strcmp(var, "ENTITYID")) {
 			char workspace[20];
 			ast_eid_to_str(workspace, sizeof(workspace), &ast_eid_default);
@@ -3555,27 +3411,27 @@ static int acf_retrieve_docs(struct ast_custom_function *acf)
 	}
 
 	/* load synopsis */
-	tmpxml = ast_xmldoc_build_synopsis("function", acf->name, ast_module_name(acf->mod));
+	tmpxml = ast_xmldoc_build_synopsis("function", acf->name);
 	ast_string_field_set(acf, synopsis, tmpxml);
 	ast_free(tmpxml);
 
 	/* load description */
-	tmpxml = ast_xmldoc_build_description("function", acf->name, ast_module_name(acf->mod));
+	tmpxml = ast_xmldoc_build_description("function", acf->name);
 	ast_string_field_set(acf, desc, tmpxml);
 	ast_free(tmpxml);
 
 	/* load syntax */
-	tmpxml = ast_xmldoc_build_syntax("function", acf->name, ast_module_name(acf->mod));
+	tmpxml = ast_xmldoc_build_syntax("function", acf->name);
 	ast_string_field_set(acf, syntax, tmpxml);
 	ast_free(tmpxml);
 
 	/* load arguments */
-	tmpxml = ast_xmldoc_build_arguments("function", acf->name, ast_module_name(acf->mod));
+	tmpxml = ast_xmldoc_build_arguments("function", acf->name);
 	ast_string_field_set(acf, arguments, tmpxml);
 	ast_free(tmpxml);
 
 	/* load seealso */
-	tmpxml = ast_xmldoc_build_seealso("function", acf->name, ast_module_name(acf->mod));
+	tmpxml = ast_xmldoc_build_seealso("function", acf->name);
 	ast_string_field_set(acf, seealso, tmpxml);
 	ast_free(tmpxml);
 
@@ -3865,7 +3721,7 @@ void ast_str_substitute_variables_full(struct ast_str **buf, ssize_t maxlen, str
 						cp4 = ast_func_read2(c, finalvars, &substr3, 0) ? NULL : ast_str_buffer(substr3);
 						/* Don't deallocate the varshead that was passed in */
 						memcpy(&bogus->varshead, &old, sizeof(bogus->varshead));
-						ast_channel_unref(bogus);
+						ast_channel_release(bogus);
 					} else {
 						ast_log(LOG_ERROR, "Unable to allocate bogus channel for variable substitution.  Function results may be blank.\n");
 					}
@@ -4064,7 +3920,7 @@ void pbx_substitute_variables_helper_full(struct ast_channel *c, struct varshead
 						cp4 = ast_func_read(c, vars, workspace, VAR_BUF_SIZE) ? NULL : workspace;
 						/* Don't deallocate the varshead that was passed in */
 						memcpy(&c->varshead, &old, sizeof(c->varshead));
-						c = ast_channel_unref(c);
+						c = ast_channel_release(c);
 					} else {
 						ast_log(LOG_ERROR, "Unable to allocate bogus channel for variable substitution.  Function results may be blank.\n");
 					}
@@ -4415,19 +4271,11 @@ static int handle_statechange(void *datap)
 {
 	struct ast_hint *hint;
 	struct ast_str *hint_app;
-	struct ast_hintdevice *device;
-	struct ast_hintdevice *cmpdevice;
 	struct statechange *sc = datap;
-	struct ao2_iterator *dev_iter;
+	struct ao2_iterator i;
 	struct ao2_iterator cb_iter;
 	char context_name[AST_MAX_CONTEXT];
 	char exten_name[AST_MAX_EXTENSION];
-
-	if (ao2_container_count(hintdevices) == 0) {
-		/* There are no hints monitoring devices. */
-		ast_free(sc);
-		return 0;
-	}
 
 	hint_app = ast_str_create(1024);
 	if (!hint_app) {
@@ -4435,35 +4283,31 @@ static int handle_statechange(void *datap)
 		return -1;
 	}
 
-	cmpdevice = alloca(sizeof(*cmpdevice) + strlen(sc->dev));
-	strcpy(cmpdevice->hintdevice, sc->dev);
-
 	ast_mutex_lock(&context_merge_lock);/* Hold off ast_merge_contexts_and_delete */
-	dev_iter = ao2_t_callback(hintdevices,
-		OBJ_POINTER | OBJ_MULTIPLE,
-		hintdevice_cmp_multiple,
-		cmpdevice,
-		"find devices in container");
-	if (!dev_iter) {
-		ast_mutex_unlock(&context_merge_lock);
-		ast_free(hint_app);
-		ast_free(sc);
-		return -1;
-	}
-
-	for (; (device = ao2_iterator_next(dev_iter)); ao2_t_ref(device, -1, "Next device")) {
+	i = ao2_iterator_init(hints, 0);
+	for (; (hint = ao2_iterator_next(&i)); ao2_ref(hint, -1)) {
 		struct ast_state_cb *state_cb;
+		char *cur, *parse;
 		int state;
-
-		if (!device->hint) {
-			/* Should never happen. */
-			continue;
-		}
-		hint = device->hint;
 
 		ao2_lock(hint);
 		if (!hint->exten) {
 			/* The extension has already been destroyed */
+			ao2_unlock(hint);
+			continue;
+		}
+
+		/* Does this hint monitor the device that changed state? */
+		ast_str_set(&hint_app, 0, "%s", ast_get_extension_app(hint->exten));
+		parse = ast_str_buffer(hint_app);
+		while ((cur = strsep(&parse, "&"))) {
+			if (!strcasecmp(cur, sc->dev)) {
+				/* The hint monitors the device. */
+				break;
+			}
+		}
+		if (!cur) {
+			/* The hint does not monitor the device. */
 			ao2_unlock(hint);
 			continue;
 		}
@@ -4520,9 +4364,9 @@ static int handle_statechange(void *datap)
 		}
 		ao2_iterator_destroy(&cb_iter);
 	}
+	ao2_iterator_destroy(&i);
 	ast_mutex_unlock(&context_merge_lock);
 
-	ao2_iterator_destroy(dev_iter);
 	ast_free(hint_app);
 	ast_free(sc);
 	return 0;
@@ -4615,7 +4459,7 @@ int ast_extension_state_add(const char *context, const char *exten,
 	return id;
 }
 
-/*! \brief Find Hint by callback id */
+/*! \brief Remove a watcher from the callback list */
 static int find_hint_by_cb_id(void *obj, void *arg, int flags)
 {
 	struct ast_state_cb *state_cb;
@@ -4725,8 +4569,6 @@ static int ast_remove_hint(struct ast_exten *e)
 		return -1;
 	}
 
-	remove_hintdevice(hint);
-
 	/*
 	 * The extension is being destroyed so we must save some
 	 * information to notify that the extension is deactivated.
@@ -4792,11 +4634,6 @@ static int ast_add_hint(struct ast_exten *e)
 	ast_debug(2, "HINTS: Adding hint %s: %s\n",
 		ast_get_extension_name(e), ast_get_extension_app(e));
 	ao2_link(hints, hint_new);
-	if (add_hintdevice(hint_new, ast_get_extension_app(e))) {
-		ast_log(LOG_WARNING, "Could not add devices for hint: %s@%s.\n",
-			ast_get_extension_name(e),
-			ast_get_context_name(ast_get_extension_context(e)));
-	}
 
 	ao2_unlock(hints);
 	ao2_ref(hint_new, -1);
@@ -4825,18 +4662,11 @@ static int ast_change_hint(struct ast_exten *oe, struct ast_exten *ne)
 		return -1;
 	}
 
-	remove_hintdevice(hint);
-
 	/* Update the hint and put it back in the hints container. */
 	ao2_lock(hint);
 	hint->exten = ne;
 	ao2_unlock(hint);
 	ao2_link(hints, hint);
-	if (add_hintdevice(hint, ast_get_extension_app(ne))) {
-		ast_log(LOG_WARNING, "Could not add devices for hint: %s@%s.\n",
-			ast_get_extension_name(ne),
-			ast_get_context_name(ast_get_extension_context(ne)));
-	}
 
 	ao2_unlock(hints);
 	ao2_ref(hint, -1);
@@ -4980,16 +4810,23 @@ static enum ast_pbx_result __ast_pbx_run(struct ast_channel *c,
 	autoloopflag = ast_test_flag(c, AST_FLAG_IN_AUTOLOOP);	/* save value to restore at the end */
 	ast_set_flag(c, AST_FLAG_IN_AUTOLOOP);
 
-	if (ast_strlen_zero(c->exten)) {
-		/* If not successful fall back to 's' - but only if there is no given exten  */
+	/* Start by trying whatever the channel is set to */
+	if (!ast_exists_extension(c, c->context, c->exten, c->priority,
+		S_COR(c->caller.id.number.valid, c->caller.id.number.str, NULL))) {
+		/* If not successful fall back to 's' */
 		ast_verb(2, "Starting %s at %s,%s,%d failed so falling back to exten 's'\n", c->name, c->context, c->exten, c->priority);
 		/* XXX the original code used the existing priority in the call to
 		 * ast_exists_extension(), and reset it to 1 afterwards.
 		 * I believe the correct thing is to set it to 1 immediately.
-		*/
+		 */
 		set_ext_pri(c, "s", 1);
+		if (!ast_exists_extension(c, c->context, c->exten, c->priority,
+			S_COR(c->caller.id.number.valid, c->caller.id.number.str, NULL))) {
+			/* JK02: And finally back to default if everything else failed */
+			ast_verb(2, "Starting %s at %s,%s,%d still failed so falling back to context 'default'\n", c->name, c->context, c->exten, c->priority);
+			ast_copy_string(c->context, "default", sizeof(c->context));
+		}
 	}
-
 	if (c->cdr) {
 		/* allow CDR variables that have been collected after channel was created to be visible during call */
 		ast_cdr_update(c);
@@ -5354,11 +5191,6 @@ enum ast_pbx_result ast_pbx_start(struct ast_channel *c)
 		return AST_PBX_FAILED;
 	}
 
-	if (!ast_test_flag(&ast_options, AST_OPT_FLAG_FULLY_BOOTED)) {
-		ast_log(LOG_WARNING, "PBX requires Asterisk to be fully booted\n");
-		return AST_PBX_FAILED;
-	}
-
 	if (increase_call_count(c))
 		return AST_PBX_CALL_LIMIT;
 
@@ -5375,11 +5207,6 @@ enum ast_pbx_result ast_pbx_start(struct ast_channel *c)
 enum ast_pbx_result ast_pbx_run_args(struct ast_channel *c, struct ast_pbx_args *args)
 {
 	enum ast_pbx_result res = AST_PBX_SUCCESS;
-
-	if (!ast_test_flag(&ast_options, AST_OPT_FLAG_FULLY_BOOTED)) {
-		ast_log(LOG_WARNING, "PBX requires Asterisk to be fully booted\n");
-		return AST_PBX_FAILED;
-	}
 
 	if (increase_call_count(c)) {
 		return AST_PBX_CALL_LIMIT;
@@ -5845,35 +5672,31 @@ int ast_register_application2(const char *app, int (*execute)(struct ast_channel
 		return -1;
 	}
 
-	strcpy(tmp->name, app);
-	tmp->execute = execute;
-	tmp->module = mod;
-
 #ifdef AST_XML_DOCS
 	/* Try to lookup the docs in our XML documentation database */
 	if (ast_strlen_zero(synopsis) && ast_strlen_zero(description)) {
 		/* load synopsis */
-		tmpxml = ast_xmldoc_build_synopsis("application", app, ast_module_name(tmp->module));
+		tmpxml = ast_xmldoc_build_synopsis("application", app);
 		ast_string_field_set(tmp, synopsis, tmpxml);
 		ast_free(tmpxml);
 
 		/* load description */
-		tmpxml = ast_xmldoc_build_description("application", app, ast_module_name(tmp->module));
+		tmpxml = ast_xmldoc_build_description("application", app);
 		ast_string_field_set(tmp, description, tmpxml);
 		ast_free(tmpxml);
 
 		/* load syntax */
-		tmpxml = ast_xmldoc_build_syntax("application", app, ast_module_name(tmp->module));
+		tmpxml = ast_xmldoc_build_syntax("application", app);
 		ast_string_field_set(tmp, syntax, tmpxml);
 		ast_free(tmpxml);
 
 		/* load arguments */
-		tmpxml = ast_xmldoc_build_arguments("application", app, ast_module_name(tmp->module));
+		tmpxml = ast_xmldoc_build_arguments("application", app);
 		ast_string_field_set(tmp, arguments, tmpxml);
 		ast_free(tmpxml);
 
 		/* load seealso */
-		tmpxml = ast_xmldoc_build_seealso("application", app, ast_module_name(tmp->module));
+		tmpxml = ast_xmldoc_build_seealso("application", app);
 		ast_string_field_set(tmp, seealso, tmpxml);
 		ast_free(tmpxml);
 		tmp->docsrc = AST_XML_DOC;
@@ -5885,6 +5708,10 @@ int ast_register_application2(const char *app, int (*execute)(struct ast_channel
 		tmp->docsrc = AST_STATIC_DOC;
 	}
 #endif
+
+	strcpy(tmp->name, app);
+	tmp->execute = execute;
+	tmp->module = mod;
 
 	/* Store in alphabetical order */
 	AST_RWLIST_TRAVERSE_SAFE_BEGIN(&apps, cur, list) {
@@ -6174,7 +6001,7 @@ static char *handle_show_hint(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 		ast_cli(a->fd, "There are no registered dialplan hints\n");
 		return CLI_SUCCESS;
 	}
-
+	
 	extenlen = strlen(a->argv[3]);
 	i = ao2_iterator_init(hints, 0);
 	for (; (hint = ao2_iterator_next(&i)); ao2_ref(hint, -1)) {
@@ -6830,7 +6657,7 @@ static int manager_show_dialplan_helper(struct mansession *s, const struct messa
 				if (!dpc->total_items++)
 					manager_dpsendack(s, m);
 				astman_append(s, "Event: ListDialplan\r\n%s", actionidtext);
-				astman_append(s, "Context: %s\r\nSwitch: %s/%s\r\nRegistrar: %s\r\n", ast_get_context_name(c), ast_get_switch_name(sw), ast_get_switch_data(sw), ast_get_switch_registrar(sw));
+				astman_append(s, "Context: %s\r\nSwitch: %s/%s\r\nRegistrar: %s\r\n", ast_get_context_name(c), ast_get_switch_name(sw), ast_get_switch_data(sw), ast_get_switch_registrar(sw));	
 				astman_append(s, "\r\n");
 				ast_debug(3, "manager_show_dialplan: Found Switch : %s \n", ast_get_switch_name(sw));
 			}
@@ -8159,8 +7986,8 @@ int ast_async_goto(struct ast_channel *chan, const char *context, const char *ex
 		struct ast_cdr *cdr;
 		int amaflags;
 		int state;
-		struct ast_format readformat;
-		struct ast_format writeformat;
+		format_t readformat;
+		format_t writeformat;
 	} tmpvars = { 0, };
 
 	ast_channel_lock(chan);
@@ -8181,8 +8008,8 @@ int ast_async_goto(struct ast_channel *chan, const char *context, const char *ex
 	tmpvars.name = ast_strdupa(chan->name);
 	tmpvars.amaflags = chan->amaflags;
 	tmpvars.state = chan->_state;
-	ast_format_copy(&tmpvars.writeformat, &chan->writeformat);
-	ast_format_copy(&tmpvars.readformat, &chan->readformat);
+	tmpvars.writeformat = chan->writeformat;
+	tmpvars.readformat = chan->readformat;
 	tmpvars.cdr = chan->cdr ? ast_cdr_dup(chan->cdr) : NULL;
 
 	ast_channel_unlock(chan);
@@ -8202,8 +8029,8 @@ int ast_async_goto(struct ast_channel *chan, const char *context, const char *ex
 	}
 
 	/* Make formats okay */
-	ast_format_copy(&tmpchan->readformat, &tmpvars.readformat);
-	ast_format_copy(&tmpchan->writeformat, &tmpvars.writeformat);
+	tmpchan->readformat = tmpvars.readformat;
+	tmpchan->writeformat = tmpvars.writeformat;
 
 	/* Setup proper location. Never hold another channel lock while calling this function. */
 	ast_explicit_goto(tmpchan, S_OR(context, tmpvars.context), S_OR(exten, tmpvars.exten), priority);
@@ -8484,16 +8311,12 @@ static int ast_add_extension2_lockopt(struct ast_context *con,
 	/* If we are adding a hint evalulate in variables and global variables */
 	if (priority == PRIORITY_HINT && strstr(application, "${") && !strstr(extension, "_")) {
 		struct ast_channel *c = ast_dummy_channel_alloc();
+		ast_copy_string(c->exten, extension, sizeof(c->exten));
+		ast_copy_string(c->context, con->name, sizeof(c->context));
 
-		if (c) {
-			ast_copy_string(c->exten, extension, sizeof(c->exten));
-			ast_copy_string(c->context, con->name, sizeof(c->context));
-		}
 		pbx_substitute_variables_helper(c, application, expand_buf, sizeof(expand_buf));
 		application = expand_buf;
-		if (c) {
-			ast_channel_unref(c);
-		}
+		ast_channel_release(c);
 	}
 
 	length = sizeof(struct ast_exten);
@@ -8745,7 +8568,7 @@ static int ast_pbx_outgoing_cdr_failed(void)
 	chan->cdr = ast_cdr_alloc();
 	if (!chan->cdr) {
 		/* allocation of the cdr failed */
-		chan = ast_channel_unref(chan);   /* free the channel */
+		chan = ast_channel_release(chan);   /* free the channel */
 		return -1;                /* return failure */
 	}
 
@@ -8756,12 +8579,12 @@ static int ast_pbx_outgoing_cdr_failed(void)
 	ast_cdr_failed(chan->cdr);      /* set the status to failed */
 	ast_cdr_detach(chan->cdr);      /* post and free the record */
 	chan->cdr = NULL;
-	chan = ast_channel_unref(chan);         /* free the channel */
+	chan = ast_channel_release(chan);         /* free the channel */
 
 	return 0;  /* success */
 }
 
-int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int synchronous, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **channel)
+int ast_pbx_outgoing_exten(const char *type, format_t format, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int synchronous, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **channel)
 {
 	struct ast_channel *chan;
 	struct async_stat *as;
@@ -8778,7 +8601,7 @@ int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *d
 		oh.vars = vars;
 		oh.parent_channel = NULL;
 
-		chan = __ast_request_and_dial(type, cap, NULL, data, timeout, reason, cid_num, cid_name, &oh);
+		chan = __ast_request_and_dial(type, format, NULL, data, timeout, reason, cid_num, cid_name, &oh);
 		if (channel) {
 			*channel = chan;
 			if (chan)
@@ -8868,7 +8691,7 @@ int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *d
 			res = -1;
 			goto outgoing_exten_cleanup;
 		}
-		chan = ast_request_and_dial(type, cap, NULL, data, timeout, reason, cid_num, cid_name);
+		chan = ast_request_and_dial(type, format, NULL, data, timeout, reason, cid_num, cid_name);
 		if (channel) {
 			*channel = chan;
 			if (chan)
@@ -8905,12 +8728,10 @@ outgoing_exten_cleanup:
 }
 
 struct app_tmp {
+	char app[256];
+	char data[256];
 	struct ast_channel *chan;
 	pthread_t t;
-	AST_DECLARE_STRING_FIELDS (
-		AST_STRING_FIELD(app);
-		AST_STRING_FIELD(data);
-	);
 };
 
 /*! \brief run the application and free the descriptor once done */
@@ -8925,12 +8746,11 @@ static void *ast_pbx_run_app(void *data)
 	} else
 		ast_log(LOG_WARNING, "No such application '%s'\n", tmp->app);
 	ast_hangup(tmp->chan);
-	ast_string_field_free_memory(tmp);
 	ast_free(tmp);
 	return NULL;
 }
 
-int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *app, const char *appdata, int *reason, int synchronous, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel)
+int ast_pbx_outgoing_app(const char *type, format_t format, void *data, int timeout, const char *app, const char *appdata, int *reason, int synchronous, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel)
 {
 	struct ast_channel *chan;
 	struct app_tmp *tmp;
@@ -8948,7 +8768,7 @@ int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *dat
 		goto outgoing_app_cleanup;
 	}
 	if (synchronous) {
-		chan = __ast_request_and_dial(type, cap, NULL, data, timeout, reason, cid_num, cid_name, &oh);
+		chan = __ast_request_and_dial(type, format, NULL, data, timeout, reason, cid_num, cid_name, &oh);
 		if (chan) {
 			ast_set_variables(chan, vars);
 			if (account)
@@ -8957,14 +8777,12 @@ int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *dat
 				res = 0;
 				ast_verb(4, "Channel %s was answered.\n", chan->name);
 				tmp = ast_calloc(1, sizeof(*tmp));
-				if (!tmp || ast_string_field_init(tmp, 252)) {
-					if (tmp) {
-						ast_free(tmp);
-					}
+				if (!tmp)
 					res = -1;
-				} else {
-					ast_string_field_set(tmp, app, app);
-					ast_string_field_set(tmp, data, appdata);
+				else {
+					ast_copy_string(tmp->app, app, sizeof(tmp->app));
+					if (appdata)
+						ast_copy_string(tmp->data, appdata, sizeof(tmp->data));
 					tmp->chan = chan;
 					if (synchronous > 1) {
 						if (locked_channel)
@@ -8975,7 +8793,6 @@ int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *dat
 							ast_channel_lock(chan);
 						if (ast_pthread_create_detached(&tmp->t, NULL, ast_pbx_run_app, tmp)) {
 							ast_log(LOG_WARNING, "Unable to spawn execute thread on %s: %s\n", chan->name, strerror(errno));
-							ast_string_field_free_memory(tmp);
 							ast_free(tmp);
 							if (locked_channel)
 								ast_channel_unlock(chan);
@@ -9016,7 +8833,7 @@ int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *dat
 			res = -1;
 			goto outgoing_app_cleanup;
 		}
-		chan = __ast_request_and_dial(type, cap, NULL, data, timeout, reason, cid_num, cid_name, &oh);
+		chan = __ast_request_and_dial(type, format, NULL, data, timeout, reason, cid_num, cid_name, &oh);
 		if (!chan) {
 			ast_free(as);
 			res = -1;
@@ -9341,10 +9158,8 @@ static int pbx_builtin_congestion(struct ast_channel *chan, const char *data)
 	ast_indicate(chan, AST_CONTROL_CONGESTION);
 	/* Don't change state of an UP channel, just indicate
 	   congestion in audio */
-	if (chan->_state != AST_STATE_UP) {
+	if (chan->_state != AST_STATE_UP)
 		ast_setstate(chan, AST_STATE_BUSY);
-		ast_cdr_congestion(chan->cdr);
-	}
 	wait_for_hangup(chan, data);
 	return -1;
 }
@@ -9400,8 +9215,6 @@ static int pbx_builtin_incomplete(struct ast_channel *chan, const char *data)
 	} else if (chan->_state != AST_STATE_UP && answer) {
 		__ast_answer(chan, 0, 1);
 	}
-
-	ast_indicate(chan, AST_CONTROL_INCOMPLETE);
 
 	return AST_PBX_INCOMPLETE;
 }
@@ -10657,8 +10470,7 @@ static int statecbs_cmp(void *obj, void *arg, int flags)
 int ast_pbx_init(void)
 {
 	hints = ao2_container_alloc(HASH_EXTENHINT_SIZE, hint_hash, hint_cmp);
-	hintdevices = ao2_container_alloc(HASH_EXTENHINT_SIZE, hintdevice_hash_cb, hintdevice_cmp_multiple);
 	statecbs = ao2_container_alloc(HASH_EXTENHINT_SIZE, NULL, statecbs_cmp);
 
-	return (hints && hintdevices && statecbs) ? 0 : -1;
+	return (hints && statecbs) ? 0 : -1;
 }

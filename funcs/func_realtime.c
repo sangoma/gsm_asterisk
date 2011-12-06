@@ -26,7 +26,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 304913 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 304908 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"

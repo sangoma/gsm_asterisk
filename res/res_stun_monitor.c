@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/event.h"
@@ -43,7 +43,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 static const int DEFAULT_MONITOR_REFRESH = 30;
 
 static const char stun_conf_file[] = "res_stun_monitor.conf";
-static struct ast_sched_context *sched;
+static struct ast_sched_thread *sched;
 
 static struct {
 	struct sockaddr_in stunaddr;      /*!< The stun address we send requests to*/
@@ -154,8 +154,7 @@ monitor_request_cleanup:
 static void stun_stop_monitor(void)
 {
 	if (sched) {
-		ast_sched_context_destroy(sched);
-		sched = NULL;
+		sched = ast_sched_thread_destroy(sched);
 		ast_log(LOG_NOTICE, "STUN monitor stopped\n");
 	}
 	/* it is only safe to destroy the socket without holding arg->lock
@@ -193,29 +192,20 @@ static int stun_start_monitor(void)
 		return 0; /* already started */
 	}
 
-	if (!(sched = ast_sched_context_create())) {
-		ast_log(LOG_ERROR, "Failed to create stun monitor scheduler context\n");
+	if (!(sched = ast_sched_thread_create())) {
+		ast_log(LOG_ERROR, "Failed to create stun monitor scheduler thread\n");
 		stun_close_sock();
 		return -1;
 	}
 
-	if (ast_sched_start_thread(sched)) {
-		ast_sched_context_destroy(sched);
-		sched = NULL;
-		stun_close_sock();
-		return -1;
-	}
-
-	if (ast_sched_add_variable(sched, (args.refresh * 1000), stun_monitor_request, NULL, 1) < 0) {
+	if (ast_sched_thread_add_variable(sched, (args.refresh * 1000), stun_monitor_request, NULL, 1) < 0) {
 		ast_log(LOG_ERROR, "Unable to schedule STUN network monitor \n");
-		ast_sched_context_destroy(sched);
-		sched = NULL;
+		sched = ast_sched_thread_destroy(sched);
 		stun_close_sock();
 		return -1;
 	}
 
 	ast_log(LOG_NOTICE, "STUN monitor started\n");
-
 	return 0;
 }
 
@@ -231,7 +221,7 @@ static int load_config(int startup)
 
 	if (!(cfg = ast_config_load2(stun_conf_file, "res_stun_monitor", config_flags)) ||
 		cfg == CONFIG_STATUS_FILEINVALID) {
-		ast_log(LOG_WARNING, "Unable to load config %s\n", stun_conf_file);
+		ast_log(LOG_ERROR, "Unable to load config %s\n", stun_conf_file);
 		return -1;
 	}
 

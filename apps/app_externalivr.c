@@ -37,7 +37,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <signal.h>
 
@@ -406,7 +406,6 @@ static int app_exec(struct ast_channel *chan, const char *data)
 		.playlist = AST_LIST_HEAD_INIT_VALUE,
 		.finishlist = AST_LIST_HEAD_INIT_VALUE,
 		.gen_active = 0,
-		.playing_silence = 1,
 	};
 	struct ivr_localuser *u = &foo;
 

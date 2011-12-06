@@ -43,11 +43,9 @@
 #define DSP_FEATURE_CALL_PROGRESS	(DSP_PROGRESS_TALK | DSP_PROGRESS_RINGING | DSP_PROGRESS_BUSY | DSP_PROGRESS_CONGESTION)
 #define DSP_FEATURE_WAITDIALTONE	(1 << 20)		/*!< Enable dial tone detection */
 
-#define DSP_FAXMODE_DETECT_CNG		(1 << 0)
-#define DSP_FAXMODE_DETECT_CED		(1 << 1)
-#define DSP_FAXMODE_DETECT_V21		(1 << 2)
-#define DSP_FAXMODE_DETECT_SQUELCH	(1 << 3)
-#define DSP_FAXMODE_DETECT_ALL	(DSP_FAXMODE_DETECT_CNG | DSP_FAXMODE_DETECT_CED | DSP_FAXMODE_DETECT_V21)
+#define DSP_FAXMODE_DETECT_CNG	(1 << 0)
+#define DSP_FAXMODE_DETECT_CED	(1 << 1)
+#define DSP_FAXMODE_DETECT_ALL	(DSP_FAXMODE_DETECT_CNG | DSP_FAXMODE_DETECT_CED)
 
 #define DSP_TONE_STATE_SILENCE  0
 #define DSP_TONE_STATE_RINGING  1
@@ -61,13 +59,6 @@
 
 struct ast_dsp;
 
-struct ast_dsp_busy_pattern {
-	/*! Number of elements. */
-	int length;
-	/*! Pattern elements in on/off time durations. */
-	int pattern[4];
-};
-
 enum threshold {
 	/* Array offsets */
 	THRESHOLD_SILENCE = 0,
@@ -75,18 +66,8 @@ enum threshold {
 	THRESHOLD_MAX = 1,
 };
 
-/*! \brief Allocates a new dsp with a specific internal sample rate used
- * during processing. */
-struct ast_dsp *ast_dsp_new_with_rate(unsigned int sample_rate);
-
-/*! \brief Allocates a new dsp, assumes 8khz for internal sample rate */
 struct ast_dsp *ast_dsp_new(void);
-
 void ast_dsp_free(struct ast_dsp *dsp);
-
-/*! \brief Retrieve the sample rate this DSP structure was
- * created with */
-unsigned int ast_dsp_get_sample_rate(const struct ast_dsp *dsp);
 
 /*! \brief Set threshold value for silence */
 void ast_dsp_set_threshold(struct ast_dsp *dsp, int threshold);
@@ -95,7 +76,7 @@ void ast_dsp_set_threshold(struct ast_dsp *dsp, int threshold);
 void ast_dsp_set_busy_count(struct ast_dsp *dsp, int cadences);
 
 /*! \brief Set expected lengths of the busy tone */
-void ast_dsp_set_busy_pattern(struct ast_dsp *dsp, const struct ast_dsp_busy_pattern *cadence);
+void ast_dsp_set_busy_pattern(struct ast_dsp *dsp, int tonelength, int quietlength);
 
 /*! \brief Scans for progress indication in audio */
 int ast_dsp_call_progress(struct ast_dsp *dsp, struct ast_frame *inf);
@@ -110,11 +91,6 @@ struct ast_frame *ast_dsp_process(struct ast_channel *chan, struct ast_dsp *dsp,
 /*! \brief Return non-zero if this is silence.  Updates "totalsilence" with the total
    number of seconds of silence  */
 int ast_dsp_silence(struct ast_dsp *dsp, struct ast_frame *f, int *totalsilence);
-
-/*! \brief Return non-zero if this is silence.  Updates "totalsilence" with the total
-   number of seconds of silence. Returns the average energy of the samples in the frame
-   in frames_energy variable. */
-int ast_dsp_silence_with_energy(struct ast_dsp *dsp, struct ast_frame *f, int *totalsilence, int *frames_energy);
 
 /*!
  * \brief Return non-zero if this is noise.  Updates "totalnoise" with the total

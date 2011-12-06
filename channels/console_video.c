@@ -30,14 +30,14 @@
  * thus not compiling in AST_DEVMODE, or don't have swscale, in which case
  * you can try to compile #defining OLD_FFMPEG here.
  *
- * $Revision: 284598 $
+ * $Revision: 284597 $
  */
 
 //#define DROP_PACKETS 5       /* if set, drop this % of video packets */
 //#define OLD_FFMPEG	1	/* set for old ffmpeg with no swscale */
 
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284598 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284597 $")
 #include <sys/ioctl.h>
 #include "asterisk/cli.h"
 #include "asterisk/file.h"

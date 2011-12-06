@@ -83,67 +83,6 @@ enum sig_pri_law {
 	SIG_PRI_ALAW
 };
 
-enum sig_pri_moh_signaling {
-	/*! Generate MOH to the remote party. */
-	SIG_PRI_MOH_SIGNALING_MOH,
-	/*! Send hold notification signaling to the remote party. */
-	SIG_PRI_MOH_SIGNALING_NOTIFY,
-#if defined(HAVE_PRI_CALL_HOLD)
-	/*! Use HOLD/RETRIEVE signaling to release the B channel while on hold. */
-	SIG_PRI_MOH_SIGNALING_HOLD,
-#endif	/* defined(HAVE_PRI_CALL_HOLD) */
-};
-
-enum sig_pri_moh_state {
-	/*! Bridged peer has not put us on hold. */
-	SIG_PRI_MOH_STATE_IDLE,
-	/*! Bridged peer has put us on hold and we were to notify the remote party. */
-	SIG_PRI_MOH_STATE_NOTIFY,
-	/*! Bridged peer has put us on hold and we were to play MOH or HOLD/RETRIEVE fallback. */
-	SIG_PRI_MOH_STATE_MOH,
-#if defined(HAVE_PRI_CALL_HOLD)
-	/*! Requesting to put channel on hold. */
-	SIG_PRI_MOH_STATE_HOLD_REQ,
-	/*! Trying to go on hold when bridged peer requested to unhold. */
-	SIG_PRI_MOH_STATE_PEND_UNHOLD,
-	/*! Channel is held. */
-	SIG_PRI_MOH_STATE_HOLD,
-	/*! Requesting to take channel out of hold. */
-	SIG_PRI_MOH_STATE_RETRIEVE_REQ,
-	/*! Trying to take channel out of hold when bridged peer requested to hold. */
-	SIG_PRI_MOH_STATE_PEND_HOLD,
-	/*! Failed to take the channel out of hold. No B channels were available? */
-	SIG_PRI_MOH_STATE_RETRIEVE_FAIL,
-#endif	/* defined(HAVE_PRI_CALL_HOLD) */
-
-	/*! Number of MOH states.  Must be last in enum. */
-	SIG_PRI_MOH_STATE_NUM
-};
-
-enum sig_pri_moh_event {
-	/*! Reset the MOH state machine. (Because of hangup.) */
-	SIG_PRI_MOH_EVENT_RESET,
-	/*! Bridged peer placed this channel on hold. */
-	SIG_PRI_MOH_EVENT_HOLD,
-	/*! Bridged peer took this channel off hold. */
-	SIG_PRI_MOH_EVENT_UNHOLD,
-#if defined(HAVE_PRI_CALL_HOLD)
-	/*! The hold request was successfully acknowledged. */
-	SIG_PRI_MOH_EVENT_HOLD_ACK,
-	/*! The hold request was rejected. */
-	SIG_PRI_MOH_EVENT_HOLD_REJ,
-	/*! The unhold request was successfully acknowledged. */
-	SIG_PRI_MOH_EVENT_RETRIEVE_ACK,
-	/*! The unhold request was rejected. */
-	SIG_PRI_MOH_EVENT_RETRIEVE_REJ,
-	/*! The remote party took this channel off hold. */
-	SIG_PRI_MOH_EVENT_REMOTE_RETRIEVE_ACK,
-#endif	/* defined(HAVE_PRI_CALL_HOLD) */
-
-	/*! Number of MOH events.  Must be last in enum. */
-	SIG_PRI_MOH_EVENT_NUM
-};
-
 /*! Call establishment life cycle level for simple comparisons. */
 enum sig_pri_call_level {
 	/*! Call does not exist. */
@@ -167,8 +106,6 @@ struct sig_pri_callback {
 	void (* const unlock_private)(void *pvt);
 	/* Lock the private in the signalling private structure.  ... */
 	void (* const lock_private)(void *pvt);
-	/* Do deadlock avoidance for the private signaling structure lock.  */
-	void (* const deadlock_avoidance_private)(void *pvt);
 	/* Function which is called back to handle any other DTMF events that are received.  Called by analog_handle_event.  Why is this
 	 * important to use, instead of just directly using events received before they are passed into the library?  Because sometimes,
 	 * (CWCID) the library absorbs DTMF events received. */
@@ -290,9 +227,6 @@ struct sig_pri_chan {
 	/*! \brief Keypad digits that came in with the SETUP message. */
 	char keypad_digits[AST_MAX_EXTENSION];
 #endif	/* defined(HAVE_PRI_SETUP_KEYPAD) */
-	/*! Music class suggested with AST_CONTROL_HOLD. */
-	char moh_suggested[MAX_MUSICCLASS];
-	enum sig_pri_moh_state moh_state;
 
 #if defined(HAVE_PRI_AOC_EVENTS)
 	struct pri_subcmd_aoc_e aoc_e;
@@ -359,22 +293,12 @@ struct sig_pri_chan {
 #if defined(HAVE_PRI_MWI)
 /*! Maximum number of mailboxes per span. */
 #define SIG_PRI_MAX_MWI_MAILBOXES			8
-/*! Typical maximum length of mwi voicemail controlling number */
-#define SIG_PRI_MAX_MWI_VM_NUMBER_LEN		10	/* digits in number */
 /*! Typical maximum length of mwi mailbox number */
 #define SIG_PRI_MAX_MWI_MBOX_NUMBER_LEN		10	/* digits in number */
 /*! Typical maximum length of mwi mailbox context */
 #define SIG_PRI_MAX_MWI_CONTEXT_LEN			10
 /*!
- * \brief Maximum mwi_vm_numbers string length.
- * \details
- * max_length = #mailboxes * (vm_number + ',')
- * The last ',' is a null terminator instead.
- */
-#define SIG_PRI_MAX_MWI_VM_NUMBER_STR	(SIG_PRI_MAX_MWI_MAILBOXES \
-	* (SIG_PRI_MAX_MWI_VM_NUMBER_LEN + 1))
-/*!
- * \brief Maximum mwi_mailboxs string length.
+ * \brief Maximum mwi_mailbox string length.
  * \details
  * max_length = #mailboxes * (mbox_number + '@' + context + ',')
  * The last ',' is a null terminator instead.
@@ -392,8 +316,6 @@ struct sig_pri_mbox {
 	const char *number;
 	/*! \brief Mailbox context. */
 	const char *context;
-	/*! \brief Voicemail controlling number. */
-	const char *vm_number;
 };
 #endif	/* defined(HAVE_PRI_MWI) */
 
@@ -441,28 +363,14 @@ struct sig_pri_span {
 	 * appended to the initial_user_tag[].
 	 */
 	unsigned int append_msn_to_user_tag:1;
-#if defined(HAVE_PRI_MCID)
-	/*! \brief TRUE if allow sending MCID request on this span. */
-	unsigned int mcid_send:1;
-#endif	/* defined(HAVE_PRI_MCID) */
-#if defined(HAVE_PRI_DATETIME_SEND)
-	/*! \brief Configured date/time ie send policy option. */
-	int datetime_send;
-#endif	/* defined(HAVE_PRI_DATETIME_SEND) */
 	int dialplan;							/*!< Dialing plan */
 	int localdialplan;						/*!< Local dialing plan */
-	int cpndialplan;						/*!< Connected party dialing plan */
 	char internationalprefix[10];			/*!< country access code ('00' for european dialplans) */
 	char nationalprefix[10];				/*!< area access code ('0' for european dialplans) */
 	char localprefix[20];					/*!< area access code + area code ('0'+area code for european dialplans) */
 	char privateprefix[20];					/*!< for private dialplans */
 	char unknownprefix[20];					/*!< for unknown dialplans */
-	enum sig_pri_moh_signaling moh_signaling;
 	long resetinterval;						/*!< Interval (in seconds) for resetting unused channels */
-#if defined(HAVE_PRI_DISPLAY_TEXT)
-	unsigned long display_flags_send;		/*!< PRI_DISPLAY_OPTION_xxx flags for display text sending */
-	unsigned long display_flags_receive;	/*!< PRI_DISPLAY_OPTION_xxx flags for display text receiving */
-#endif	/* defined(HAVE_PRI_DISPLAY_TEXT) */
 #if defined(HAVE_PRI_MWI)
 	/*! \brief Active MWI mailboxes */
 	struct sig_pri_mbox mbox[SIG_PRI_MAX_MWI_MAILBOXES];
@@ -473,12 +381,6 @@ struct sig_pri_span {
 	 * \note String is split apart when span is started.
 	 */
 	char mwi_mailboxes[SIG_PRI_MAX_MWI_MAILBOX_STR];
-	/*!
-	 * \brief Comma separated list of voicemail access controlling numbers for MWI.
-	 * \note Format: vm_number{,vm_number}
-	 * \note String is split apart when span is started.
-	 */
-	char mwi_vm_numbers[SIG_PRI_MAX_MWI_VM_NUMBER_STR];
 #endif	/* defined(HAVE_PRI_MWI) */
 	/*!
 	 * \brief Initial user tag for party id's sent from this device driver.
@@ -623,9 +525,6 @@ void sig_pri_chan_delete(struct sig_pri_chan *doomed);
 
 int pri_is_up(struct sig_pri_span *pri);
 
-struct mansession;
-int sig_pri_ami_show_spans(struct mansession *s, const char *show_cmd, struct sig_pri_span *pri, const int *dchannels, const char *action_id);
-
 void sig_pri_cli_show_channels_header(int fd);
 void sig_pri_cli_show_channels(int fd, struct sig_pri_span *pri);
 void sig_pri_cli_show_spans(int fd, int span, struct sig_pri_span *pri);
@@ -640,9 +539,6 @@ int pri_maintenance_bservice(struct pri *pri, struct sig_pri_chan *p, int change
 #endif	/* defined(HAVE_PRI_SERVICE_MESSAGES) */
 
 void sig_pri_fixup(struct ast_channel *oldchan, struct ast_channel *newchan, struct sig_pri_chan *pchan);
-#if defined(HAVE_PRI_DISPLAY_TEXT)
-void sig_pri_sendtext(struct sig_pri_chan *pchan, const char *text);
-#endif	/* defined(HAVE_PRI_DISPLAY_TEXT) */
 
 int sig_pri_cc_agent_init(struct ast_cc_agent *agent, struct sig_pri_chan *pvt_chan);
 int sig_pri_cc_agent_start_offer_timer(struct ast_cc_agent *agent);

@@ -28,7 +28,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342225 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 334296 $")
 
 #include "asterisk/paths.h"	/* use ast_config_AST_CONFIG_DIR */
 #include "asterisk/network.h"	/* we do some sockaddr manipulation here */
@@ -1105,9 +1105,9 @@ static int process_text_line(struct ast_config *cfg, struct ast_category **cat,
 		 * [foo]	define a new category named 'foo'
 		 * [foo](!)	define a new template category named 'foo'
 		 * [foo](+)	append to category 'foo', error if foo does not exist.
-		 * [foo](a)	define a new category and inherit from category or template a.
-		 *		You can put a comma-separated list of categories and templates
-		 *		and '!' and '+' between parentheses, with obvious meaning.
+		 * [foo](a)	define a new category and inherit from template a.
+		 *		You can put a comma-separated list of templates and '!' and '+'
+		 *		between parentheses, with obvious meaning.
 		 */
 		struct ast_category *newcat = NULL;
 		char *catname;
@@ -2446,11 +2446,6 @@ struct ast_config *ast_load_realtime_multientry(const char *family, ...)
 	for (i = 1; ; i++) {
 		if ((eng = find_engine(family, i, db, sizeof(db), table, sizeof(table)))) {
 			if (eng->realtime_multi_func && (res = eng->realtime_multi_func(db, table, ap))) {
-				/* If we were returned an empty cfg, destroy it and return NULL */
-				if (!res->root) {
-					ast_config_destroy(res);
-					res = NULL;
-				}
 				break;
 			}
 		} else {

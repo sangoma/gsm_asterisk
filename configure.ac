@@ -20,7 +20,7 @@ AC_CONFIG_SRCDIR([main/asterisk.c])
 AC_CONFIG_AUX_DIR(`pwd`)
 
 AC_COPYRIGHT("Asterisk")
-AC_REVISION($Revision: 339721 $)
+AC_REVISION($Revision: 336635 $)
 
 # preserve any CFLAGS or LDFLAGS that may be set
 # NOTE: This must be done before calling any macros that end up
@@ -36,10 +36,6 @@ AC_SUBST(CONFIG_LDFLAGS)
 
 # specify output header file
 AC_CONFIG_HEADER(include/asterisk/autoconfig.h)
-
-# Note: AC_PROG_CC *must* be specified before AC_USE_SYSTEM_EXTENSIONS or any
-# other macro that uses the C compiler, or the default order will be used.
-AC_PROG_CC([gcc cc])
 
 AC_USE_SYSTEM_EXTENSIONS	dnl note- does not work on FreeBSD
 
@@ -179,9 +175,6 @@ case "${host_os}" in
      linux-gnueabi)
      OSARCH=linux-gnu
      ;;
-     kfreebsd*-gnu)
-     OSARCH=kfreebsd-gnu
-     ;;
      *)
      OSARCH=${host_os}
      ;;
@@ -219,6 +212,7 @@ then
 fi
 
 # Checks for programs.
+AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_CPP
 AC_PROG_CXXCPP
@@ -414,29 +408,6 @@ AST_EXT_LIB_SETUP([PGSQL], [PostgreSQL], [postgres])
 AST_EXT_LIB_SETUP([POPT], [popt], [popt])
 AST_EXT_LIB_SETUP([PORTAUDIO], [PortAudio], [portaudio])
 AST_EXT_LIB_SETUP([PRI], [ISDN PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_L2_PERSISTENCE], [ISDN Layer 2 persistence option], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_DATETIME_SEND], [ISDN PRI Date/time ie send policy], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_MWI_V2], [ISDN PRI Message Waiting Indication (Fixed)], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_DISPLAY_TEXT], [ISDN PRI user display text IE contents during call], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_MWI], [ISDN PRI Message Waiting Indication], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_MCID], [ISDN PRI Malicious Call ID], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_CALL_WAITING], [ISDN PRI call waiting supplementary service], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_AOC_EVENTS], [ISDN PRI advice of charge supplementary service events], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_TRANSFER], [ISDN PRI call transfer supplementary service], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_CCSS], [ISDN PRI call completion supplementary service], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_HANGUP_FIX], [ISDN PRI hangup fix], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_SUBADDR], [ISDN PRI subaddressing], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_CALL_HOLD], [ISDN PRI call hold], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_CALL_REROUTING], [ISDN PRI call rerouting and call deflection], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_SETUP_KEYPAD], [ISDN PRI keypad facility in SETUP], [PRI], [pri])
-# ------------------------------------v
-# TODO: The code can be changed to always include these features now.
-# These features will always be present if pri_connected_line_update is available.
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_INBANDDISCONNECT], [ISDN PRI set_inbanddisconnect], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_PROG_W_CAUSE], [ISDN progress with cause], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_SERVICE_MESSAGES], [ISDN service messages], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_REVERSE_CHARGE], [ISDN reverse charge], [PRI], [pri])
-# ------------------------------------^
 AST_EXT_LIB_SETUP([PWLIB], [PWlib], [pwlib])
 AST_EXT_LIB_SETUP([RADIUS], [Radius Client], [radius])
 AST_EXT_LIB_SETUP([RESAMPLE], [LIBRESAMPLE], [resample])
@@ -445,7 +416,6 @@ AST_EXT_LIB_SETUP([SDL_IMAGE], [Sdl Image], [SDL_image])
 AST_OPTION_ONLY([sounds-cache], [SOUNDS_CACHE_DIR], [cached sound tarfiles], [])
 AST_EXT_LIB_SETUP([SPANDSP], [SPANDSP], [spandsp])
 AST_EXT_LIB_SETUP([SS7], [ISDN SS7], [ss7])
-AST_EXT_LIB_SETUP([WAT], [GSM AT], [wat])
 AST_EXT_LIB_SETUP([SPEEX], [Speex], [speex])
 AST_EXT_LIB_SETUP([SPEEX_PREPROCESS], [Speex preprocess routines], [speex])
 AST_EXT_LIB_SETUP([SPEEXDSP], [SpeexDSP], [speexdsp])
@@ -475,49 +445,6 @@ AC_HEADER_DIRENT
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h libintl.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/event.h sys/file.h sys/ioctl.h sys/param.h sys/socket.h sys/time.h syslog.h termios.h unistd.h utime.h arpa/nameser.h sys/io.h])
-
-# Any one of these 4 packages support a mandatory requirement, so we want to check on them as early as possible.
-AST_EXT_LIB_CHECK([TERMCAP], [termcap], [tgetent], [])
-AST_EXT_LIB_CHECK([TINFO], [tinfo], [tgetent], [])
-AST_EXT_LIB_CHECK([CURSES], [curses], [initscr], [curses.h])
-AST_EXT_LIB_CHECK([NCURSES], [ncurses], [initscr], [curses.h])
-
-EDITLINE_LIB=""
-if test "x$TERMCAP_LIB" != "x" ; then
-  EDITLINE_LIB="$TERMCAP_LIB"
-elif test "x$TINFO_LIB" != "x" ; then
-  EDITLINE_LIB="$TINFO_LIB"
-elif test "x$CURSES_LIB" != "x" ; then
-  EDITLINE_LIB="$CURSES_LIB"
-elif test "x$NCURSES_LIB" != "x" ; then
-  EDITLINE_LIB="$NCURSES_LIB"
-else
-  AC_MSG_ERROR([*** termcap support not found (on modern systems, this typically means the ncurses development package is missing)])
-fi
-AC_SUBST(EDITLINE_LIB)
-
-# Another mandatory item (unless it's explicitly disabled)
-AC_ARG_ENABLE([xmldoc],
-	[AS_HELP_STRING([--disable-xmldoc],
-		[Explicity disable XML documentation])],
-	[case "${enableval}" in
-		y|ye|yes) disable_xmldoc=no ;;
-		n|no)  disable_xmldoc=yes ;;
-		*) AC_MSG_ERROR(bad value ${enableval} for --disable-xmldoc)  ;;
-	esac], [disable_xmldoc=no])
-
-if test "${disable_xmldoc}" != "yes"; then
-	AST_EXT_TOOL_CHECK([LIBXML2], [xml2-config], , ,
-	[#include <libxml/tree.h>
-	#include <libxml/parser.h>],
-	[LIBXML_TEST_VERSION])
-	if test "${PBX_LIBXML2}" != 1; then
-		AC_MSG_NOTICE(*** XML documentation will not be available because the 'libxml2' development package is missing.)
-		AC_MSG_NOTICE(*** Please run the 'configure' script with the '--disable-xmldoc' parameter option)
-		AC_MSG_NOTICE(*** or install the 'libxml2' development package.)
-		exit 1
-	fi
-fi
 
 # some embedded systems omit internationalization (locale) support
 AC_CHECK_HEADERS([xlocale.h])
@@ -826,9 +753,6 @@ AC_LINK_IFELSE(
 #)
 #fi
 
-# for FreeBSD thr_self
-AC_CHECK_HEADERS([sys/thr.h])
-
 AC_MSG_CHECKING(for compiler atomic operations)
 AC_LINK_IFELSE(
 AC_LANG_PROGRAM([], [int foo1; int foo2 = __sync_fetch_and_add(&foo1, 1);]),
@@ -900,7 +824,6 @@ AST_GCC_ATTRIBUTE(deprecated)
 AST_GCC_ATTRIBUTE(sentinel)
 AST_GCC_ATTRIBUTE(warn_unused_result)
 AST_GCC_ATTRIBUTE(weak_import, [], [], PBX_WEAKREF)
-AST_GCC_ATTRIBUTE(weak, [], [], PBX_WEAKREF)
 AST_GCC_ATTRIBUTE(weakref, [weakref("foo")], static, PBX_WEAKREF)
 
 AC_MSG_CHECKING(for -ffunction-sections support)
@@ -965,16 +888,6 @@ else
 	AST_SHADOW_WARNINGS=
 fi
 AC_SUBST(AST_SHADOW_WARNINGS)
-
-AC_MSG_CHECKING(for -march=native)
-if $(${CC} -march=native -S -o /dev/null -xc /dev/null > /dev/null 2>&1); then
-	AC_MSG_RESULT(yes)
-	AST_MARCH_NATIVE="-march=native"
-else
-	AC_MSG_RESULT(no)
-	AST_MARCH_NATIVE=
-fi
-AC_SUBST(AST_MARCH_NATIVE)
 
 AC_MSG_CHECKING(for sysinfo)
 AC_LINK_IFELSE(
@@ -1101,6 +1014,8 @@ AC_CHECK_TOOL(PKGCONFIG, pkg-config, No)
 AST_EXT_LIB_CHECK([ALSA], [asound], [snd_spcm_init], [alsa/asoundlib.h], [-lm -ldl])
 
 AST_EXT_LIB_CHECK([BFD], [bfd], [bfd_openr], [bfd.h])
+
+AST_EXT_LIB_CHECK([CURSES], [curses], [initscr], [curses.h])
 
 if test "x${OSARCH}" = "xlinux-gnu" ; then
   AST_EXT_LIB_CHECK([CAP], [cap], [cap_from_text], [sys/capability.h])
@@ -1735,6 +1650,28 @@ AST_EXT_LIB_CHECK([LTDL], [ltdl], [lt_dlinit], [ltdl.h], [])
 
 AST_EXT_LIB_CHECK([LDAP], [ldap], [ldap_initialize], [ldap.h])
 
+AC_ARG_ENABLE([xmldoc],
+	[AS_HELP_STRING([--disable-xmldoc],
+		[Explicity disable XML documentation])],
+	[case "${enableval}" in
+		y|ye|yes) disable_xmldoc=no ;;
+		n|no)  disable_xmldoc=yes ;;
+		*) AC_MSG_ERROR(bad value ${enableval} for --disable-xmldoc)  ;;
+	esac], [disable_xmldoc=no])
+
+if test "${disable_xmldoc}" != "yes"; then
+	AST_EXT_TOOL_CHECK([LIBXML2], [xml2-config], , ,
+	[#include <libxml/tree.h>
+	#include <libxml/parser.h>],
+	[LIBXML_TEST_VERSION])
+	if test "${PBX_LIBXML2}" != 1; then
+		AC_MSG_NOTICE(*** XML documentation will not be available because the 'libxml2' development package is missing.)
+		AC_MSG_NOTICE(*** Please run the 'configure' script with the '--disable-xmldoc' parameter option)
+		AC_MSG_NOTICE(*** or install the 'libxml2' development package.)
+		exit 1
+	fi
+fi
+
 AST_EXT_LIB_CHECK([MISDN], [mISDN], [mISDN_open], [mISDNuser/mISDNlib.h])
 
 if test "${PBX_MISDN}" = 1; then
@@ -1749,6 +1686,8 @@ fi
 AST_EXT_TOOL_CHECK([MYSQLCLIENT], [mysql_config])
 
 AST_EXT_LIB_CHECK([NBS], [nbs], [nbs_connect], [nbs.h])
+
+AST_EXT_LIB_CHECK([NCURSES], [ncurses], [initscr], [curses.h])
 
 AST_EXT_TOOL_CHECK([NEON], [neon-config])
 
@@ -1847,9 +1786,6 @@ AST_EXT_LIB_CHECK([PORTAUDIO], [portaudio], [Pa_GetDeviceCount], [portaudio.h])
 
 AST_EXT_LIB_CHECK([PRI], [pri], [pri_connected_line_update], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_L2_PERSISTENCE], [pri], [pri_persistent_layer2_option], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_DATETIME_SEND], [pri], [pri_date_time_send_option], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_MWI_V2], [pri], [pri_mwi_indicate_v2], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_DISPLAY_TEXT], [pri], [pri_display_text], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_MWI], [pri], [pri_mwi_indicate], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_MCID], [pri], [pri_mcid_enable], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_CALL_WAITING], [pri], [pri_connect_ack_enable], [libpri.h])
@@ -1891,8 +1827,6 @@ if test "x${PBX_SPANDSP}" = "x1" ; then
 	PBX_SPANDSP=0
 	AST_EXT_LIB_CHECK([SPANDSP], [spandsp], [t38_terminal_init], [spandsp.h], [-ltiff])
 fi
-
-AST_EXT_LIB_CHECK([WAT], [wat], [wat_register], [libwat.h])
 
 AST_EXT_LIB_CHECK([SS7], [ss7], [ss7_pollflags], [libss7.h])
 
@@ -1993,12 +1927,6 @@ AST_EXT_LIB_CHECK([SQLITE], [sqlite], [sqlite_exec], [sqlite.h])
 
 AST_EXT_LIB_CHECK([SQLITE3], [sqlite3], [sqlite3_open], [sqlite3.h], [${PTHREAD_LIBS}], [${PTHREAD_CFLAGS}])
 
-if test "${PBX_SQLITE3}" != 1; then
-	AC_MSG_WARN(*** Asterisk now uses SQLite3 for the internal Asterisk database.)
-	AC_MSG_WARN(*** Please install the SQLite3 development package.)
-	exit 1
-fi
-
 AST_EXT_LIB_CHECK([CRYPTO], [crypto], [AES_encrypt], [openssl/aes.h])
 
 if test "$PBX_CRYPTO" = "1";
@@ -2008,7 +1936,7 @@ fi
 
 if test "$PBX_OPENSSL" = "1";
 then
-    AST_CHECK_OSPTK([4], [0], [0])
+    AST_CHECK_OSPTK([3], [6], [0])
 fi
 
 AST_EXT_LIB_CHECK([SRTP], [srtp], [srtp_init], [srtp/srtp.h])
@@ -2069,6 +1997,10 @@ fi
 AST_EXT_LIB_CHECK([HOARD], [hoard], [malloc], [])
 
 AST_EXT_LIB_CHECK([FREETDS], [sybdb], [dbinit], [sybdb.h])
+
+AST_EXT_LIB_CHECK([TERMCAP], [termcap], [tgetent], [])
+
+AST_EXT_LIB_CHECK([TINFO], [tinfo], [tgetent], [])
 
 AC_CHECK_LIB([tonezone], [tone_zone_find_by_num], tonezone_does_not_need_lm=yes, tonezone_does_not_need_lm=no)
 
@@ -2133,6 +2065,20 @@ fi
 AC_LANG_POP
 
 AST_EXT_LIB_CHECK([ZLIB], [z], [compress], [zlib.h])
+
+EDITLINE_LIB=""
+if test "x$TERMCAP_LIB" != "x" ; then
+  EDITLINE_LIB="$TERMCAP_LIB"
+elif test "x$TINFO_LIB" != "x" ; then
+  EDITLINE_LIB="$TINFO_LIB"
+elif test "x$CURSES_LIB" != "x" ; then
+  EDITLINE_LIB="$CURSES_LIB"
+elif test "x$NCURSES_LIB" != "x" ; then
+  EDITLINE_LIB="$NCURSES_LIB"
+else
+  AC_MSG_ERROR([*** termcap support not found (on modern systems, this typically means the ncurses development package is missing)])
+fi
+AC_SUBST(EDITLINE_LIB)
 
 if test "x${PBX_UNIXODBC}" = "x1" -o "x${PBX_IODBC}" = "x1"; then
 	# Does ODBC support wide characters?

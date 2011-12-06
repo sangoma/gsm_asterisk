@@ -38,8 +38,8 @@
  */
 
 /*** MODULEINFO
-	<use type="module">res_adsi</use>
-	<use type="module">res_smdi</use>
+	<use>res_adsi</use>
+	<use>res_smdi</use>
 	<support_level>core</support_level>
  ***/
 
@@ -49,7 +49,6 @@
 		<conflict>ODBC_STORAGE</conflict>
 		<conflict>IMAP_STORAGE</conflict>
 		<defaultenabled>yes</defaultenabled>
-		<support_level>core</support_level>
 	</member>
 	<member name="ODBC_STORAGE" displayname="Storage of Voicemail using ODBC">
 		<depend>generic_odbc</depend>
@@ -57,15 +56,13 @@
 		<conflict>IMAP_STORAGE</conflict>
 		<conflict>FILE_STORAGE</conflict>
 		<defaultenabled>no</defaultenabled>
-		<support_level>core</support_level>
 	</member>
 	<member name="IMAP_STORAGE" displayname="Storage of Voicemail using IMAP4">
 		<depend>imap_tk</depend>
 		<conflict>ODBC_STORAGE</conflict>
 		<conflict>FILE_STORAGE</conflict>
-		<use type="external">openssl</use>
+		<use>openssl</use>
 		<defaultenabled>no</defaultenabled>
-		<support_level>core</support_level>
 	</member>
 </category>
 ***/
@@ -91,7 +88,7 @@
 #endif
 #endif
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341126 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 334453 $")
 
 #include "asterisk/paths.h"	/* use ast_config_AST_SPOOL_DIR */
 #include <sys/time.h>
@@ -438,8 +435,8 @@ static AST_LIST_HEAD_STATIC(vmstates, vmstate);
 #define ASTERISK_USERNAME "asterisk"
 
 /* Define fast-forward, pause, restart, and reverse keys
- * while listening to a voicemail message - these are
- * strings, not characters */
+   while listening to a voicemail message - these are
+   strings, not characters */
 #define DEFAULT_LISTEN_CONTROL_FORWARD_KEY "#"
 #define DEFAULT_LISTEN_CONTROL_REVERSE_KEY "*"
 #define DEFAULT_LISTEN_CONTROL_PAUSE_KEY "0"
@@ -448,7 +445,7 @@ static AST_LIST_HEAD_STATIC(vmstates, vmstate);
 #define VALID_DTMF "1234567890*#" /* Yes ABCD are valid dtmf but what phones have those? */
 
 /* Default mail command to mail voicemail. Change it with the
- * mailcmd= command in voicemail.conf */
+    mailcmd= command in voicemail.conf */
 #define SENDMAIL "/usr/sbin/sendmail -t"
 
 #define INTRO "vm-intro"
@@ -908,7 +905,7 @@ static int open_mailbox(struct vm_state *vms, struct ast_vm_user *vmu, int box);
 static int advanced_options(struct ast_channel *chan, struct ast_vm_user *vmu, struct vm_state *vms, int msg, int option, signed char record_gain);
 static int dialout(struct ast_channel *chan, struct ast_vm_user *vmu, char *num, char *outgoing_context);
 static int play_record_review(struct ast_channel *chan, char *playfile, char *recordfile, int maxtime,
-			char *fmt, int outsidecaller, struct ast_vm_user *vmu, int *duration, int *sound_duration, const char *unlockdir,
+			char *fmt, int outsidecaller, struct ast_vm_user *vmu, int *duration, const char *unlockdir,
 			signed char record_gain, struct vm_state *vms, char *flag);
 static int vm_tempgreeting(struct ast_channel *chan, struct ast_vm_user *vmu, struct vm_state *vms, char *fmtc, signed char record_gain);
 static int vm_play_folder_name(struct ast_channel *chan, char *mbox);
@@ -920,6 +917,7 @@ static int is_valid_dtmf(const char *key);
 static void read_password_from_file(const char *secretfn, char *password, int passwordlen);
 static int write_password_to_file(const char *secretfn, const char *password);
 static const char *substitute_escapes(const char *value);
+static void free_user(struct ast_vm_user *vmu);
 
 struct ao2_container *inprocess_container;
 
@@ -1011,7 +1009,7 @@ static char *strip_control_and_high(const char *input, char *buf, size_t buflen)
  * - the dialcontext
  * - the exitcontext
  * - vmmaxsecs, vmmaxmsg, maxdeletedmsg
- * - volume gain.
+ * - volume gain
  * - emailsubject, emailbody set to NULL
  */
 static void populate_defaults(struct ast_vm_user *vmu)
@@ -1066,10 +1064,8 @@ static void apply_option(struct ast_vm_user *vmu, const char *var, const char *v
 	} else if (!strcasecmp(var, "serveremail")) {
 		ast_copy_string(vmu->serveremail, value, sizeof(vmu->serveremail));
 	} else if (!strcasecmp(var, "emailbody")) {
-		ast_free(vmu->emailbody);
 		vmu->emailbody = ast_strdup(substitute_escapes(value));
 	} else if (!strcasecmp(var, "emailsubject")) {
-		ast_free(vmu->emailsubject);
 		vmu->emailsubject = ast_strdup(substitute_escapes(value));
 	} else if (!strcasecmp(var, "language")) {
 		ast_copy_string(vmu->language, value, sizeof(vmu->language));
@@ -1247,7 +1243,7 @@ static int check_password(struct ast_vm_user *vmu, char *password)
 	if (!ast_strlen_zero(ext_pass_check_cmd)) {
 		char cmd[255], buf[255];
 
-		ast_debug(1, "Verify password policies for %s\n", password);
+		ast_log(AST_LOG_DEBUG, "Verify password policies for %s\n", password);
 
 		snprintf(cmd, sizeof(cmd), "%s %s %s %s %s", ext_pass_check_cmd, vmu->mailbox, vmu->context, vmu->password, password);
 		if (vm_check_password_shell(cmd, buf, sizeof(buf))) {
@@ -1420,7 +1416,7 @@ static struct ast_vm_user *find_user_realtime(struct ast_vm_user *ivm, const cha
 			ast_variables_destroy(var);
 		} else { 
 			if (!ivm) 
-				ast_free(retval);
+				free_user(retval);
 			retval = NULL;
 		}	
 	} 
@@ -1806,7 +1802,8 @@ static void vm_imap_delete(char *file, int msgnum, struct ast_vm_user *vmu)
 		ast_log(LOG_WARNING, "msgnum %d, mailbox message %lu is zero.\n", msgnum, messageNum);
 		return;
 	}
-	ast_debug(3, "deleting msgnum %d, which is mailbox message %lu\n", msgnum, messageNum);
+	if (option_debug > 2)
+		ast_log(LOG_DEBUG, "deleting msgnum %d, which is mailbox message %lu\n", msgnum, messageNum);
 	/* delete message */
 	snprintf (arg, sizeof(arg), "%lu", messageNum);
 	ast_mutex_lock(&vms->lock);
@@ -1833,7 +1830,7 @@ static int imap_retrieve_greeting(const char *dir, const int msgnum, struct ast_
 		if (file)
 			*file++ = '\0';
 		else {
-			ast_debug(1, "Failed to procure file name from directory passed.\n");
+			ast_debug (1, "Failed to procure file name from directory passed.\n");
 			return -1;
 		}
 	}
@@ -1929,7 +1926,7 @@ static int imap_retrieve_file(const char *dir, const int msgnum, const char *mai
 		res = -1;
 		goto exit;
 	}
-
+	
 	make_file(vms->fn, sizeof(vms->fn), dir, msgnum);
 	snprintf(vms->introfn, sizeof(vms->introfn), "%sintro", vms->fn);
 
@@ -1939,7 +1936,8 @@ static int imap_retrieve_file(const char *dir, const int msgnum, const char *mai
 		goto exit;
 	}
 
-	ast_debug(3, "Before mail_fetchheaders, curmsg is: %d, imap messages is %lu\n", msgnum, vms->msgArray[msgnum]);
+	if (option_debug > 2)
+		ast_log(LOG_DEBUG, "Before mail_fetchheaders, curmsg is: %d, imap messages is %lu\n", msgnum, vms->msgArray[msgnum]);
 	if (vms->msgArray[msgnum] == 0) {
 		ast_log(LOG_WARNING, "Trying to access unknown message\n");
 		res = -1;
@@ -2079,7 +2077,7 @@ static int __messagecount(const char *context, const char *mailbox, const char *
 			return -1;
 		}
 	}
-
+	
 	/* No IMAP account available */
 	if (vmu->imapuser[0] == '\0') {
 		ast_log(AST_LOG_WARNING, "IMAP user not set for mailbox %s\n", vmu->mailbox);
@@ -2176,7 +2174,7 @@ static int imap_check_limits(struct ast_channel *chan, struct vm_state *vms, str
 		ast_play_and_wait(chan, "vm-mailboxfull");
 		return -1;
 	}
-
+	
 	/* Check if we have exceeded maxmsg */
 	ast_debug(3, "Checking message number quota: mailbox has %d messages, maximum is set to %d, current messages %d\n", msgnum, vmu->maxmsg, inprocess_count(vmu->mailbox, vmu->context, 0));
 	if (msgnum >= vmu->maxmsg - inprocess_count(vmu->mailbox, vmu->context, +1)) {
@@ -2233,7 +2231,7 @@ static int imap_store_file(const char *dir, const char *mailboxuser, const char 
 			box = GREETINGS_FOLDER;
 		}
 	}
-
+	
 	if (imap_check_limits(chan, vms, vmu, msgcount)) {
 		return -1;
 	}
@@ -2243,7 +2241,7 @@ static int imap_store_file(const char *dir, const char *mailboxuser, const char 
 		ast_debug(3, "Setting message flag \\\\FLAGGED.\n");
 		imap_flags = "\\FLAGGED";
 	}
-
+	
 	/* Attach only the first format */
 	fmt = ast_strdupa(fmt);
 	stringp = fmt;
@@ -2261,7 +2259,7 @@ static int imap_store_file(const char *dir, const char *mailboxuser, const char 
 	if (ast_fileexists(introfn, NULL, NULL) <= 0) {
 		*introfn = '\0';
 	}
-
+	
 	if (ast_strlen_zero(vmu->email)) {
 		/* We need the vmu->email to be set when we call make_email_file, but
 		 * if we keep it set, a duplicate e-mail will be created. So at the end
@@ -2333,7 +2331,7 @@ static int imap_store_file(const char *dir, const char *mailboxuser, const char 
 		return -1;
 	}
 	ast_debug(3, "%s stored\n", fn);
-
+	
 	if (tempcopy)
 		*(vmu->email) = '\0';
 	inprocess_count(vmu->mailbox, vmu->context, -1);
@@ -2372,7 +2370,7 @@ static int inboxcount2(const char *mailbox_context, int *urgentmsgs, int *newmsg
 	/* If no mailbox, return immediately */
 	if (ast_strlen_zero(mailbox_context))
 		return 0;
-
+	
 	ast_copy_string(tmp, mailbox_context, sizeof(tmp));
 	context = strchr(tmp, '@');
 	if (strchr(mailbox_context, ',')) {
@@ -2554,14 +2552,16 @@ static int init_mailstream(struct vm_state *vms, int box)
 	MAILSTREAM *stream = NIL;
 	long debug;
 	char tmp[256];
-
+	
 	if (!vms) {
 		ast_log(LOG_ERROR, "vm_state is NULL!\n");
 		return -1;
 	}
-	ast_debug(3, "vm_state user is:%s\n", vms->imapuser);
+	if (option_debug > 2)
+		ast_log(LOG_DEBUG, "vm_state user is:%s\n", vms->imapuser);
 	if (vms->mailstream == NIL || !vms->mailstream) {
-		ast_debug(1, "mailstream not set.\n");
+		if (option_debug)
+			ast_log(LOG_DEBUG, "mailstream not set.\n");
 	} else {
 		stream = vms->mailstream;
 	}
@@ -2594,7 +2594,8 @@ static int init_mailstream(struct vm_state *vms, int box)
 	}
 	/* Now connect to the target folder */
 	imap_mailbox_name(tmp, sizeof(tmp), vms, box, 1);
-	ast_debug(3, "Before mail_open, server: %s, box:%d\n", tmp, box);
+	if (option_debug > 2)
+		ast_log(LOG_DEBUG, "Before mail_open, server: %s, box:%d\n", tmp, box);
 	ast_mutex_lock(&vms->lock);
 	vms->mailstream = mail_open (stream, tmp, debug ? OP_DEBUG : NIL);
 	ast_mutex_unlock(&vms->lock);
@@ -2626,9 +2627,9 @@ static int open_mailbox(struct vm_state *vms, struct ast_vm_user *vmu, int box)
 		ast_log(AST_LOG_ERROR, "Could not initialize mailstream\n");
 		return -1;
 	}
-
+	
 	create_dirpath(vms->curdir, sizeof(vms->curdir), vmu->context, vms->username, vms->curbox);
-
+	
 	/* Check Quota */
 	if  (box == 0)  {
 		ast_debug(3, "Mailbox name set to: %s, about to check quotas\n", mbox(vmu, box));
@@ -2905,13 +2906,13 @@ static void mm_parsequota(MAILSTREAM *stream, unsigned char *msg, QUOTALIST *pqu
 	char *mailbox = stream->mailbox, *user;
 	char buf[1024] = "";
 	unsigned long usage = 0, limit = 0;
-
+	
 	while (pquota) {
 		usage = pquota->usage;
 		limit = pquota->limit;
 		pquota = pquota->next;
 	}
-
+	
 	if (!(user = get_user_by_mailbox(mailbox, buf, sizeof(buf))) || (!(vms = get_vm_state_by_imapuser(user, 2)) && !(vms = get_vm_state_by_imapuser(user, 0)))) {
 		ast_log(AST_LOG_ERROR, "No state found.\n");
 		return;
@@ -2979,7 +2980,8 @@ static struct vm_state *create_vm_state_from_user(struct ast_vm_user *vmu)
 	if ((vms_p = pthread_getspecific(ts_vmstate.key)) && !strcmp(vms_p->imapuser, vmu->imapuser) && !strcmp(vms_p->username, vmu->mailbox)) {
 		return vms_p;
 	}
-	ast_debug(5, "Adding new vmstate for %s\n", vmu->imapuser);
+	if (option_debug > 4)
+		ast_log(AST_LOG_DEBUG, "Adding new vmstate for %s\n", vmu->imapuser);
 	if (!(vms_p = ast_calloc(1, sizeof(*vms_p))))
 		return NULL;
 	ast_copy_string(vms_p->imapuser, vmu->imapuser, sizeof(vms_p->imapuser));
@@ -2988,7 +2990,8 @@ static struct vm_state *create_vm_state_from_user(struct ast_vm_user *vmu)
 	ast_copy_string(vms_p->context, vmu->context, sizeof(vms_p->context));
 	vms_p->mailstream = NIL; /* save for access from interactive entry point */
 	vms_p->imapversion = vmu->imapversion;
-	ast_debug(5, "Copied %s to %s\n", vmu->imapuser, vms_p->imapuser);
+	if (option_debug > 4)
+		ast_log(AST_LOG_DEBUG, "Copied %s to %s\n", vmu->imapuser, vms_p->imapuser);
 	vms_p->updated = 1;
 	/* set mailbox to INBOX! */
 	ast_copy_string(vms_p->curbox, mbox(vmu, 0), sizeof(vms_p->curbox));
@@ -3062,7 +3065,7 @@ static struct vm_state *get_vm_state_by_mailbox(const char *mailbox, const char 
 		}
 
 		ast_debug(3, "comparing mailbox %s@%s (i=%d) to vmstate mailbox %s@%s (i=%d)\n", mailbox, local_context, interactive, vlist->vms->username, vlist->vms->context, vlist->vms->interactive);
-
+		
 		if (!strcmp(vlist->vms->username, mailbox) && !strcmp(vlist->vms->context, local_context) && vlist->vms->interactive == interactive) {
 			ast_debug(3, "Found it!\n");
 			AST_LIST_UNLOCK(&vmstates);
@@ -3076,7 +3079,7 @@ static struct vm_state *get_vm_state_by_mailbox(const char *mailbox, const char 
 	return NULL;
 }
 
-static void vmstate_insert(struct vm_state *vms)
+static void vmstate_insert(struct vm_state *vms) 
 {
 	struct vmstate *v;
 	struct vm_state *altvms;
@@ -3086,7 +3089,7 @@ static void vmstate_insert(struct vm_state *vms)
 	   We can compare the username to find the duplicate */
 	if (vms->interactive == 1) {
 		altvms = get_vm_state_by_mailbox(vms->username, vms->context, 0);
-		if (altvms) {
+		if (altvms) {	
 			ast_debug(3, "Duplicate mailbox %s, copying message info...\n", vms->username);
 			vms->newmessages = altvms->newmessages;
 			vms->oldmessages = altvms->oldmessages;
@@ -3107,7 +3110,7 @@ static void vmstate_insert(struct vm_state *vms)
 
 	if (!(v = ast_calloc(1, sizeof(*v))))
 		return;
-
+	
 	v->vms = vms;
 
 	ast_debug(3, "Inserting vm_state for user:%s, mailbox %s\n", vms->imapuser, vms->username);
@@ -3117,7 +3120,7 @@ static void vmstate_insert(struct vm_state *vms)
 	AST_LIST_UNLOCK(&vmstates);
 }
 
-static void vmstate_delete(struct vm_state *vms)
+static void vmstate_delete(struct vm_state *vms) 
 {
 	struct vmstate *vc = NULL;
 	struct vm_state *altvms = NULL;
@@ -3134,9 +3137,9 @@ static void vmstate_delete(struct vm_state *vms)
 		/* Interactive states are not stored within the persistent list */
 		return;
 	}
-
+	
 	ast_debug(3, "Removing vm_state for user:%s, mailbox %s\n", vms->imapuser, vms->username);
-
+	
 	AST_LIST_LOCK(&vmstates);
 	AST_LIST_TRAVERSE_SAFE_BEGIN(&vmstates, vc, list) {
 		if (vc->vms == vms) {
@@ -3155,7 +3158,7 @@ static void vmstate_delete(struct vm_state *vms)
 		ast_log(AST_LOG_ERROR, "No vmstate found for user:%s, mailbox %s\n", vms->imapuser, vms->username);
 }
 
-static void set_update(MAILSTREAM * stream)
+static void set_update(MAILSTREAM * stream) 
 {
 	struct vm_state *vms;
 	char *mailbox = stream->mailbox, *user;
@@ -3172,7 +3175,7 @@ static void set_update(MAILSTREAM * stream)
 	vms->updated = 1; /* Set updated flag since mailbox changed */
 }
 
-static void init_vm_state(struct vm_state *vms)
+static void init_vm_state(struct vm_state *vms) 
 {
 	int x;
 	vms->vmArrayIndex = 0;
@@ -3182,7 +3185,7 @@ static void init_vm_state(struct vm_state *vms)
 	ast_mutex_init(&vms->lock);
 }
 
-static int save_body(BODY *body, struct vm_state *vms, char *section, char *format, int is_intro)
+static int save_body(BODY *body, struct vm_state *vms, char *section, char *format, int is_intro) 
 {
 	char *body_content;
 	char *body_decoded;
@@ -3190,7 +3193,7 @@ static int save_body(BODY *body, struct vm_state *vms, char *section, char *form
 	unsigned long len;
 	unsigned long newlen;
 	char filename[256];
-
+	
 	if (!body || body == NIL)
 		return -1;
 
@@ -3199,9 +3202,9 @@ static int save_body(BODY *body, struct vm_state *vms, char *section, char *form
 	ast_mutex_unlock(&vms->lock);
 	if (body_content != NIL) {
 		snprintf(filename, sizeof(filename), "%s.%s", fn, format);
-		/* ast_debug(1, body_content); */
+		/* ast_debug(1,body_content); */
 		body_decoded = rfc822_base64((unsigned char *) body_content, len, &newlen);
-		/* If the body of the file is empty, return an error */
+ 		/* If the body of the file is empty, return an error */
 		if (!newlen) {
 			return -1;
 		}
@@ -3248,9 +3251,9 @@ static void check_quota(struct vm_state *vms, char *mailbox) {
 #endif /* IMAP_STORAGE */
 
 /*! \brief Lock file path
- * only return failure if ast_lock_path returns 'timeout',
- * not if the path does not exist or any other reason
- */
+    only return failure if ast_lock_path returns 'timeout',
+   not if the path does not exist or any other reason
+*/
 static int vm_lock_path(const char *path)
 {
 	switch (ast_lock_path(path)) {
@@ -4353,7 +4356,9 @@ static void prep_email_sub_vars(struct ast_channel *ast, struct ast_vm_user *vmu
 		strcat(fromfile, ".txt");
 	}
 	if (!(msg_cfg = ast_config_load(fromfile, config_flags))) {
-		ast_debug(1, "Config load for message text file '%s' failed\n", fromfile);
+		if (option_debug > 0) {
+			ast_log(LOG_DEBUG, "Config load for message text file '%s' failed\n", fromfile);
+		}
 		return;
 	}
 
@@ -4576,7 +4581,7 @@ static void make_email_file(FILE *p, char *srcemail, struct ast_vm_user *vmu, in
 			} else {
 				fprintf(p, "From: %s <%s>" ENDL, ast_str_quote(&str2, 0, ast_str_buffer(str1)), who);
 			}
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -4621,7 +4626,7 @@ static void make_email_file(FILE *p, char *srcemail, struct ast_vm_user *vmu, in
 			} else {
 				fprintf(p, "Subject: %s" ENDL, ast_str_buffer(str1));
 			}
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -4707,7 +4712,7 @@ static void make_email_file(FILE *p, char *srcemail, struct ast_vm_user *vmu, in
 #else
 			fprintf(p, "%s" ENDL, ast_str_buffer(str1));
 #endif
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -4934,7 +4939,7 @@ static int sendpage(char *srcemail, char *pager, int msgnum, char *context, char
 			} else {
 				fprintf(p, "From: %s <%s>" ENDL, ast_str_quote(&str2, 0, ast_str_buffer(str1)), who);
 			}
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -4978,7 +4983,7 @@ static int sendpage(char *srcemail, char *pager, int msgnum, char *context, char
 			} else {
 				fprintf(p, "Subject: %s" ENDL, ast_str_buffer(str1));
 			}
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -4996,7 +5001,7 @@ static int sendpage(char *srcemail, char *pager, int msgnum, char *context, char
 			prep_email_sub_vars(ast, vmu, msgnum + 1, context, mailbox, fromfolder, cidnum, cidname, dur, date, category, flag);
 			ast_str_substitute_variables(&str1, 0, ast, pagerbody);
 			fprintf(p, "%s" ENDL, ast_str_buffer(str1));
-			ast = ast_channel_unref(ast);
+			ast = ast_channel_release(ast);
 		} else {
 			ast_log(AST_LOG_WARNING, "Cannot allocate the channel for variables substitution\n");
 		}
@@ -5027,7 +5032,7 @@ static int get_date(char *s, int len)
 {
 	struct ast_tm tm;
 	struct timeval t = ast_tvnow();
-
+	
 	ast_localtime(&t, &tm, "UTC");
 
 	return ast_strftime(s, len, "%a %b %e %r UTC %Y", &tm);
@@ -5580,7 +5585,6 @@ static int leave_voicemail(struct ast_channel *chan, char *ext, struct leave_vm_
 	int res = 0;
 	int msgnum;
 	int duration = 0;
-	int sound_duration = 0;
 	int ausemacro = 0;
 	int ousemacro = 0;
 	int ouseexten = 0;
@@ -5766,7 +5770,8 @@ static int leave_voicemail(struct ast_channel *chan, char *ext, struct leave_vm_
 	}
 	/* If maxmsg is zero, act as a "greetings only" voicemail: Exit successfully without recording */
 	if (vmu->maxmsg == 0) {
-		ast_debug(3, "Greetings only VM (maxmsg=0), Skipping voicemail recording\n");
+		if (option_debug > 2)
+			ast_log(LOG_DEBUG, "Greetings only VM (maxmsg=0), Skipping voicemail recording\n");
 		pbx_builtin_setvar_helper(chan, "VMSTATUS", "SUCCESS");
 		goto leave_vm_out;
 	}
@@ -5858,7 +5863,7 @@ static int leave_voicemail(struct ast_channel *chan, char *ext, struct leave_vm_
 			}
 		}
 		vms->newmessages++;
-
+		
 		/* here is a big difference! We add one to it later */
 		msgnum = newmsgs + oldmsgs;
 		ast_debug(3, "Messagecount set to %d\n", msgnum);
@@ -5968,13 +5973,13 @@ static int leave_voicemail(struct ast_channel *chan, char *ext, struct leave_vm_
 			res = ast_streamfile(chan, "vm-mailboxfull", chan->language);
 			goto leave_vm_out;
 		}
-		res = play_record_review(chan, NULL, tmptxtfile, vmu->maxsecs, fmt, 1, vmu, &duration, &sound_duration, NULL, options->record_gain, vms, flag);
+		res = play_record_review(chan, NULL, tmptxtfile, vmu->maxsecs, fmt, 1, vmu, &duration, NULL, options->record_gain, vms, flag);
 
 		if (txt) {
 			fprintf(txt, "flag=%s\n", flag);
-			if (sound_duration < vmu->minsecs) {
+			if (duration < vmu->minsecs) {
 				fclose(txt);
-				ast_verb(3, "Recording was %d seconds long but needs to be at least %d - abandoning\n", sound_duration, vmu->minsecs);
+				ast_verb(3, "Recording was %d seconds long but needs to be at least %d - abandoning\n", duration, vmu->minsecs);
 				ast_filedelete(tmptxtfile, NULL);
 				unlink(tmptxtfile);
 				if (ast_check_realtime("voicemail_data")) {
@@ -6096,7 +6101,7 @@ static int leave_voicemail(struct ast_channel *chan, char *ext, struct leave_vm_
 		} else if (res > 0 && res != 't')
 			res = 0;
 
-		if (sound_duration < vmu->minsecs)
+		if (duration < vmu->minsecs)
 			/* XXX We should really give a prompt too short/option start again, with leave_vm_out called only after a timeout XXX */
 			pbx_builtin_setvar_helper(chan, "VMSTATUS", "FAILED");
 		else
@@ -6128,31 +6133,30 @@ leave_vm_out:
 #if !defined(IMAP_STORAGE)
 static int resequence_mailbox(struct ast_vm_user *vmu, char *dir, int stopcount)
 {
-	/* we know the actual number of messages, so stop process when number is hit */
+    /* we know the actual number of messages, so stop process when number is hit */
 
-	int x, dest;
-	char sfn[PATH_MAX];
-	char dfn[PATH_MAX];
+    int x, dest;
+    char sfn[PATH_MAX];
+    char dfn[PATH_MAX];
 
-	if (vm_lock_path(dir)) {
-		return ERROR_LOCK_PATH;
-	}
+    if (vm_lock_path(dir))
+        return ERROR_LOCK_PATH;
 
-	for (x = 0, dest = 0; dest != stopcount && x < vmu->maxmsg + 10; x++) {
-		make_file(sfn, sizeof(sfn), dir, x);
-		if (EXISTS(dir, x, sfn, NULL)) {
+    for (x = 0, dest = 0; dest != stopcount && x < vmu->maxmsg + 10; x++) {
+        make_file(sfn, sizeof(sfn), dir, x);
+        if (EXISTS(dir, x, sfn, NULL)) {
 
-			if (x != dest) {
-				make_file(dfn, sizeof(dfn), dir, dest);
-				RENAME(dir, x, vmu->mailbox, vmu->context, dir, dest, sfn, dfn);
-			}
+            if (x != dest) {
+                make_file(dfn, sizeof(dfn), dir, dest);
+                RENAME(dir, x, vmu->mailbox, vmu->context, dir, dest, sfn, dfn);
+            }
 
-			dest++;
-		}
-	}
-	ast_unlock_path(dir);
+            dest++;
+        }
+    }
+    ast_unlock_path(dir);
 
-	return dest;
+    return dest;
 }
 #endif
 
@@ -6174,7 +6178,7 @@ static int save_to_folder(struct ast_vm_user *vmu, struct vm_state *vms, int msg
 
 	/* get the real IMAP message number for this message */
 	snprintf(sequence, sizeof(sequence), "%ld", vms->msgArray[msg]);
-
+	
 	ast_debug(3, "Copying sequence %s to mailbox %s\n", sequence, mbox(vmu, box));
 	ast_mutex_lock(&vms->lock);
 	/* if save to Old folder, put in INBOX as read */
@@ -6192,7 +6196,7 @@ static int save_to_folder(struct ast_vm_user *vmu, struct vm_state *vms, int msg
 	/* Create the folder if it don't exist */
 	imap_mailbox_name(mailbox, sizeof(mailbox), vms, box, 1); /* Get the full mailbox name */
 	ast_debug(5, "Checking if folder exists: %s\n", mailbox);
-	if (mail_create(vms->mailstream, mailbox) == NIL)
+	if (mail_create(vms->mailstream, mailbox) == NIL) 
 		ast_debug(5, "Folder exists.\n");
 	else
 		ast_log(AST_LOG_NOTICE, "Folder %s created!\n", mbox(vmu, box));
@@ -6875,7 +6879,7 @@ static int vm_forwardoptions(struct ast_channel *chan, struct ast_vm_user *vmu, 
 			strncat(vms->introfn, "intro", sizeof(vms->introfn));
 			res = ast_play_and_wait(chan, INTRO);
 			res = ast_play_and_wait(chan, "beep");
-			res = play_record_review(chan, NULL, vms->introfn, vmu->maxsecs, vm_fmts, 1, vmu, (int *) duration, NULL, NULL, record_gain, vms, flag);
+			res = play_record_review(chan, NULL, vms->introfn, vmu->maxsecs, vm_fmts, 1, vmu, (int *) duration, NULL, record_gain, vms, flag);
 			cmd = 't';
 #else
 
@@ -6908,7 +6912,7 @@ static int vm_forwardoptions(struct ast_channel *chan, struct ast_vm_user *vmu, 
 			if (record_gain)
 				ast_channel_setoption(chan, AST_OPTION_RXGAIN, &record_gain, sizeof(record_gain), 0);
 
-			cmd = ast_play_and_prepend(chan, NULL, msgfile, 0, vm_fmts, &prepend_duration, NULL, 1, silencethreshold, maxsilence);
+			cmd = ast_play_and_prepend(chan, NULL, msgfile, 0, vm_fmts, &prepend_duration, 1, silencethreshold, maxsilence);
 
 			if (cmd == 'S') { /* If we timed out, tell the user it didn't work properly and clean up the files */
 				ast_stream_and_wait(chan, vm_pls_try_again, ""); /* this might be removed if a proper vm_prepend_timeout is ever recorded */
@@ -7539,6 +7543,7 @@ static int play_message_callerid(struct ast_channel *chan, struct vm_state *vms,
 	int i;
 	char *callerid, *name;
 	char prefile[PATH_MAX] = "";
+	
 
 	/* If voicemail cid is not enabled, or we didn't get cid or context from
 	 * the attribute file, leave now.
@@ -9238,11 +9243,11 @@ static int vm_newuser(struct ast_channel *chan, struct ast_vm_user *vmu, struct 
 	ast_debug(1, "User %s set password to %s of length %d\n", vms->username, newpassword, (int) strlen(newpassword));
 	cmd = ast_play_and_wait(chan, vm_passchanged);
 
-	/* If forcename is set, have the user record their name */
+	/* If forcename is set, have the user record their name */	
 	if (ast_test_flag(vmu, VM_FORCENAME)) {
 		snprintf(prefile, sizeof(prefile), "%s%s/%s/greet", VM_SPOOL_DIR, vmu->context, vms->username);
 		if (ast_fileexists(prefile, NULL, NULL) < 1) {
-			cmd = play_record_review(chan, "vm-rec-name", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-name", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			if (cmd < 0 || cmd == 't' || cmd == '#')
 				return cmd;
 		}
@@ -9252,14 +9257,14 @@ static int vm_newuser(struct ast_channel *chan, struct ast_vm_user *vmu, struct 
 	if (ast_test_flag(vmu, VM_FORCEGREET)) {
 		snprintf(prefile, sizeof(prefile), "%s%s/%s/unavail", VM_SPOOL_DIR, vmu->context, vms->username);
 		if (ast_fileexists(prefile, NULL, NULL) < 1) {
-			cmd = play_record_review(chan, "vm-rec-unv", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-unv", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			if (cmd < 0 || cmd == 't' || cmd == '#')
 				return cmd;
 		}
 
 		snprintf(prefile, sizeof(prefile), "%s%s/%s/busy", VM_SPOOL_DIR, vmu->context, vms->username);
 		if (ast_fileexists(prefile, NULL, NULL) < 1) {
-			cmd = play_record_review(chan, "vm-rec-busy", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-busy", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			if (cmd < 0 || cmd == 't' || cmd == '#')
 				return cmd;
 		}
@@ -9294,15 +9299,15 @@ static int vm_options(struct ast_channel *chan, struct ast_vm_user *vmu, struct 
 		switch (cmd) {
 		case '1': /* Record your unavailable message */
 			snprintf(prefile, sizeof(prefile), "%s%s/%s/unavail", VM_SPOOL_DIR, vmu->context, vms->username);
-			cmd = play_record_review(chan, "vm-rec-unv", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-unv", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			break;
 		case '2':  /* Record your busy message */
 			snprintf(prefile, sizeof(prefile), "%s%s/%s/busy", VM_SPOOL_DIR, vmu->context, vms->username);
-			cmd = play_record_review(chan, "vm-rec-busy", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-busy", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			break;
 		case '3': /* Record greeting */
 			snprintf(prefile, sizeof(prefile), "%s%s/%s/greet", VM_SPOOL_DIR, vmu->context, vms->username);
-			cmd = play_record_review(chan, "vm-rec-name", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			cmd = play_record_review(chan, "vm-rec-name", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			break;
 		case '4':  /* manage the temporary greeting */
 			cmd = vm_tempgreeting(chan, vmu, vms, fmtc, record_gain);
@@ -9364,10 +9369,10 @@ static int vm_options(struct ast_channel *chan, struct ast_vm_user *vmu, struct 
 				vms->username, newpassword, (int) strlen(newpassword));
 			cmd = ast_play_and_wait(chan, vm_passchanged);
 			break;
-		case '*':
+		case '*': 
 			cmd = 't';
 			break;
-		default:
+		default: 
 			cmd = 0;
 			snprintf(prefile, sizeof(prefile), "%s%s/%s/temp", VM_SPOOL_DIR, vmu->context, vms->username);
 			RETRIEVE(prefile, -1, vmu->mailbox, vmu->context);
@@ -9436,12 +9441,12 @@ static int vm_tempgreeting(struct ast_channel *chan, struct ast_vm_user *vmu, st
 			retries = 0;
 		RETRIEVE(prefile, -1, vmu->mailbox, vmu->context);
 		if (ast_fileexists(prefile, NULL, NULL) <= 0) {
-			play_record_review(chan, "vm-rec-temp", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+			play_record_review(chan, "vm-rec-temp", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 			cmd = 't';	
 		} else {
 			switch (cmd) {
 			case '1':
-				cmd = play_record_review(chan, "vm-rec-temp", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, NULL, record_gain, vms, NULL);
+				cmd = play_record_review(chan, "vm-rec-temp", prefile, maxgreet, fmtc, 0, vmu, &duration, NULL, record_gain, vms, NULL);
 				break;
 			case '2':
 				DELETE(prefile, -1, prefile, vmu);
@@ -10015,7 +10020,7 @@ static int vm_execmain(struct ast_channel *chan, const char *data)
 		cmd = ast_play_and_wait(chan, "an-error-has-occured");
 		return -1;
 	}
-
+	
 	/* Set language from config to override channel language */
 	if (!ast_strlen_zero(vmu->language))
 		ast_string_field_set(chan, language, vmu->language);
@@ -10406,7 +10411,7 @@ static int vm_execmain(struct ast_channel *chan, const char *data)
 			deleted = 1;
 #endif
 			break;
-
+	
 		case '8': /* Forward the current message */
 			if (vms.lastmsg > -1) {
 				cmd = forward_message(chan, context, &vms, vmu, vmfmts, 0, record_gain, in_urgent);
@@ -10584,7 +10589,7 @@ out:
 #ifdef HAVE_IMAP_TK2006
 		if (LEVELUIDPLUS (vms.mailstream)) {
 			mail_expunge_full(vms.mailstream, NIL, EX_UID);
-		} else
+		} else 
 #endif
 			mail_expunge(vms.mailstream);
 		ast_mutex_unlock(&vms.lock);
@@ -11911,11 +11916,11 @@ static int load_config(int reload)
 			ast_copy_string(ext_pass_cmd, val, sizeof(ext_pass_cmd));
 			pwdchange = PWDCHANGE_EXTERNAL | PWDCHANGE_INTERNAL;
 		}
-
+ 
 		/* External password validation command */
 		if ((val = ast_variable_retrieve(cfg, "general", "externpasscheck"))) {
 			ast_copy_string(ext_pass_check_cmd, val, sizeof(ext_pass_check_cmd));
-			ast_debug(1, "found externpasscheck: %s\n", ext_pass_check_cmd);
+			ast_log(AST_LOG_DEBUG, "found externpasscheck: %s\n", ext_pass_check_cmd);
 		}
 
 #ifdef IMAP_STORAGE
@@ -12025,18 +12030,18 @@ static int load_config(int reload)
 			}
 			if (!smdi_iface) {
 				ast_log(AST_LOG_ERROR, "No valid SMDI interface specfied, disabling SMDI voicemail notification\n");
-			}
+			} 
 		}
 
 		/* Silence treshold */
 		silencethreshold = ast_dsp_get_threshold_from_settings(THRESHOLD_SILENCE);
 		if ((val = ast_variable_retrieve(cfg, "general", "silencethreshold")))
 			silencethreshold = atoi(val);
-
-		if (!(val = ast_variable_retrieve(cfg, "general", "serveremail")))
+		
+		if (!(val = ast_variable_retrieve(cfg, "general", "serveremail"))) 
 			val = ASTERISK_USERNAME;
 		ast_copy_string(serveremail, val, sizeof(serveremail));
-
+		
 		vmmaxsecs = 0;
 		if ((val = ast_variable_retrieve(cfg, "general", "maxsecs"))) {
 			if (sscanf(val, "%30d", &x) == 1) {
@@ -12132,12 +12137,12 @@ static int load_config(int reload)
 		}
 
 		/* Force new user to record name ? */
-		if (!(val = ast_variable_retrieve(cfg, "general", "forcename")))
+		if (!(val = ast_variable_retrieve(cfg, "general", "forcename"))) 
 			val = "no";
 		ast_set2_flag((&globalflags), ast_true(val), VM_FORCENAME);
 
 		/* Force new user to record greetings ? */
-		if (!(val = ast_variable_retrieve(cfg, "general", "forcegreetings")))
+		if (!(val = ast_variable_retrieve(cfg, "general", "forcegreetings"))) 
 			val = "no";
 		ast_set2_flag((&globalflags), ast_true(val), VM_FORCEGREET);
 
@@ -12160,7 +12165,7 @@ static int load_config(int reload)
 			ast_debug(1, "VM Review Option disabled globally\n");
 			val = "no";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_REVIEW);
+		ast_set2_flag((&globalflags), ast_true(val), VM_REVIEW);	
 
 		/* Temporary greeting reminder */
 		if (!(val = ast_variable_retrieve(cfg, "general", "tempgreetwarn"))) {
@@ -12174,49 +12179,49 @@ static int load_config(int reload)
 			ast_debug(1, "VM next message wrap disabled globally\n");
 			val = "no";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_MESSAGEWRAP);
+		ast_set2_flag((&globalflags), ast_true(val), VM_MESSAGEWRAP);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "operator"))){
 			ast_debug(1, "VM Operator break disabled globally\n");
 			val = "no";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_OPERATOR);
+		ast_set2_flag((&globalflags), ast_true(val), VM_OPERATOR);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "saycid"))) {
 			ast_debug(1, "VM CID Info before msg disabled globally\n");
 			val = "no";
-		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_SAYCID);
+		} 
+		ast_set2_flag((&globalflags), ast_true(val), VM_SAYCID);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "sendvoicemail"))){
 			ast_debug(1, "Send Voicemail msg disabled globally\n");
 			val = "no";
 		}
 		ast_set2_flag((&globalflags), ast_true(val), VM_SVMAIL);
-
+	
 		if (!(val = ast_variable_retrieve(cfg, "general", "envelope"))) {
 			ast_debug(1, "ENVELOPE before msg enabled globally\n");
 			val = "yes";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_ENVELOPE);
+		ast_set2_flag((&globalflags), ast_true(val), VM_ENVELOPE);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "moveheard"))) {
 			ast_debug(1, "Move Heard enabled globally\n");
 			val = "yes";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_MOVEHEARD);
+		ast_set2_flag((&globalflags), ast_true(val), VM_MOVEHEARD);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "forward_urgent_auto"))) {
 			ast_debug(1, "Autoset of Urgent flag on forwarded Urgent messages disabled globally\n");
 			val = "no";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_FWDURGAUTO);
+		ast_set2_flag((&globalflags), ast_true(val), VM_FWDURGAUTO);	
 
 		if (!(val = ast_variable_retrieve(cfg, "general", "sayduration"))) {
 			ast_debug(1, "Duration info before msg enabled globally\n");
 			val = "yes";
 		}
-		ast_set2_flag((&globalflags), ast_true(val), VM_SAYDURATION);
+		ast_set2_flag((&globalflags), ast_true(val), VM_SAYDURATION);	
 
 		saydurationminfo = 2;
 		if ((val = ast_variable_retrieve(cfg, "general", "saydurationm"))) {
@@ -12237,9 +12242,9 @@ static int load_config(int reload)
 			ast_copy_string(dialcontext, val, sizeof(dialcontext));
 			ast_debug(1, "found dialout context: %s\n", dialcontext);
 		} else {
-			dialcontext[0] = '\0';
+			dialcontext[0] = '\0';	
 		}
-
+		
 		if ((val = ast_variable_retrieve(cfg, "general", "callback"))) {
 			ast_copy_string(callcontext, val, sizeof(callcontext));
 			ast_debug(1, "found callback context: %s\n", callcontext);
@@ -12253,7 +12258,7 @@ static int load_config(int reload)
 		} else {
 			exitcontext[0] = '\0';
 		}
-
+		
 		/* load password sounds configuration */
 		if ((val = ast_variable_retrieve(cfg, "general", "vm-password")))
 			ast_copy_string(vm_password, val, sizeof(vm_password));
@@ -12582,11 +12587,11 @@ AST_TEST_DEFINE(test_voicemail_vmsayname)
 	}
 
 	/* normally this is done in the channel driver */
-	ast_format_set(&test_channel1->writeformat, AST_FORMAT_GSM, 0);
-	ast_format_cap_add(test_channel1->nativeformats, &test_channel1->writeformat);
-	ast_format_set(&test_channel1->rawwriteformat, AST_FORMAT_GSM, 0);
-	ast_format_set(&test_channel1->readformat, AST_FORMAT_GSM, 0);
-	ast_format_set(&test_channel1->rawreadformat, AST_FORMAT_GSM, 0);
+	test_channel1->nativeformats = AST_FORMAT_GSM;
+	test_channel1->writeformat = AST_FORMAT_GSM;
+	test_channel1->rawwriteformat = AST_FORMAT_GSM;
+	test_channel1->readformat = AST_FORMAT_GSM;
+	test_channel1->rawreadformat = AST_FORMAT_GSM;
 	test_channel1->tech = &fake_tech;
 
 	ast_test_status_update(test, "Test playing of extension when greeting is not available...\n");
@@ -12692,9 +12697,6 @@ AST_TEST_DEFINE(test_voicemail_msgcount)
 		!(vmu = find_or_create(testcontext, testmailbox))) {
 		ast_test_status_update(test, "Cannot create vmu structure\n");
 		ast_unreplace_sigchld();
-#ifdef IMAP_STORAGE
-		chan = ast_channel_unref(chan);
-#endif
 		return AST_TEST_FAIL;
 	}
 
@@ -12714,9 +12716,6 @@ AST_TEST_DEFINE(test_voicemail_msgcount)
 				ast_test_status_update(test, "Unable to create test voicemail: %s\n",
 					syserr > 0 ? strerror(syserr) : "unable to fork()");
 				ast_unreplace_sigchld();
-#ifdef IMAP_STORAGE
-				chan = ast_channel_unref(chan);
-#endif
 				return AST_TEST_FAIL;
 			}
 		}
@@ -12790,7 +12789,7 @@ AST_TEST_DEFINE(test_voicemail_msgcount)
 	}
 
 #ifdef IMAP_STORAGE
-	chan = ast_channel_unref(chan);
+	chan = ast_channel_release(chan);
 #endif
 
 	/* And remove test directory */
@@ -13263,7 +13262,7 @@ static int advanced_options(struct ast_channel *chan, struct ast_vm_user *vmu, s
 }
 
 static int play_record_review(struct ast_channel *chan, char *playfile, char *recordfile, int maxtime, char *fmt,
-			int outsidecaller, struct ast_vm_user *vmu, int *duration, int *sound_duration, const char *unlockdir,
+			int outsidecaller, struct ast_vm_user *vmu, int *duration, const char *unlockdir,
 			signed char record_gain, struct vm_state *vms, char *flag)
 {
 	/* Record message & let caller review or re-record it, or set options if applicable */
@@ -13338,7 +13337,7 @@ static int play_record_review(struct ast_channel *chan, char *playfile, char *re
 				ast_channel_setoption(chan, AST_OPTION_RXGAIN, &record_gain, sizeof(record_gain), 0);
 			if (ast_test_flag(vmu, VM_OPERATOR))
 				canceldtmf = "0";
-			cmd = ast_play_and_record_full(chan, playfile, tempfile, maxtime, fmt, duration, sound_duration, silencethreshold, maxsilence, unlockdir, acceptdtmf, canceldtmf);
+			cmd = ast_play_and_record_full(chan, playfile, tempfile, maxtime, fmt, duration, silencethreshold, maxsilence, unlockdir, acceptdtmf, canceldtmf);
 			if (strchr(canceldtmf, cmd)) {
 			/* need this flag here to distinguish between pressing '0' during message recording or after */
 				canceleddtmf = 1;
@@ -13358,13 +13357,13 @@ static int play_record_review(struct ast_channel *chan, char *playfile, char *re
 			} else if (cmd == '*') {
 				break;
 #if 0
-			} else if (vmu->review && sound_duration && (*sound_duration < 5)) {
+			} else if (vmu->review && (*duration < 5)) {
 				/* Message is too short */
 				ast_verb(3, "Message too short\n");
 				cmd = ast_play_and_wait(chan, "vm-tooshort");
 				cmd = ast_filedelete(tempfile, NULL);
 				break;
-			} else if (vmu->review && (cmd == 2 && sound_duration && *sound_duration < (maxsilence + 3))) {
+			} else if (vmu->review && (cmd == 2 && *duration < (maxsilence + 3))) {
 				/* Message is all silence */
 				ast_verb(3, "Nothing recorded\n");
 				cmd = ast_filedelete(tempfile, NULL);

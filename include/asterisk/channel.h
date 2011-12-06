@@ -139,6 +139,7 @@ extern "C" {
 #define MAX_MUSICCLASS		80	/*!< Max length of the music class setting */
 
 #include "asterisk/frame.h"
+#include "asterisk/sched.h"
 #include "asterisk/chanvars.h"
 #include "asterisk/config.h"
 #include "asterisk/lock.h"
@@ -154,7 +155,7 @@ extern "C" {
 
 #define DATASTORE_INHERIT_FOREVER	INT_MAX
 
-#define AST_MAX_FDS		11
+#define AST_MAX_FDS		10
 /*
  * We have AST_MAX_FDS file descriptors in a channel.
  * Some of them have a fixed use:
@@ -163,7 +164,6 @@ extern "C" {
 #define AST_TIMING_FD	(AST_MAX_FDS-2)		/*!< used for timingfd */
 #define AST_AGENT_FD	(AST_MAX_FDS-3)		/*!< used by agents for pass through */
 #define AST_GENERATOR_FD	(AST_MAX_FDS-4)	/*!< used by generator */
-#define AST_JITTERBUFFER_FD	(AST_MAX_FDS-5)	/*!< used by generator */
 
 enum ast_bridge_result {
 	AST_BRIDGE_COMPLETE = 0,
@@ -178,7 +178,6 @@ typedef unsigned long long ast_group_t;
 */
 struct ast_generator {
 	void *(*alloc)(struct ast_channel *chan, void *params);
-	/*! Channel is locked during this function callback. */
 	void (*release)(struct ast_channel *chan, void *data);
 	/*! This function gets called with the channel unlocked, but is called in
 	 *  the context of the channel thread so we know the channel is not going
@@ -187,9 +186,6 @@ struct ast_generator {
 	int (*generate)(struct ast_channel *chan, void *data, int len, int samples);
 	/*! This gets called when DTMF_END frames are read from the channel */
 	void (*digit)(struct ast_channel *chan, char digit);
-	/*! This gets called when the write format on a channel is changed while
-	 * generating. The channel is locked during this callback. */
-	void (*write_format_change)(struct ast_channel *chan, void *data);
 };
 
 /*! Party name character set enumeration values (values from Q.SIG) */
@@ -512,12 +508,12 @@ struct ast_channel_tech {
 	const char * const type;
 	const char * const description;
 
-	struct ast_format_cap *capabilities;  /*!< format capabilities this channel can handle */
+	format_t capabilities;  /*!< Bitmap of formats this channel can handle */
 
 	int properties;         /*!< Technology Properties */
 
 	/*! \brief Requester - to set up call data structures (pvt's) */
-	struct ast_channel *(* const requester)(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+	struct ast_channel *(* const requester)(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause);
 
 	int (* const devicestate)(void *data);	/*!< Devicestate call back */
 
@@ -751,7 +747,7 @@ struct ast_channel {
 	const char *blockproc;				/*!< Procedure causing blocking */
 	const char *appl;				/*!< Current application */
 	const char *data;				/*!< Data passed to current application */
-	struct ast_sched_context *sched;                /*!< Schedule context */
+	struct sched_context *sched;			/*!< Schedule context */
 	struct ast_filestream *stream;			/*!< Stream itself. */
 	struct ast_filestream *vstream;			/*!< Video Stream itself. */
 	int (*timingfunc)(const void *data);
@@ -832,7 +828,7 @@ struct ast_channel {
 	int fdno;					/*!< Which fd had an event detected on */
 	int streamid;					/*!< For streaming playback, the schedule ID */
 	int vstreamid;					/*!< For streaming video playback, the schedule ID */
-	struct ast_format oldwriteformat;  /*!< Original writer format */
+	format_t oldwriteformat;		/*!< Original writer format */
 	int timingfd;					/*!< Timing fd */
 	enum ast_channel_state _state;			/*!< State of line -- Don't write directly, use ast_setstate() */
 	int rings;					/*!< Number of rings so far */
@@ -847,11 +843,11 @@ struct ast_channel {
 	int hangupcause;				/*!< Why is the channel hanged up. See causes.h */
 	unsigned int flags;				/*!< channel flags of AST_FLAG_ type */
 	int alertpipe[2];
-	struct ast_format_cap *nativeformats;         /*!< Kinds of data this channel can natively handle */
-	struct ast_format readformat;            /*!< Requested read format (after translation) */
-	struct ast_format writeformat;           /*!< Requested write format (after translation) */
-	struct ast_format rawreadformat;         /*!< Raw read format (before translation) */
-	struct ast_format rawwriteformat;        /*!< Raw write format (before translation) */
+	format_t nativeformats;         /*!< Kinds of data this channel can natively handle */
+	format_t readformat;            /*!< Requested read format (after translation) */
+	format_t writeformat;           /*!< Requested write format (after translation) */
+	format_t rawreadformat;         /*!< Raw read format (before translation) */
+	format_t rawwriteformat;        /*!< Raw write format (before translation) */
 	unsigned int emulate_dtmf_duration;		/*!< Number of ms left to emulate DTMF for */
 #ifdef HAVE_EPOLL
 	int epfd;
@@ -1028,7 +1024,7 @@ enum {
 	/*!
 	 * \brief All softhangup flags.
 	 *
-	 * This can be used as an argument to ast_channel_clear_softhangup()
+	 * This can be used as an argument to ast_channel_softhangup_clear
 	 * to clear all softhangup flags from a channel.
 	 */
 	AST_SOFTHANGUP_ALL =       (0xFFFFFFFF)
@@ -1134,7 +1130,6 @@ struct ast_channel * attribute_malloc __attribute__((format(printf, 13, 14)))
 	__ast_channel_alloc(needqueue, state, cid_num, cid_name, acctcode, exten, context, linkedid, amaflag, \
 			    __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
 
-#if defined(REF_DEBUG) || defined(__AST_DEBUG_MALLOC)
 /*!
  * \brief Create a fake channel structure
  *
@@ -1144,32 +1139,11 @@ struct ast_channel * attribute_malloc __attribute__((format(printf, 13, 14)))
  * \note This function should ONLY be used to create a fake channel
  *       that can then be populated with data for use in variable
  *       substitution when a real channel does not exist.
- *
- * \note The created dummy channel should be destroyed by
- * ast_channel_unref().  Using ast_channel_release() needlessly
- * grabs the channel container lock and can cause a deadlock as
- * a result.  Also grabbing the channel container lock reduces
- * system performance.
  */
+#if defined(REF_DEBUG) || defined(__AST_DEBUG_MALLOC)
 #define ast_dummy_channel_alloc()	__ast_dummy_channel_alloc(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 struct ast_channel *__ast_dummy_channel_alloc(const char *file, int line, const char *function);
 #else
-/*!
- * \brief Create a fake channel structure
- *
- * \retval NULL failure
- * \retval non-NULL successfully allocated channel
- *
- * \note This function should ONLY be used to create a fake channel
- *       that can then be populated with data for use in variable
- *       substitution when a real channel does not exist.
- *
- * \note The created dummy channel should be destroyed by
- * ast_channel_unref().  Using ast_channel_release() needlessly
- * grabs the channel container lock and can cause a deadlock as
- * a result.  Also grabbing the channel container lock reduces
- * system performance.
- */
 struct ast_channel *ast_dummy_channel_alloc(void);
 #endif
 
@@ -1294,7 +1268,7 @@ struct ast_channel *ast_channel_release(struct ast_channel *chan);
  * \brief Requests a channel
  *
  * \param type type of channel to request
- * \param format capabilities for requested channel
+ * \param format requested channel format (codec)
  * \param requestor channel asking for data
  * \param data data to pass to the channel requester
  * \param status status
@@ -1306,14 +1280,14 @@ struct ast_channel *ast_channel_release(struct ast_channel *chan);
  * \retval NULL failure
  * \retval non-NULL channel on success
  */
-struct ast_channel *ast_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *status);
+struct ast_channel *ast_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *status);
 
 /*!
  * \brief Request a channel of a given type, with data as optional information used
  *        by the low level module and attempt to place a call on it
  *
  * \param type type of channel to request
- * \param format capabilities for requested channel
+ * \param format requested channel format
  * \param requestor channel asking for data
  * \param data data to pass to the channel requester
  * \param timeout maximum amount of time to wait for an answer
@@ -1324,14 +1298,14 @@ struct ast_channel *ast_request(const char *type, struct ast_format_cap *cap, co
  * \return Returns an ast_channel on success or no answer, NULL on failure.  Check the value of chan->_state
  * to know if the call was answered or not.
  */
-struct ast_channel *ast_request_and_dial(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data,
+struct ast_channel *ast_request_and_dial(const char *type, format_t format, const struct ast_channel *requestor, void *data,
 	int timeout, int *reason, const char *cid_num, const char *cid_name);
 
 /*!
  * \brief Request a channel of a given type, with data as optional information used
  * by the low level module and attempt to place a call on it
  * \param type type of channel to request
- * \param format capabilities for requested channel
+ * \param format requested channel format
  * \param requestor channel requesting data
  * \param data data to pass to the channel requester
  * \param timeout maximum amount of time to wait for an answer
@@ -1342,7 +1316,7 @@ struct ast_channel *ast_request_and_dial(const char *type, struct ast_format_cap
  * \return Returns an ast_channel on success or no answer, NULL on failure.  Check the value of chan->_state
  * to know if the call was answered or not.
  */
-struct ast_channel *__ast_request_and_dial(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data,
+struct ast_channel *__ast_request_and_dial(const char *type, format_t format, const struct ast_channel *requestor, void *data,
 	int timeout, int *reason, const char *cid_num, const char *cid_name, struct outgoing_helper *oh);
 
 /*!
@@ -1350,12 +1324,12 @@ struct ast_channel *__ast_request_and_dial(const char *type, struct ast_format_c
  * \param caller in channel that requested orig
  * \param orig channel being replaced by the call forward channel
  * \param timeout maximum amount of time to wait for setup of new forward channel
- * \param format capabilities for requested channel
+ * \param format requested channel format
  * \param oh outgoing helper used with original channel
  * \param outstate reason why unsuccessful (if uncuccessful)
  * \return Returns the forwarded call's ast_channel on success or NULL on failure
  */
-struct ast_channel *ast_call_forward(struct ast_channel *caller, struct ast_channel *orig, int *timeout, struct ast_format_cap *cap, struct outgoing_helper *oh, int *outstate);
+struct ast_channel *ast_call_forward(struct ast_channel *caller, struct ast_channel *orig, int *timeout, format_t format, struct outgoing_helper *oh, int *outstate);
 
 /*!
  * \brief Register a channel technology (a new channel driver)
@@ -1615,7 +1589,6 @@ int __ast_answer(struct ast_channel *chan, unsigned int delay, int cdr_answer);
 
 /*!
  * \brief Make a call
- * \note Absolutely _NO_ channel locks should be held before calling this function.
  * \param chan which channel to make the call on
  * \param addr destination of the call
  * \param timeout time to wait on for connect
@@ -1787,54 +1760,22 @@ int ast_write_text(struct ast_channel *chan, struct ast_frame *frame);
 int ast_prod(struct ast_channel *chan);
 
 /*!
- * \brief Sets read format on channel chan from capabilities
+ * \brief Sets read format on channel chan
  * Set read format for channel to whichever component of "format" is best.
  * \param chan channel to change
- * \param formats new formats to pick from for reading
+ * \param format format to change to
  * \return Returns 0 on success, -1 on failure
  */
-int ast_set_read_format_from_cap(struct ast_channel *chan, struct ast_format_cap *formats);
-
-/*!
- * \brief Sets read format on channel chan
- * \param chan channel to change
- * \param formats, format to set for reading
- * \return Returns 0 on success, -1 on failure
- */
-int ast_set_read_format(struct ast_channel *chan, struct ast_format *format);
-
-/*!
- * \brief Sets read format on channel chan by id
- * \param chan channel to change
- * \param format id to set for reading, only used for formats without attributes
- * \return Returns 0 on success, -1 on failure
- */
-int ast_set_read_format_by_id(struct ast_channel *chan, enum ast_format_id id);
+int ast_set_read_format(struct ast_channel *chan, format_t format);
 
 /*!
  * \brief Sets write format on channel chan
  * Set write format for channel to whichever component of "format" is best.
  * \param chan channel to change
- * \param formats new formats to pick from for writing
+ * \param format new format for writing
  * \return Returns 0 on success, -1 on failure
  */
-int ast_set_write_format_from_cap(struct ast_channel *chan, struct ast_format_cap *formats);
-
-/*!
- * \brief Sets write format on channel chan
- * \param chan channel to change
- * \param formats, format to set for writing
- * \return Returns 0 on success, -1 on failure
- */
-int ast_set_write_format(struct ast_channel *chan, struct ast_format *format);
-
-/*!
- * \brief Sets write format on channel chan
- * \param chan channel to change
- * \param format id to set for writing, only used for formats without attributes
- * \return Returns 0 on success, -1 on failure
- */
-int ast_set_write_format_by_id(struct ast_channel *chan, enum ast_format_id id);
+int ast_set_write_format(struct ast_channel *chan, format_t format);
 
 /*!
  * \brief Sends text to a channel
@@ -2101,15 +2042,9 @@ char *ast_transfercapability2str(int transfercapability) attribute_const;
  */
 int ast_channel_setoption(struct ast_channel *channel, int option, void *data, int datalen, int block);
 
-/*!
- * \brief Pick the best codec
- *
- * \param capabilities to pick best codec out of
- * \param result stucture to store the best codec in.
- * \retval on success, pointer to result structure 
- * \retval on failure, NULL
- */
-struct ast_format *ast_best_codec(struct ast_format_cap *cap, struct ast_format *result);
+/*! Pick the best codec
+ * Choose the best codec...  Uhhh...   Yah. */
+format_t ast_best_codec(format_t fmts);
 
 
 /*!
@@ -2435,7 +2370,8 @@ static inline enum ast_t38_state ast_channel_get_t38_state(struct ast_channel *c
 
 #define CHECK_BLOCKING(c) do { 	 \
 	if (ast_test_flag(c, AST_FLAG_BLOCKING)) {\
-		ast_debug(1, "Thread %ld Blocking '%s', already blocked by thread %ld in procedure %s\n", (long) pthread_self(), (c)->name, (long) (c)->blocker, (c)->blockproc); \
+		if (option_debug) \
+			ast_log(LOG_DEBUG, "Thread %ld Blocking '%s', already blocked by thread %ld in procedure %s\n", (long) pthread_self(), (c)->name, (long) (c)->blocker, (c)->blockproc); \
 	} else { \
 		(c)->blocker = pthread_self(); \
 		(c)->blockproc = __PRETTY_FUNCTION__; \
@@ -3534,15 +3470,5 @@ int ast_channel_get_cc_agent_type(struct ast_channel *chan, char *agent_type, si
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif
-
-/*!
- * \brief Remove a channel from the global channels container
- *
- * \param chan channel to remove
- *
- * In a case where it is desired that a channel not be available in any lookups
- * in the global channels conatiner, use this function.
- */
-void ast_channel_unlink(struct ast_channel *chan);
 
 #endif /* _ASTERISK_CHANNEL_H */

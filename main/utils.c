@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 320946 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 322585 $")
 
 #include <ctype.h>
 #include <sys/stat.h>
@@ -33,13 +33,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 320946 $")
 
 #ifdef HAVE_DEV_URANDOM
 #include <fcntl.h>
-#endif
-
-#include <sys/syscall.h>
-#if defined(__APPLE__)
-#include <mach/mach.h>
-#elif defined(HAVE_SYS_THR_H)
-#include <sys/thr.h>
 #endif
 
 #include "asterisk/network.h"
@@ -378,34 +371,35 @@ static void base64_init(void)
 	b2a[(int)'/'] = 63;
 }
 
-const struct ast_flags ast_uri_http = {AST_URI_UNRESERVED};
-const struct ast_flags ast_uri_http_legacy = {AST_URI_LEGACY_SPACE | AST_URI_UNRESERVED};
-const struct ast_flags ast_uri_sip_user = {AST_URI_UNRESERVED | AST_URI_SIP_USER_UNRESERVED};
-
-char *ast_uri_encode(const char *string, char *outbuf, int buflen, struct ast_flags spec)
+/*! \brief Turn text string to URI-encoded %XX version 
+ *
+ * \note 
+ *  At this point, this function is encoding agnostic; it does not
+ *  check whether it is fed legal UTF-8. We escape control
+ *  characters (\x00-\x1F\x7F), '%', and all characters above 0x7F.
+ *  If do_special_char == 1 we will convert all characters except alnum
+ *  and mark.
+ *  Outbuf needs to have more memory allocated than the instring
+ *  to have room for the expansion. Every char that is converted
+ *  is replaced by three ASCII characters.
+ */
+char *ast_uri_encode(const char *string, char *outbuf, int buflen, int do_special_char)
 {
 	const char *ptr  = string;	/* Start with the string */
 	char *out = outbuf;
 	const char *mark = "-_.!~*'()"; /* no encode set, RFC 2396 section 2.3, RFC 3261 sec 25 */
-	const char *user_unreserved = "&=+$,;?/"; /* user-unreserved set, RFC 3261 sec 25 */
 
 	while (*ptr && out - outbuf < buflen - 1) {
-		if (ast_test_flag(&spec, AST_URI_LEGACY_SPACE) && *ptr == ' ') {
-			/* for legacy encoding, encode spaces as '+' */
-			*out = '+';
-			out++;
-		} else if (!(ast_test_flag(&spec, AST_URI_MARK)
-				&& strchr(mark, *ptr))
-			&& !(ast_test_flag(&spec, AST_URI_ALPHANUM)
-				&& ((*ptr >= '0' && *ptr <= '9')
-				|| (*ptr >= 'A' && *ptr <= 'Z')
-				|| (*ptr >= 'a' && *ptr <= 'z')))
-			&& !(ast_test_flag(&spec, AST_URI_SIP_USER_UNRESERVED)
-				&& strchr(user_unreserved, *ptr))) {
-
+		if ((const signed char) *ptr < 32 || *ptr == 0x7f || *ptr == '%' ||
+				(do_special_char &&
+				!(*ptr >= '0' && *ptr <= '9') &&      /* num */
+				!(*ptr >= 'A' && *ptr <= 'Z') &&      /* ALPHA */
+				!(*ptr >= 'a' && *ptr <= 'z') &&      /* alpha */
+				!strchr(mark, *ptr))) {               /* mark set */
 			if (out - outbuf >= buflen - 3) {
 				break;
 			}
+
 			out += sprintf(out, "%%%02X", (unsigned char) *ptr);
 		} else {
 			*out = *ptr;	/* Continue copying the string */
@@ -421,25 +415,7 @@ char *ast_uri_encode(const char *string, char *outbuf, int buflen, struct ast_fl
 	return outbuf;
 }
 
-void ast_uri_decode(char *s, struct ast_flags spec)
-{
-	char *o;
-	unsigned int tmp;
-
-	for (o = s; *s; s++, o++) {
-		if (ast_test_flag(&spec, AST_URI_LEGACY_SPACE) && *s == '+') {
-			/* legacy mode, decode '+' as space */
-			*o = ' ';
-		} else if (*s == '%' && s[1] != '\0' && s[2] != '\0' && sscanf(s + 1, "%2x", &tmp) == 1) {
-			/* have '%', two chars and correct parsing */
-			*o = tmp;
-			s += 2;	/* Will be incremented once more when we break out */
-		} else /* all other cases, just copy */
-			*o = *s;
-	}
-	*o = '\0';
-}
-
+/*! \brief escapes characters specified for quoted portions of sip messages */
 char *ast_escape_quoted(const char *string, char *outbuf, int buflen)
 {
 	const char *ptr  = string;
@@ -469,6 +445,24 @@ char *ast_escape_quoted(const char *string, char *outbuf, int buflen)
 
 	return outbuf;
 }
+
+/*! \brief  ast_uri_decode: Decode SIP URI, URN, URL (overwrite the string)  */
+void ast_uri_decode(char *s) 
+{
+	char *o;
+	unsigned int tmp;
+
+	for (o = s; *s; s++, o++) {
+		if (*s == '%' && s[1] != '\0' && s[2] != '\0' && sscanf(s + 1, "%2x", &tmp) == 1) {
+			/* have '%', two chars and correct parsing */
+			*o = tmp;
+			s += 2;	/* Will be incremented once more when we break out */
+		} else /* all other cases, just copy */
+			*o = *s;
+	}
+	*o = '\0';
+}
+
 /*! \brief  ast_inet_ntoa: Recursive thread safe replacement of inet_ntoa */
 const char *ast_inet_ntoa(struct in_addr ia)
 {
@@ -1733,14 +1727,13 @@ void __ast_string_field_release_active(struct ast_string_field_pool *pool_head,
 
 void __ast_string_field_ptr_build_va(struct ast_string_field_mgr *mgr,
 				     struct ast_string_field_pool **pool_head,
-				     ast_string_field *ptr, const char *format, va_list ap)
+				     ast_string_field *ptr, const char *format, va_list ap1, va_list ap2)
 {
 	size_t needed;
 	size_t available;
 	size_t space = (*pool_head)->size - (*pool_head)->used;
 	ssize_t grow;
 	char *target;
-	va_list ap2;
 
 	/* if the field already has space allocated, try to reuse it;
 	   otherwise, try to use the empty space at the end of the current
@@ -1763,9 +1756,9 @@ void __ast_string_field_ptr_build_va(struct ast_string_field_mgr *mgr,
 		available = space - sizeof(ast_string_field_allocation);
 	}
 
-	va_copy(ap2, ap);
-	needed = vsnprintf(target, available, format, ap2) + 1;
-	va_end(ap2);
+	needed = vsnprintf(target, available, format, ap1) + 1;
+
+	va_end(ap1);
 
 	if (needed > available) {
 		/* the allocation could not be satisfied using the field's current allocation
@@ -1775,8 +1768,7 @@ void __ast_string_field_ptr_build_va(struct ast_string_field_mgr *mgr,
 		if (!(target = (char *) __ast_string_field_alloc_space(mgr, pool_head, needed))) {
 			return;
 		}
-		vsprintf(target, format, ap);
-		va_end(ap);
+		vsprintf(target, format, ap2);
 		__ast_string_field_release_active(*pool_head, *ptr);
 		*ptr = target;
 	} else if (*ptr != target) {
@@ -1802,11 +1794,15 @@ void __ast_string_field_ptr_build(struct ast_string_field_mgr *mgr,
 				  struct ast_string_field_pool **pool_head,
 				  ast_string_field *ptr, const char *format, ...)
 {
-	va_list ap;
+	va_list ap1, ap2;
 
-	va_start(ap, format);
-	__ast_string_field_ptr_build_va(mgr, pool_head, ptr, format, ap);
-	va_end(ap);
+	va_start(ap1, format);
+	va_start(ap2, format);		/* va_copy does not exist on FreeBSD */
+
+	__ast_string_field_ptr_build_va(mgr, pool_head, ptr, format, ap1, ap2);
+
+	va_end(ap1);
+	va_end(ap2);
 }
 
 void *__ast_calloc_with_stringfields(unsigned int num_structs, size_t struct_size, size_t field_mgr_offset,
@@ -2118,24 +2114,6 @@ int _ast_asprintf(char **ret, const char *file, int lineno, const char *func, co
 	return res;
 }
 #endif
-
-int ast_get_tid(void)
-{
-	int ret = -1;
-#if defined (__linux) && defined(SYS_gettid)
-	ret = syscall(SYS_gettid); /* available since Linux 1.4.11 */
-#elif defined(__sun)
-	ret = pthread_self();
-#elif defined(__APPLE__)
-	ret = mach_thread_self();
-	mach_port_deallocate(mach_task_self(), ret);
-#elif defined(__FreeBSD__) && defined(HAVE_SYS_THR_H)
-	long lwpid;
-	thr_self(&lwpid); /* available since sys/thr.h creation 2003 */
-	ret = lwpid;
-#endif
-	return ret;
-}
 
 char *ast_utils_which(const char *binary, char *fullpath, size_t fullpath_size)
 {

@@ -26,13 +26,13 @@
  */
 
 /*** MODULEINFO
-	<depend>TEST_FRAMEWORK</depend>
+	<defaultenabled>no</defaultenabled>
 	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338557 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332176 $")
 
 #include <sys/types.h>
 #include <dirent.h>

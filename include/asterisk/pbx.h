@@ -30,7 +30,7 @@
 #include "asterisk/hashtab.h"
 #include "asterisk/stringfields.h"
 #include "asterisk/xmldoc.h"
-#include "asterisk/format.h"
+#include "asterisk/frame_defs.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -76,7 +76,7 @@ struct ast_ignorepat;
 struct ast_sw;
 
 /*! \brief Typedef for devicestate and hint callbacks */
-typedef int (*ast_state_cb_type)(const char *context, const char *exten, enum ast_extension_states state, void *data);
+typedef int (*ast_state_cb_type)(char *context, char* id, enum ast_extension_states state, void *data);
 
 /*! \brief Data structure associated with a custom dialplan function */
 struct ast_custom_function {
@@ -889,11 +889,11 @@ int ast_async_goto_by_name(const char *chan, const char *context, const char *ex
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular extension */
-int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_exten(const char *type, format_t format, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular application with given extension */
-int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_app(const char *type, format_t format, void *data, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
 
 /*!
  * \brief Evaluate a condition

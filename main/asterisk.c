@@ -61,7 +61,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335718 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332100 $")
 
 #include "asterisk/_private.h"
 
@@ -111,7 +111,6 @@ int daemon(int, int);  /* defined in libresolv of all places */
 #include "asterisk/network.h"
 #include "asterisk/cli.h"
 #include "asterisk/channel.h"
-#include "asterisk/translate.h"
 #include "asterisk/features.h"
 #include "asterisk/ulaw.h"
 #include "asterisk/alaw.h"
@@ -143,8 +142,6 @@ int daemon(int, int);  /* defined in libresolv of all places */
 #include "asterisk/poll-compat.h"
 #include "asterisk/ccss.h"
 #include "asterisk/test.h"
-#include "asterisk/rtp_engine.h"
-#include "asterisk/format.h"
 #include "asterisk/aoc.h"
 
 #include "../defaults.h"
@@ -382,7 +379,6 @@ struct thread_list_t {
 	AST_RWLIST_ENTRY(thread_list_t) list;
 	char *name;
 	pthread_t id;
-	int lwp;
 };
 
 static AST_RWLIST_HEAD_STATIC(thread_list, thread_list_t);
@@ -394,7 +390,6 @@ void ast_register_thread(char *name)
 	if (!new)
 		return;
 	new->id = pthread_self();
-	new->lwp = ast_get_tid();
 	new->name = name; /* steal the allocated memory for the thread name */
 	AST_RWLIST_WRLOCK(&thread_list);
 	AST_RWLIST_INSERT_HEAD(&thread_list, new, list);
@@ -521,7 +516,7 @@ static char *handle_show_threads(struct ast_cli_entry *e, int cmd, struct ast_cl
 
 	AST_RWLIST_RDLOCK(&thread_list);
 	AST_RWLIST_TRAVERSE(&thread_list, cur, list) {
-		ast_cli(a->fd, "%p %d %s\n", (void *)cur->id, cur->lwp, cur->name);
+		ast_cli(a->fd, "%p %s\n", (void *)cur->id, cur->name);
 		count++;
 	}
         AST_RWLIST_UNLOCK(&thread_list);
@@ -2582,13 +2577,7 @@ static char *cli_complete(EditLine *editline, int ch)
 static int ast_el_initialize(void)
 {
 	HistEvent ev;
-	char *editor, *editrc = getenv("EDITRC");
-
-	if (!(editor = getenv("AST_EDITMODE"))) {
-		if (!(editor = getenv("AST_EDITOR"))) {
-			editor = "emacs";
-		}
-	}
+	char *editor = getenv("AST_EDITOR");
 
 	if (el != NULL)
 		el_end(el);
@@ -2599,7 +2588,7 @@ static int ast_el_initialize(void)
 	el_set(el, EL_PROMPT, cli_prompt);
 
 	el_set(el, EL_EDITMODE, 1);		
-	el_set(el, EL_EDITOR, editor);
+	el_set(el, EL_EDITOR, editor ? editor : "emacs");		
 	el_hist = history_init();
 	if (!el || !el_hist)
 		return -1;
@@ -2616,18 +2605,6 @@ static int ast_el_initialize(void)
 	el_set(el, EL_BIND, "?", "ed-complete", NULL);
 	/* Bind ^D to redisplay */
 	el_set(el, EL_BIND, "^D", "ed-redisplay", NULL);
-	/* Bind Delete to delete char left */
-	el_set(el, EL_BIND, "\\e[3~", "ed-delete-next-char", NULL);
-	/* Bind Home and End to move to line start and end */
-	el_set(el, EL_BIND, "\\e[1~", "ed-move-to-beg", NULL);
-	el_set(el, EL_BIND, "\\e[4~", "ed-move-to-end", NULL);
-	/* Bind C-left and C-right to move by word (not all terminals) */
-	el_set(el, EL_BIND, "\\eOC", "vi-next-word", NULL);
-	el_set(el, EL_BIND, "\\eOD", "vi-prev-word", NULL);
-
-	if (editrc) {
-		el_source(el, editrc);
-	}
 
 	return 0;
 }
@@ -3055,8 +3032,6 @@ static void ast_readconfig(void)
 			}
 		} else if (!strcasecmp(v->name, "languageprefix")) {
 			ast_language_is_prefix = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "defaultlanguage")) {
-			ast_copy_string(defaultlanguage, v->value, MAX_LANGUAGE);
  		} else if (!strcasecmp(v->name, "lockmode")) {
  			if (!strcasecmp(v->value, "lockfile")) {
  				ast_set_lock_type(AST_LOCK_TYPE_LOCKFILE);
@@ -3713,11 +3688,6 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	if (ast_translate_init()) {
-		printf("%s", term_quit());
-		exit(1);
-	}
-
 	ast_aoc_cli_init();
 
 	ast_makesocket();
@@ -3749,10 +3719,6 @@ int main(int argc, char *argv[])
 
 	astobj2_init();
 
-	ast_format_attr_init();
-	ast_format_list_init();
-	ast_rtp_engine_init();
-
 	ast_autoservice_init();
 
 	if (ast_timing_init()) {
@@ -3769,16 +3735,6 @@ int main(int argc, char *argv[])
 	/* Load XML documentation. */
 	ast_xmldoc_load_documentation();
 #endif
-
-	if (astdb_init()) {
-		printf("%s", term_quit());
-		exit(1);
-	}
-
-	if (ast_msg_init()) {
-		printf("%s", term_quit());
-		exit(1);
-	}
 
 	/* initialize the data retrieval API */
 	if (ast_data_init()) {
@@ -3853,6 +3809,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	if (astdb_init()) {
+		printf("%s", term_quit());
+		exit(1);
+	}
+
 	if (ast_enum_init()) {
 		printf("%s", term_quit());
 		exit(1);
@@ -3896,7 +3857,7 @@ int main(int argc, char *argv[])
 
 #ifdef __AST_DEBUG_MALLOC
 	__ast_mm_init();
-#endif
+#endif	
 
 	ast_lastreloadtime = ast_startuptime = ast_tvnow();
 	ast_cli_register_multiple(cli_asterisk, ARRAY_LEN(cli_asterisk));

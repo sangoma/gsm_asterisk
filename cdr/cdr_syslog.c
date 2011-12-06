@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/lock.h"
@@ -116,7 +116,7 @@ static int syslog_log(struct ast_cdr *cdr)
 
 	AST_RWLIST_UNLOCK(&sinks);
 
-	ast_channel_unref(dummy);
+	ast_channel_release(dummy);
 
 	return 0;
 }

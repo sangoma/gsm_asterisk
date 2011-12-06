@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/paths.h"
 #include "asterisk/channel.h"
@@ -128,6 +128,7 @@ static void custom_log(const struct ast_event *event, void *userdata)
 	}
 
 	dummy = ast_cel_fabricate_channel_from_event(event);
+
 	if (!dummy) {
 		ast_log(LOG_ERROR, "Unable to fabricate channel from CEL event.\n");
 		return;
@@ -162,7 +163,7 @@ static void custom_log(const struct ast_event *event, void *userdata)
 
 	AST_RWLIST_UNLOCK(&sinks);
 
-	ast_channel_unref(dummy);
+	ast_channel_release(dummy);
 }
 
 static int unload_module(void)

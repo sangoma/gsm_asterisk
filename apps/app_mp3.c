@@ -34,7 +34,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -65,11 +65,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
 		<description>
 			<para>Executes mpg123 to play the given location, which typically would be a mp3 filename
 			or m3u playlist filename or a URL. Please read http://en.wikipedia.org/wiki/M3U
-			to see how M3U playlist file format is like, Example usage would be
+			to see how M3U playlist file format is like, Example usage would be 
 			exten => 1234,1,MP3Player(/var/lib/asterisk/playlist.m3u)
 			User can exit by pressing any key on the dialpad, or by hanging up.</para>
-			<para>This application does not automatically answer and should be preceeded by an
-			application such as Answer() or Progress().</para>
 		</description>
 	</application>
 
@@ -143,7 +141,7 @@ static int mp3_exec(struct ast_channel *chan, const char *data)
 	int fds[2];
 	int ms = -1;
 	int pid = -1;
-	struct ast_format owriteformat;
+	int owriteformat;
 	int timeout = 2000;
 	struct timeval next;
 	struct ast_frame *f;
@@ -155,7 +153,6 @@ static int mp3_exec(struct ast_channel *chan, const char *data)
 		.f = { 0, },
 	};
 
-	ast_format_clear(&owriteformat);
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "MP3 Playback requires an argument (filename)\n");
 		return -1;
@@ -168,8 +165,8 @@ static int mp3_exec(struct ast_channel *chan, const char *data)
 	
 	ast_stopstream(chan);
 
-	ast_format_copy(&owriteformat, &chan->writeformat);
-	res = ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR);
+	owriteformat = chan->writeformat;
+	res = ast_set_write_format(chan, AST_FORMAT_SLINEAR);
 	if (res < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
 		return -1;
@@ -192,7 +189,7 @@ static int mp3_exec(struct ast_channel *chan, const char *data)
 				res = timed_read(fds[0], myf.frdata, sizeof(myf.frdata), timeout);
 				if (res > 0) {
 					myf.f.frametype = AST_FRAME_VOICE;
-					ast_format_set(&myf.f.subclass.format, AST_FORMAT_SLINEAR, 0);
+					myf.f.subclass.codec = AST_FORMAT_SLINEAR;
 					myf.f.datalen = res;
 					myf.f.samples = res / 2;
 					myf.f.mallocd = 0;
@@ -241,8 +238,8 @@ static int mp3_exec(struct ast_channel *chan, const char *data)
 	
 	if (pid > -1)
 		kill(pid, SIGKILL);
-	if (!res && owriteformat.id)
-		ast_set_write_format(chan, &owriteformat);
+	if (!res && owriteformat)
+		ast_set_write_format(chan, owriteformat);
 	
 	return res;
 }

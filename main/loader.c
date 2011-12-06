@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340110 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284610 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/paths.h"	/* use ast_config_AST_MODULE_DIR */
@@ -95,15 +95,6 @@ struct ast_module {
 };
 
 static AST_LIST_HEAD_STATIC(module_list, ast_module);
-
-const char *ast_module_name(const struct ast_module *mod)
-{
-	if (!mod || !mod->info) {
-		return NULL;
-	}
-
-	return mod->info->name;
-}
 
 /*
  * module_list is cleared by its constructor possibly after
@@ -852,7 +843,7 @@ static enum ast_module_load_result load_resource(const char *resource_name, unsi
 			}
 		}
 #else
-		ast_log(LOG_WARNING, "Module support is not available. Module '%s' could not be loaded.\n", resource_name);
+		ast_log(LOG_WARNING, "Module '%s' could not be loaded.\n", resource_name);
 		return required ? AST_MODULE_LOAD_FAILURE : AST_MODULE_LOAD_DECLINE;
 #endif
 	}
@@ -878,12 +869,6 @@ static enum ast_module_load_result load_resource(const char *resource_name, unsi
 	} else {
 		res = start_resource(mod);
 	}
-
-	/* Now make sure that the list is sorted */
-	AST_LIST_LOCK(&module_list);
-	AST_LIST_REMOVE(&module_list, mod, entry);
-	AST_LIST_INSERT_SORTALPHA(&module_list, mod, entry, resource);
-	AST_LIST_UNLOCK(&module_list);
 
 	return res;
 }

@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <time.h>
 
@@ -129,6 +129,7 @@ static int custom_log(struct ast_cdr *cdr)
 	}
 
 	dummy = ast_dummy_channel_alloc();
+
 	if (!dummy) {
 		ast_log(LOG_ERROR, "Unable to allocate channel for variable subsitution.\n");
 		return -1;
@@ -168,7 +169,7 @@ static int custom_log(struct ast_cdr *cdr)
 
 	AST_RWLIST_UNLOCK(&sinks);
 
-	ast_channel_unref(dummy);
+	ast_channel_release(dummy);
 
 	return 0;
 }

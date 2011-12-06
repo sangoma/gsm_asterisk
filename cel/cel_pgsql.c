@@ -44,7 +44,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <libpq-fe.h>
 
@@ -240,8 +240,6 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 					value = record.user_field;
 				} else if (strcmp(cur->name, "peer") == 0) {
 					value = record.peer;
-				} else if (strcmp(cur->name, "extra") == 0) {
-					value = record.extra;
 				} else {
 					value = NULL;
 				}

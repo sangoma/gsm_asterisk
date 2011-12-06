@@ -290,11 +290,7 @@ int run_menu(void)
 					strncat(cnf_buf, ", ", sizeof(cnf_buf) - strlen(cnf_buf) - 1);
 			}
 
-			if (mem->is_separator) {
-				snprintf(name_buf, sizeof(name_buf), "--- %s ---", mem->name);
-			} else {
-				snprintf(name_buf, sizeof(name_buf), "%s", mem->name);
-			}
+			snprintf(name_buf, sizeof(name_buf), "%s", mem->name);
 			if (mem->depsfailed == HARD_FAILURE)
 				strncat(name_buf, " (Failed Deps.)", sizeof(name_buf) - strlen(name_buf) - 1);
 			if (mem->conflictsfailed == HARD_FAILURE)

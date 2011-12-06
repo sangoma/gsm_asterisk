@@ -57,7 +57,7 @@
  ***/
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336168 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include <pthread.h>
 #include <sys/socket.h>
@@ -91,8 +91,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336168 $")
 #include "asterisk/stringfields.h"
 #include "asterisk/abstract_jb.h"
 #include "asterisk/causes.h"
-#include "asterisk/format.h"
-#include "asterisk/format_cap.h"
 
 #include "chan_misdn_config.h"
 #include "isdn_lib.h"
@@ -640,7 +638,7 @@ static struct robin_list *get_robin_position(char *group)
 
 
 /*! \brief the main schedule context for stuff like l1 watcher, overlap dial, ... */
-static struct ast_sched_context *misdn_tasks = NULL;
+static struct sched_context *misdn_tasks = NULL;
 static pthread_t misdn_tasks_thread;
 
 static int *misdn_ports;
@@ -648,7 +646,7 @@ static int *misdn_ports;
 static void chan_misdn_log(int level, int port, char *tmpl, ...)
 	__attribute__((format(printf, 3, 4)));
 
-static struct ast_channel *misdn_new(struct chan_list *cl, int state,  char *exten, char *callerid, struct ast_format_cap *cap, const char *linkedid, int port, int c);
+static struct ast_channel *misdn_new(struct chan_list *cl, int state,  char *exten, char *callerid, int format, const char *linkedid, int port, int c);
 static void send_digit_to_chan(struct chan_list *cl, char digit);
 
 static int pbx_start_chan(struct chan_list *ch);
@@ -664,7 +662,7 @@ static const char misdn_type[] = "mISDN";
 static int tracing = 0;
 
 /*! \brief Only alaw and mulaw is allowed for now */
-static struct ast_format prefformat; /*  AST_FORMAT_SLINEAR ;  AST_FORMAT_ULAW | */
+static int prefformat =  AST_FORMAT_ALAW ; /*  AST_FORMAT_SLINEAR ;  AST_FORMAT_ULAW | */
 
 static int *misdn_debug;
 static int *misdn_debug_only;
@@ -3533,7 +3531,7 @@ static void misdn_tasks_init(void)
 
 	chan_misdn_log(4, 0, "Starting misdn_tasks thread\n");
 
-	misdn_tasks = ast_sched_context_create();
+	misdn_tasks = sched_context_create();
 	pthread_create(&misdn_tasks_thread, NULL, misdn_tasks_thread_func, &blocker);
 
 	while (sem_wait(&blocker) && --i) {
@@ -3549,7 +3547,7 @@ static void misdn_tasks_destroy(void)
 			cb_log(4, 0, "Joining misdn_tasks thread\n");
 			pthread_join(misdn_tasks_thread, NULL);
 		}
-		ast_sched_context_destroy(misdn_tasks);
+		sched_context_destroy(misdn_tasks);
 	}
 }
 
@@ -6985,19 +6983,6 @@ static int misdn_indication(struct ast_channel *ast, int cond, const void *data,
 		chan_misdn_log(1, p->bc->port, " --> * IND :\tproceeding pid:%d\n", p->bc->pid);
 		misdn_lib_send_event(p->bc, EVENT_PROCEEDING);
 		break;
-	case AST_CONTROL_INCOMPLETE:
-		chan_misdn_log(1, p->bc->port, " --> *\tincomplete pid:%d\n", p->bc->pid);
-		if (!p->overlap_dial) {
-			/* Overlapped dialing not enabled - send hangup */
-			p->bc->out_cause = AST_CAUSE_INVALID_NUMBER_FORMAT;
-			start_bc_tones(p);
-			misdn_lib_send_event(p->bc, EVENT_DISCONNECT);
-
-			if (p->bc->nt) {
-				hanguptone_indicate(p);
-			}
-		}
-		break;
 	case AST_CONTROL_CONGESTION:
 		chan_misdn_log(1, p->bc->port, " --> * IND :\tcongestion pid:%d\n", p->bc->pid);
 
@@ -7247,9 +7232,9 @@ static struct ast_frame *process_ast_dsp(struct chan_list *tmp, struct ast_frame
 {
 	struct ast_frame *f;
 
-	if (tmp->dsp) {
-		f = ast_dsp_process(tmp->ast, tmp->dsp, frame);
-	} else {
+ 	if (tmp->dsp) {
+ 		f = ast_dsp_process(tmp->ast, tmp->dsp, frame);
+ 	} else {
 		chan_misdn_log(0, tmp->bc->port, "No DSP-Path found\n");
 		return NULL;
 	}
@@ -7260,59 +7245,59 @@ static struct ast_frame *process_ast_dsp(struct chan_list *tmp, struct ast_frame
 
 	ast_debug(1, "Detected inband DTMF digit: %c\n", f->subclass.integer);
 
-	if (tmp->faxdetect && (f->subclass.integer == 'f')) {
-		/* Fax tone -- Handle and return NULL */
-		if (!tmp->faxhandled) {
-			struct ast_channel *ast = tmp->ast;
-			tmp->faxhandled++;
-			chan_misdn_log(0, tmp->bc->port, "Fax detected, preparing %s for fax transfer.\n", ast->name);
-			tmp->bc->rxgain = 0;
-			isdn_lib_update_rxgain(tmp->bc);
-			tmp->bc->txgain = 0;
-			isdn_lib_update_txgain(tmp->bc);
+ 	if (tmp->faxdetect && (f->subclass.integer == 'f')) {
+ 		/* Fax tone -- Handle and return NULL */
+ 		if (!tmp->faxhandled) {
+  			struct ast_channel *ast = tmp->ast;
+ 			tmp->faxhandled++;
+ 			chan_misdn_log(0, tmp->bc->port, "Fax detected, preparing %s for fax transfer.\n", ast->name);
+ 			tmp->bc->rxgain = 0;
+ 			isdn_lib_update_rxgain(tmp->bc);
+ 			tmp->bc->txgain = 0;
+ 			isdn_lib_update_txgain(tmp->bc);
 #ifdef MISDN_1_2
 			*tmp->bc->pipeline = 0;
 #else
-			tmp->bc->ec_enable = 0;
+ 			tmp->bc->ec_enable = 0;
 #endif
-			isdn_lib_update_ec(tmp->bc);
-			isdn_lib_stop_dtmf(tmp->bc);
-			switch (tmp->faxdetect) {
-			case 1:
-				if (strcmp(ast->exten, "fax")) {
-					char *context;
-					char context_tmp[BUFFERSIZE];
-					misdn_cfg_get(tmp->bc->port, MISDN_CFG_FAXDETECT_CONTEXT, &context_tmp, sizeof(context_tmp));
-					context = ast_strlen_zero(context_tmp) ? (ast_strlen_zero(ast->macrocontext) ? ast->context : ast->macrocontext) : context_tmp;
+ 			isdn_lib_update_ec(tmp->bc);
+ 			isdn_lib_stop_dtmf(tmp->bc);
+ 			switch (tmp->faxdetect) {
+ 			case 1:
+  				if (strcmp(ast->exten, "fax")) {
+ 					char *context;
+ 					char context_tmp[BUFFERSIZE];
+ 					misdn_cfg_get(tmp->bc->port, MISDN_CFG_FAXDETECT_CONTEXT, &context_tmp, sizeof(context_tmp));
+ 					context = ast_strlen_zero(context_tmp) ? (ast_strlen_zero(ast->macrocontext) ? ast->context : ast->macrocontext) : context_tmp;
 					if (ast_exists_extension(ast, context, "fax", 1,
 						S_COR(ast->caller.id.number.valid, ast->caller.id.number.str, NULL))) {
-						ast_verb(3, "Redirecting %s to fax extension (context:%s)\n", ast->name, context);
-						/* Save the DID/DNIS when we transfer the fax call to a "fax" extension */
-						pbx_builtin_setvar_helper(ast,"FAXEXTEN",ast->exten);
-						if (ast_async_goto(ast, context, "fax", 1)) {
-							ast_log(LOG_WARNING, "Failed to async goto '%s' into fax of '%s'\n", ast->name, context);
+ 						ast_verb(3, "Redirecting %s to fax extension (context:%s)\n", ast->name, context);
+  						/* Save the DID/DNIS when we transfer the fax call to a "fax" extension */
+  						pbx_builtin_setvar_helper(ast,"FAXEXTEN",ast->exten);
+ 						if (ast_async_goto(ast, context, "fax", 1)) {
+ 							ast_log(LOG_WARNING, "Failed to async goto '%s' into fax of '%s'\n", ast->name, context);
 						}
-					} else {
-						ast_log(LOG_NOTICE, "Fax detected but no fax extension, context:%s exten:%s\n", context, ast->exten);
+  					} else {
+ 						ast_log(LOG_NOTICE, "Fax detected but no fax extension, context:%s exten:%s\n", context, ast->exten);
 					}
-				} else {
+ 				} else {
 					ast_debug(1, "Already in a fax extension, not redirecting\n");
 				}
-				break;
-			case 2:
-				ast_verb(3, "Not redirecting %s to fax extension, nojump is set.\n", ast->name);
-				break;
+ 				break;
+ 			case 2:
+ 				ast_verb(3, "Not redirecting %s to fax extension, nojump is set.\n", ast->name);
+ 				break;
 			default:
 				break;
-			}
-		} else {
+ 			}
+ 		} else {
 			ast_debug(1, "Fax already handled\n");
 		}
-	}
+  	}
 
-	if (tmp->ast_dsp && (f->subclass.integer != 'f')) {
-		chan_misdn_log(2, tmp->bc->port, " --> * SEND: DTMF (AST_DSP) :%c\n", f->subclass.integer);
-	}
+ 	if (tmp->ast_dsp && (f->subclass.integer != 'f')) {
+ 		chan_misdn_log(2, tmp->bc->port, " --> * SEND: DTMF (AST_DSP) :%c\n", f->subclass.integer);
+ 	}
 
 	return f;
 }
@@ -7362,7 +7347,7 @@ static struct ast_frame *misdn_read(struct ast_channel *ast)
 	}
 
 	tmp->frame.frametype = AST_FRAME_VOICE;
-	ast_format_set(&tmp->frame.subclass.format, AST_FORMAT_ALAW, 0);
+	tmp->frame.subclass.codec = AST_FORMAT_ALAW;
 	tmp->frame.datalen = len;
 	tmp->frame.samples = len;
 	tmp->frame.mallocd = 0;
@@ -7428,13 +7413,13 @@ static int misdn_write(struct ast_channel *ast, struct ast_frame *frame)
 	}
 
 
-	if (!frame->subclass.format.id) {
+	if (!frame->subclass.codec) {
 		chan_misdn_log(4, ch->bc->port, "misdn_write: * prods us\n");
 		return 0;
 	}
 
-	if (ast_format_cmp(&frame->subclass.format, &prefformat) == AST_FORMAT_CMP_NOT_EQUAL) {
-		chan_misdn_log(-1, ch->bc->port, "Got Unsupported Frame with Format:%s\n", ast_getformatname(&frame->subclass.format));
+	if (!(frame->subclass.codec & prefformat)) {
+		chan_misdn_log(-1, ch->bc->port, "Got Unsupported Frame with Format:%s\n", ast_getformatname(frame->subclass.codec));
 		return 0;
 	}
 
@@ -7772,7 +7757,7 @@ static struct chan_list *chan_list_init(int orig)
 	return cl;
 }
 
-static struct ast_channel *misdn_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *misdn_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
 {
 	struct ast_channel *ast;
 	char group[BUFFERSIZE + 1] = "";
@@ -7886,63 +7871,64 @@ static struct ast_channel *misdn_request(const char *type, struct ast_format_cap
 		}
 
 		if (rr) {
+			int robin_channel = rr->channel;
 			int port_start;
-			int bchan_start;
-			int port_up;
-			int check;
-			int maxbchans;
+			int next_chan = 1;
 
-			if (!rr->port) {
-				rr->port = misdn_cfg_get_next_port_spin(0);
-			}
-
-			if (!rr->channel) {
-				rr->channel = 1;
-			}
-
-			bchan_start = rr->channel;
-			port_start = rr->port;
 			do {
-				misdn_cfg_get(rr->port, MISDN_CFG_GROUPNAME, cfg_group, sizeof(cfg_group));
-				if (strcasecmp(cfg_group, group)) {
-					rr->port = misdn_cfg_get_next_port_spin(rr->port);
-					rr->channel = 1;
-					continue;
-				}
+				port_start = 0;
+				for (port = misdn_cfg_get_next_port_spin(rr->port); port > 0 && port != port_start;
+					 port = misdn_cfg_get_next_port_spin(port)) {
 
-				misdn_cfg_get(rr->port, MISDN_CFG_PMP_L1_CHECK, &check, sizeof(check));
-				port_up = misdn_lib_port_up(rr->port, check);
+					if (!port_start) {
+						port_start = port;
+					}
 
-				if (!port_up) {
-					chan_misdn_log(1, rr->port, "L1 is not Up on this Port\n");
-					rr->port = misdn_cfg_get_next_port_spin(rr->port);
-					rr->channel = 1;
-				} else if (port_up < 0) {
-					ast_log(LOG_WARNING, "This port (%d) is blocked\n", rr->port);
-					rr->port = misdn_cfg_get_next_port_spin(rr->port);
-					rr->channel = 1;
-				} else {
-					chan_misdn_log(4, rr->port, "portup\n");
-					maxbchans = misdn_lib_get_maxchans(rr->port);
+					if (port >= port_start) {
+						next_chan = 1;
+					}
 
-					for (;rr->channel <= maxbchans;rr->channel++) {
-						chan_misdn_log(4, rr->port, "Checking channel %d\n",  rr->channel);
+					if (port <= port_start && next_chan) {
+						int maxbchans = misdn_lib_get_maxchans(port);
 
-						if ((newbc = misdn_lib_get_free_bc(rr->port, rr->channel, 0, 0))) {
-							chan_misdn_log(4, rr->port, " Success! Found port:%d channel:%d\n", newbc->port, newbc->channel);
-							rr->channel++;
-							break;
+						if (++robin_channel >= maxbchans) {
+							robin_channel = 1;
+						}
+						next_chan = 0;
+					}
+
+					misdn_cfg_get(port, MISDN_CFG_GROUPNAME, cfg_group, sizeof(cfg_group));
+
+					if (!strcasecmp(cfg_group, group)) {
+						int port_up;
+						int check;
+
+						misdn_cfg_get(port, MISDN_CFG_PMP_L1_CHECK, &check, sizeof(check));
+						port_up = misdn_lib_port_up(port, check);
+
+						if (check && !port_up) {
+							chan_misdn_log(1, port, "L1 is not Up on this Port\n");
+						}
+
+						if (check && port_up < 0) {
+							ast_log(LOG_WARNING, "This port (%d) is blocked\n", port);
+						}
+
+						if (port_up > 0)	{
+							newbc = misdn_lib_get_free_bc(port, robin_channel, 0, 0);
+							if (newbc) {
+								chan_misdn_log(4, port, " Success! Found port:%d channel:%d\n", newbc->port, newbc->channel);
+								if (port_up) {
+									chan_misdn_log(4, port, "portup:%d\n",  port_up);
+								}
+								rr->port = newbc->port;
+								rr->channel = newbc->channel;
+								break;
+							}
 						}
 					}
-					if (!newbc || (rr->channel > maxbchans)) {
-						rr->port = misdn_cfg_get_next_port_spin(rr->port);
-						rr->channel = 1;
-					}
-
 				}
-			} while (!newbc && (rr->port > 0) &&
-				 ((rr->port != port_start) || ((rr->port == port_start) && (rr->channel < bchan_start))));
-
+			} while (!newbc && robin_channel != rr->channel);
 		} else {
 			for (port = misdn_cfg_get_next_port(0); port > 0;
 				port = misdn_cfg_get_next_port(port)) {
@@ -7997,7 +7983,7 @@ static struct ast_channel *misdn_request(const char *type, struct ast_format_cap
 	}
 	cl->bc = newbc;
 
-	ast = misdn_new(cl, AST_STATE_RESERVED, args.ext, NULL, cap, requestor ? requestor->linkedid : NULL, port, channel);
+	ast = misdn_new(cl, AST_STATE_RESERVED, args.ext, NULL, format, requestor ? requestor->linkedid : NULL, port, channel);
 	if (!ast) {
 		chan_list_unref(cl, "Failed to create a new channel");
 		ast_log(LOG_ERROR, "Could not create Asterisk channel for Dial(%s)\n", dial_str);
@@ -8040,6 +8026,7 @@ static int misdn_send_text(struct ast_channel *chan, const char *text)
 static struct ast_channel_tech misdn_tech = {
 	.type = misdn_type,
 	.description = "Channel driver for mISDN Support (Bri/Pri)",
+	.capabilities = AST_FORMAT_ALAW ,
 	.requester = misdn_request,
 	.send_digit_begin = misdn_digit_begin,
 	.send_digit_end = misdn_digit_end,
@@ -8058,6 +8045,7 @@ static struct ast_channel_tech misdn_tech = {
 static struct ast_channel_tech misdn_tech_wo_bridge = {
 	.type = misdn_type,
 	.description = "Channel driver for mISDN Support (Bri/Pri)",
+	.capabilities = AST_FORMAT_ALAW ,
 	.requester = misdn_request,
 	.send_digit_begin = misdn_digit_begin,
 	.send_digit_end = misdn_digit_end,
@@ -8099,7 +8087,7 @@ static void update_name(struct ast_channel *tmp, int port, int c)
 	}
 }
 
-static struct ast_channel *misdn_new(struct chan_list *chlist, int state,  char *exten, char *callerid, struct ast_format_cap *cap, const char *linkedid, int port, int c)
+static struct ast_channel *misdn_new(struct chan_list *chlist, int state,  char *exten, char *callerid, int format, const char *linkedid, int port, int c)
 {
 	struct ast_channel *tmp;
 	char *cid_name = NULL;
@@ -8107,7 +8095,6 @@ static struct ast_channel *misdn_new(struct chan_list *chlist, int state,  char 
 	int chan_offset = 0;
 	int tmp_port = misdn_cfg_get_next_port(0);
 	int bridging;
-	struct ast_format tmpfmt;
 
 	for (; tmp_port > 0; tmp_port = misdn_cfg_get_next_port(tmp_port)) {
 		if (tmp_port == port) {
@@ -8127,12 +8114,12 @@ static struct ast_channel *misdn_new(struct chan_list *chlist, int state,  char 
 	if (tmp) {
 		chan_misdn_log(2, 0, " --> * NEW CHANNEL dialed:%s caller:%s\n", exten, callerid);
 
-		ast_best_codec(cap, &tmpfmt);
-		ast_format_cap_add(tmp->nativeformats, &prefformat);
-		ast_format_copy(&tmp->writeformat, &tmpfmt);
-		ast_format_copy(&tmp->rawwriteformat, &tmpfmt);
-		ast_format_copy(&tmp->readformat, &tmpfmt);
-		ast_format_copy(&tmp->rawreadformat, &tmpfmt);
+		tmp->nativeformats = prefformat;
+
+		tmp->readformat = format;
+		tmp->rawreadformat = format;
+		tmp->writeformat = format;
+		tmp->rawwriteformat = format;
 
 		/* Link the channel and private together */
 		chan_list_ref(chlist, "Give a reference to ast_channel");
@@ -8142,6 +8129,8 @@ static struct ast_channel *misdn_new(struct chan_list *chlist, int state,  char 
 		misdn_cfg_get(0, MISDN_GEN_BRIDGING, &bridging, sizeof(bridging));
 		tmp->tech = bridging ? &misdn_tech : &misdn_tech_wo_bridge;
 
+		tmp->writeformat = format;
+		tmp->readformat = format;
 		tmp->priority = 1;
 
 		if (exten) {
@@ -10135,16 +10124,7 @@ cb_events(enum event_e event, struct misdn_bchannel *bc, void *user_data)
 		ch->l3id = bc->l3_id;
 		ch->addr = bc->addr;
 
-		{
-			struct ast_format_cap *cap = ast_format_cap_alloc_nolock();
-			struct ast_format tmpfmt;
-			if (!(cap)) {
-				return RESPONSE_ERR; 
-			}
-			ast_format_cap_add(cap, ast_format_set(&tmpfmt, AST_FORMAT_ALAW, 0));
-			chan = misdn_new(ch, AST_STATE_RESERVED, bc->dialed.number, bc->caller.number, cap, NULL, bc->port, bc->channel);
-			cap = ast_format_cap_destroy(cap);
-		}
+		chan = misdn_new(ch, AST_STATE_RESERVED, bc->dialed.number, bc->caller.number, AST_FORMAT_ALAW, NULL, bc->port, bc->channel);
 		if (!chan) {
 			chan_list_unref(ch, "Failed to create a new channel");
 			misdn_lib_send_event(bc,EVENT_RELEASE_COMPLETE);
@@ -10751,7 +10731,7 @@ cb_events(enum event_e event, struct misdn_bchannel *bc, void *user_data)
 			/* In Data Modes we queue frames */
 			memset(&frame, 0, sizeof(frame));
 			frame.frametype = AST_FRAME_VOICE; /* we have no data frames yet */
-			ast_format_set(&frame.subclass.format, AST_FORMAT_ALAW, 0);
+			frame.subclass.codec = AST_FORMAT_ALAW;
 			frame.datalen = bc->bframe_len;
 			frame.samples = bc->bframe_len;
 			frame.mallocd = 0;
@@ -11173,8 +11153,6 @@ static int unload_module(void)
 #if defined(AST_MISDN_ENHANCEMENTS)
 	misdn_cc_destroy();
 #endif	/* defined(AST_MISDN_ENHANCEMENTS) */
-	misdn_tech.capabilities = ast_format_cap_destroy(misdn_tech.capabilities);
-	misdn_tech_wo_bridge.capabilities = ast_format_cap_destroy(misdn_tech_wo_bridge.capabilities);
 
 	return 0;
 }
@@ -11191,17 +11169,6 @@ static int load_module(void)
 		.cb_log = chan_misdn_log,
 		.cb_jb_empty = chan_misdn_jb_empty,
 	};
-
-
-	if (!(misdn_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	if (!(misdn_tech_wo_bridge.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_set(&prefformat, AST_FORMAT_ALAW, 0);
-	ast_format_cap_add(misdn_tech.capabilities, &prefformat);
-	ast_format_cap_add(misdn_tech_wo_bridge.capabilities, &prefformat);
 
 	max_ports = misdn_lib_maxports_get();
 
@@ -12008,7 +11975,7 @@ static int misdn_command_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	ast_debug(1, "%s(%s)\n", misdn_command_name, (char *) data);
+	ast_log(LOG_DEBUG, "%s(%s)\n", misdn_command_name, (char *) data);
 
 	parse = ast_strdupa(data);
 	AST_STANDARD_APP_ARGS(subcommand, parse);

@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332561 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332559 $")
 
 #include "asterisk/config.h"
 #include "asterisk/netsock2.h"
@@ -397,11 +397,6 @@ int ast_sockaddr_is_ipv4_mapped(const struct ast_sockaddr *addr)
 {
 	const struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr->ss;
 	return addr->len && IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr);
-}
-
-int ast_sockaddr_is_ipv4_multicast(const struct ast_sockaddr *addr)
-{
-	return ((ast_sockaddr_ipv4(addr) & 0xf0000000) == 0xe0000000);
 }
 
 int ast_sockaddr_is_ipv6_link_local(const struct ast_sockaddr *addr)
