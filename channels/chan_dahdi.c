@@ -1438,7 +1438,8 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.timeout_cid_num = 500,
 				.timeout_command = 20000,
 				.progress_poll_interval = 750,
-				.signal_poll_interval = 60*1000,
+				.signal_poll_interval = 10*1000,
+				.signal_threshold = 90,
 				.codec_mask = WAT_CODEC_ALL
 			},
 		},
@@ -18099,6 +18100,12 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				} else {
 					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
 				}
+			} else if (!strcasecmp(v->name, "wat_signal_threshold")) {
+				if (atoi(v->value) >= 0) {
+					confp->wat.wat.wat_cfg.signal_threshold = atoi(v->value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+				}				
 			} else if (!strcasecmp(v->name, "wat_codecs")) {
 				confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
 #endif

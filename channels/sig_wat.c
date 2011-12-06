@@ -82,7 +82,7 @@ struct sig_wat_sms **wat_smss;
 
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
 {
-	ast_log(LOG_WARNING, "Span %d:Alarm %d", span_id, alarm);
+	ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(alarm));
 }
 
 void *sig_wat_malloc(size_t size)
@@ -858,46 +858,62 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	const wat_sim_info_t *sim_info = NULL;
 	const wat_sig_info_t *sig_info = NULL;
 	const wat_net_info_t *net_info = NULL;
-	const wat_pin_stat_t *pin_status = NULL;
+	const wat_pin_stat_t *pin_status = NULL;	
+	const char *last_error = NULL;
+	wat_alarm_t alarm = WAT_ALARM_NO_ALARM;
 	
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 
-	ast_cli(fd, "WAT span %d: %s\n", wat->span + 1, status);
-	
+	ast_cli(fd, "WAT span %d\n", wat->span + 1);
+	ast_cli(fd, "   Signalling:%s\n", status);
+
+	last_error = wat_span_get_last_error(wat->wat_span_id);
+	if (last_error != NULL) {
+		ast_cli(fd, "   Last Error:%s\n\n", last_error);
+	}
+
+	alarm = wat_span_get_alarms(wat->wat_span_id);
+	if (alarm != WAT_ALARM_NO_ALARM) {
+		ast_cli(fd, "   Alarm:%s\n\n", wat_decode_alarm(alarm));
+	}
+
 	pin_status = wat_span_get_pin_info(wat->wat_span_id);
 	if (pin_status == NULL) {
 		ast_cli(fd, "Span %d:Failed to get PIN status\n", wat->span + 1);
 	} else if (*pin_status != WAT_PIN_READY) {
 		ast_cli(fd, "   PIN Error:%s\n\n", wat_decode_pin_status(*pin_status));
 	}
-	
-	net_info = wat_span_get_net_info(wat->wat_span_id);
-	if (net_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get Network information\n", wat->span +1);
-	} else {
-		ast_cli(fd, "   Status: %s\n", wat_net_stat2str(net_info->stat));
-		ast_cli(fd, "   Operator: %s\n\n", net_info->operator_name);
-	}
 
-	sig_info = wat_span_get_sig_info(wat->wat_span_id);
-	if (sig_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get Signal information\n", wat->span +1);
-	} else {
-		char dest[30];
-		ast_cli(fd, "   Signal strength: %s\n", wat_decode_rssi(dest, sig_info->rssi));
-		ast_cli(fd, "   Signal BER: %s\n\n", wat_decode_ber(sig_info->ber));
-	}
+	if (alarm != WAT_ALARM_NO_SIGNAL) {
+		net_info = wat_span_get_net_info(wat->wat_span_id);
+		if (net_info == NULL) {
+			ast_cli(fd, "Span %d:Failed to get Network information\n", wat->span +1);
+		} else {
+			ast_cli(fd, "   Status: %s\n", wat_net_stat2str(net_info->stat));
+			ast_cli(fd, "   Operator: %s\n\n", net_info->operator_name);
+		}
 
-	sim_info = wat_span_get_sim_info(wat->wat_span_id);
-	if (sim_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
-	} else {
-		ast_cli(fd, "   Subscriber: %s type:%d plan:%d <%s> \n",
-												sim_info->subscriber.digits,
-												sim_info->subscriber.type,
-												sim_info->subscriber.plan,
-												sim_info->subscriber_type);
-		ast_cli(fd, "   IMSI: %s\n\n", sim_info->imsi);
+		sig_info = wat_span_get_sig_info(wat->wat_span_id);
+		if (sig_info == NULL) {
+			ast_cli(fd, "Span %d:Failed to get Signal information\n", wat->span +1);
+		} else {
+			char dest[30];
+			ast_cli(fd, "   Signal strength: %s\n", wat_decode_rssi(dest, sig_info->rssi));
+			ast_cli(fd, "   Signal BER: %s\n\n", wat_decode_ber(sig_info->ber));
+		}
+
+		sim_info = wat_span_get_sim_info(wat->wat_span_id);
+		if (sim_info == NULL) {
+			ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
+		} else {
+			ast_cli(fd, "   Subscriber: %s type:%d plan:%d <%s> \n",
+					sim_info->subscriber.digits,
+	 				sim_info->subscriber.type,
+					sim_info->subscriber.plan,
+					sim_info->subscriber_type);
+
+			ast_cli(fd, "   IMSI: %s\n\n", sim_info->imsi);
+		}
 	}
 
 	chip_info = wat_span_get_chip_info(wat->wat_span_id);

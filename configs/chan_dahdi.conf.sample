@@ -1486,6 +1486,9 @@ pickupgroup=1
 ; decrease this value to see if the signal quality dropped right before a dropped call.
 ; wat_signal_poll_interval=5000
 
+; Signal Threshold. Each time the signal strength drops below this threshold, an alarm will be reported
+; wat_signal_threshold=90
+
 ; Codec. This sets the list of codec to be used during voice calls.
 ; some valid values are:
 ; all
