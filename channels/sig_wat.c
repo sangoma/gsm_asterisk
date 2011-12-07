@@ -82,7 +82,11 @@ struct sig_wat_sms **wat_smss;
 
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
 {
-	ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(alarm));
+	if (alarm == WAT_ALARM_NONE) {
+		ast_log(LOG_NOTICE, "Span %d:Alarms cleared\n", span_id);
+	} else {
+		ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(alarm));
+	}
 }
 
 void *sig_wat_malloc(size_t size)
@@ -860,7 +864,7 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	const wat_net_info_t *net_info = NULL;
 	const wat_pin_stat_t *pin_status = NULL;	
 	const char *last_error = NULL;
-	wat_alarm_t alarm = WAT_ALARM_NO_ALARM;
+	wat_alarm_t alarm = WAT_ALARM_NONE;
 	
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 
@@ -873,7 +877,7 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	}
 
 	alarm = wat_span_get_alarms(wat->wat_span_id);
-	if (alarm != WAT_ALARM_NO_ALARM) {
+	if (alarm != WAT_ALARM_NONE) {
 		ast_cli(fd, "   Alarm:%s\n\n", wat_decode_alarm(alarm));
 	}
 
