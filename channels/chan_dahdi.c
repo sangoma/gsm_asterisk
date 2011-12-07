@@ -13241,6 +13241,11 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 					sig_ss7_set_alarm(tmp->sig_pvt, 1);
 					break;
 #endif	/* defined(HAVE_SS7) */
+#if defined(HAVE_WAT)
+				case SIG_GSM:
+					/* TODO need a handler here */
+					break;
+#endif /* defined(HAVE_WAT) */
 				default:
 					/* The only sig submodule left should be sig_analog. */
 					analog_p = tmp->sig_pvt;
