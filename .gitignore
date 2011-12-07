@@ -28,3 +28,4 @@ include/asterisk/buildopts.h
 include/asterisk/version.h
 doc/core-en_US.xml
 .*
+*-summary.*
