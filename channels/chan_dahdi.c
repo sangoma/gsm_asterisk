@@ -1064,10 +1064,10 @@ struct dahdi_pvt {
 	 */
 	char mohsuggest[MAX_MUSICCLASS];
 	char parkinglot[AST_MAX_EXTENSION]; /*!< Parking lot for this channel */
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 	/*! \brief Automatic Number Identification number (Alternate PRI caller ID number) */
 	char cid_ani[AST_MAX_EXTENSION];
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 	/*! \brief Automatic Number Identification code from PRI */
 	int cid_ani2;
 	/*! \brief Caller ID number from an incoming call. */
@@ -2639,7 +2639,7 @@ static struct ast_channel *my_new_analog_ast_channel(void *pvt, int state, int s
 	return dahdi_new(p, state, startpbx, dsub, 0, requestor ? requestor->linkedid : "");
 }
 
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 static int dahdi_setlaw(int dfd, int law)
 {
 	int res;
@@ -2648,7 +2648,7 @@ static int dahdi_setlaw(int dfd, int law)
 		return res;
 	return 0;
 }
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 
 #ifdef HAVE_WAT
 static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int startpbx, int sub, const struct ast_channel *requestor)
@@ -3217,7 +3217,7 @@ static int my_pri_play_tone(void *pvt, enum sig_pri_tone tone)
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 /*!
  * \internal
  * \brief Set the caller id information.
@@ -3251,9 +3251,9 @@ static void my_set_callerid(void *pvt, const struct ast_party_caller *caller)
 		sizeof(p->cid_ani));
 	p->cid_ani2 = caller->ani2;
 }
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 /*!
  * \internal
  * \brief Set the Dialed Number Identifier.
@@ -3270,7 +3270,7 @@ static void my_set_dnid(void *pvt, const char *dnid)
 
 	ast_copy_string(p->dnid, dnid, sizeof(p->dnid));
 }
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 
 #if defined(HAVE_PRI)
 /*!
@@ -3419,7 +3419,7 @@ static void dahdi_pri_update_span_devstate(struct sig_pri_span *pri)
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 /*!
  * \internal
  * \brief Reference this module.
@@ -3431,9 +3431,9 @@ static void my_module_ref(void)
 {
 	ast_module_ref(ast_module_info->self);
 }
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 /*!
  * \internal
  * \brief Unreference this module.
@@ -3445,7 +3445,7 @@ static void my_module_unref(void)
 {
 	ast_module_unref(ast_module_info->self);
 }
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
 
 #if defined(HAVE_PRI)
 #if defined(HAVE_PRI_CALL_WAITING)
@@ -3572,8 +3572,8 @@ static struct sig_wat_callback dahdi_wat_callbacks =
 	.set_dialing = my_set_dialing,
 	//.set_digital = my_set_digital,
 	//.set_inservice = my_set_inservice,
-	.set_callerid = my_set_callerid,
-	.set_dnid = my_set_dnid,
+	.set_callerid = my_set_callerid, /* We do not need this for now, but eventually will*/
+	.set_dnid = my_set_dnid,		/* We do not need this for now, but eventually will*/
 	.module_ref = my_module_ref,
 	.module_unref = my_module_unref,
 	.open_media = my_wat_open_media,
@@ -9952,7 +9952,7 @@ static struct ast_channel *dahdi_new(struct dahdi_pvt *i, int state, int startpb
 
 	/* Don't use ast_set_callerid() here because it will
 	 * generate a needless NewCallerID event */
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 	if (!ast_strlen_zero(i->cid_ani)) {
 		tmp->caller.ani.number.valid = 1;
 		tmp->caller.ani.number.str = ast_strdup(i->cid_ani);
@@ -12610,13 +12610,6 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 					destroy_dahdi_pvt(tmp);
 					return NULL;
 				} else {
-					si.spanno = 0;
-					if (ioctl(tmp->subs[SUB_REAL].dfd,DAHDI_SPANSTAT,&si) == -1) {
-						ast_log(LOG_ERROR, "Unable to get span status: %s\n", strerror(errno));
-						destroy_dahdi_pvt(tmp);
-						return NULL;
-					}
-
 					wats[span].sigchannel = offset;
 					wats[span].wat.span = span;
 					wats[span].wat.wat_span_id = span + 1;
@@ -14564,7 +14557,7 @@ static int prepare_pri(struct dahdi_pri *pri)
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 static char *complete_span_helper(const char *line, const char *word, int pos, int state, int rpos)
 {
 	int which, span;
@@ -14574,23 +14567,33 @@ static char *complete_span_helper(const char *line, const char *word, int pos, i
 		return ret;
 
 	for (which = span = 0; span < NUM_SPANS; span++) {
+#if defined(HAVE_PRI)
 		if (pris[span].pri.pri && ++which > state) {
 			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
 				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
 			}
 			break;
 		}
+#endif /* defined(HAVE_PRI) */
+#if defined(HAVE_WAT)		
+		if (wats[span].wat.wat_span_id && ++which > state) {
+			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
+				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+			}
+			break;
+		}
+#endif /* defined(HAVE_WAT) */
 	}
 	return ret;
 }
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 static char *complete_span_4(const char *line, const char *word, int pos, int state)
 {
 	return complete_span_helper(line,word,pos,state,3);
 }
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
 
 #if defined(HAVE_PRI)
 static char *handle_pri_set_debug_file(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
@@ -15404,8 +15407,11 @@ retry:
 static int setup_dahdi(int reload);
 static int dahdi_restart(void)
 {
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+	int i;
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 #if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int i, j;
+	int j;
 #endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
 	int cancel_code;
 	struct dahdi_pvt *p;
@@ -17205,8 +17211,11 @@ static struct ast_cc_monitor_callbacks dahdi_pri_cc_monitor_callbacks = {
 static int __unload_module(void)
 {
 	struct dahdi_pvt *p;
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+	int i;
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 #if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int i, j;
+	int j;
 #endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
 
 #ifdef HAVE_PRI
@@ -17316,9 +17325,9 @@ static int __unload_module(void)
 
 static int unload_module(void)
 {
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 	int y;
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
 #ifdef HAVE_PRI
 	for (y = 0; y < NUM_SPANS; y++)
 		ast_mutex_destroy(&pris[y].pri.lock);
