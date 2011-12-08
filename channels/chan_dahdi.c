@@ -17336,6 +17336,10 @@ static int unload_module(void)
 	for (y = 0; y < NUM_SPANS; y++)
 		ast_mutex_destroy(&linksets[y].ss7.lock);
 #endif	/* defined(HAVE_SS7) */
+#if defined (HAVE_WAT)
+	for (y = 0; y < NUM_SPANS; y++)
+		ast_mutex_destroy(&wats[y].wat.lock);
+#endif /* defined (HAVE_WAT) */
 	return __unload_module();
 }
 
@@ -19316,7 +19320,7 @@ static int load_module(void)
 {
 	int res;
 	struct ast_format tmpfmt;
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 	int y;
 #endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
 
