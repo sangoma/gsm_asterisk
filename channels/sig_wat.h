@@ -167,7 +167,7 @@ struct sig_wat_span {
 
 	int dtmf_count; /*!< How many DTMF's have we enqueued */
 
-	ast_mutex_t lock;			/*!< libwat access mutex */ /* DAVIDY do I need this? */
+	ast_mutex_t lock;			/*!< libwat access mutex */
 
 	struct sig_wat_sms *smss[MAX_NUM_SMS];
 };
