@@ -16941,6 +16941,7 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 };
 #endif	/* defined(HAVE_SS7) */
 
+#if defined(HAVE_WAT)
 static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	int span;
@@ -17087,7 +17088,6 @@ static char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli
 	return CLI_SUCCESS;
 }
 
-#if defined(HAVE_WAT)
 static struct ast_cli_entry dahdi_wat_cli[] = {
 	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
 	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
