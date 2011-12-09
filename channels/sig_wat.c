@@ -986,19 +986,21 @@ done:
 	return i;
 }
 
-void sig_wat_cli_exec_at(int fd, struct sig_wat_span *wat, const char *at_cmd)
+void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd)
 {
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
-void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, const char *sms)
+int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms, int blocking)
 {
 	int i;
 	struct sig_wat_sms *wat_sms;
 
+	/* TODO: implement blocking type SMS transmission */
+
 	if (strlen(sms) > WAT_MAX_SMS_SZ) {
 		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%zd max:%d)\n", wat->span + 1, strlen(sms), WAT_MAX_SMS_SZ);
-		return;
+		return -1;
 	}
 	
 	sig_wat_lock_private(wat->pvt);
@@ -1013,13 +1015,13 @@ void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, co
 	if (i >= ARRAY_LEN(wat->smss)) {
 		ast_log(LOG_ERROR, "Span :%d Failed to find a free SMS ID\n", wat->span + 1);
 		sig_wat_unlock_private(wat->pvt);
-		return;
+		return -1;
 	}
 
 	wat_sms = ast_malloc(sizeof(*wat_sms));
 	if (!wat_sms) {
 		sig_wat_unlock_private(wat->pvt);
-		return;
+		return -1;
 	}
 
 	wat->smss[i] = wat_sms;
@@ -1040,7 +1042,7 @@ void sig_wat_cli_send_sms(int fd, struct sig_wat_span *wat, const char *dest, co
 	if (wat_sms_req(wat->wat_span_id, wat_sms->wat_sms_id, &wat_sms->sms_event)) {
 		ast_verb(1, "Span %d: Failed to send sms\n", wat->span + 1);
 	}
-	return;
+	return 0;
 }
 
 
