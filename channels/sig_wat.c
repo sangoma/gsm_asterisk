@@ -1029,12 +1029,10 @@ void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd)
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
-int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms, int blocking)
+int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms)
 {
 	int i;
 	struct sig_wat_sms *wat_sms;
-
-	/* TODO: implement blocking type SMS transmission */
 
 	if (strlen(sms) > WAT_MAX_SMS_SZ) {
 		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%zd max:%d)\n", wat->span + 1, strlen(sms), WAT_MAX_SMS_SZ);

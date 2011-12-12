@@ -191,7 +191,7 @@ struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *c
 
 void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat);
 void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat);
-int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms, int blocking);
+int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms);
 void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd);
 int sig_wat_digit_begin(struct sig_wat_chan *pvt, struct ast_channel *ast, char digit);
 

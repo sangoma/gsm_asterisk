@@ -298,7 +298,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335853 $")
 		<parameter name="Span">
 			<para>Specify the specific span to send.</para>
 		</parameter>
-		<parameter name="Destination">
+		<parameter name="CalledNumber">
 			<para>Phone number to send SMS to.</para>
 		</parameter>
 		<parameter name="Message">
@@ -16975,10 +16975,8 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 {
 	int span;	
 	const char *span_string = astman_get_header(m, "Span");
-	const char *destination = astman_get_header(m, "Destination");
+	const char *destination = astman_get_header(m, "CalledNumber");
 	const char *message = astman_get_header(m, "Message");
-	const char *mode_string = astman_get_header(m, "Mode"); /* blocking or non-blocking */
-	int blocking = 0;
 
 	if (ast_strlen_zero(span_string)) {
 		astman_send_error(s, m, "No span specified");
@@ -16991,15 +16989,9 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 		return 0;
 	}
 
-	if (!ast_strlen_zero(mode_string)) {
-		if (!strncasecmp(mode_string, "blocking", 8)) {
-			blocking = 1;
-		}
-	}
-
-	if (sig_wat_send_sms(&wats[span-1].wat, destination, message, blocking) != 0) {
+	if (sig_wat_send_sms(&wats[span-1].wat, destination, message) != 0) {
 		astman_send_error(s, m, "Failed to send SMS");
-	} else if (!blocking) {
+	} else {
 		astman_send_ack(s, m, "SMS request sent");
 	}
 	return 0;
@@ -17034,7 +17026,7 @@ static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cl
 		return CLI_SUCCESS;
 	}
 
-	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], a->argv[5], 0);
+	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], a->argv[5]);
 	return CLI_SUCCESS;
 }
 
