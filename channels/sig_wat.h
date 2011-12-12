@@ -30,8 +30,6 @@
 #include "asterisk/frame.h"
 #include <libwat.h>
 
-#define MAX_NUM_SMS	20	/*!< Maximum number of SMS waiting to be sent */
-
 enum sig_wat_law {
 	SIG_WAT_DEFLAW = 0,
 	SIG_WAT_ULAW,
@@ -169,7 +167,7 @@ struct sig_wat_span {
 
 	ast_mutex_t lock;			/*!< libwat access mutex */
 
-	struct sig_wat_sms *smss[MAX_NUM_SMS];
+	struct sig_wat_sms *smss[WAT_MAX_SMSS_PER_SPAN];
 };
 
 int sig_wat_start_wat(struct sig_wat_span *wat);

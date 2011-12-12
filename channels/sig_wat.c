@@ -80,7 +80,6 @@ static void sig_wat_open_media(struct sig_wat_chan *p);
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor);
 
 struct sig_wat_span **wat_spans;
-struct sig_wat_sms **wat_smss;
 
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
 {
@@ -1049,7 +1048,7 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms
 	}
 
 	if (i >= ARRAY_LEN(wat->smss)) {
-		ast_log(LOG_ERROR, "Span :%d Failed to find a free SMS ID\n", wat->span + 1);
+		ast_log(LOG_ERROR, "Span :%d Max pending SMS reached\n", wat->span + 1);
 		sig_wat_unlock_private(wat->pvt);
 		return -1;
 	}
