@@ -32,6 +32,8 @@
 #include <signal.h>
 
 #include "asterisk/cli.h"
+#include "asterisk/stringfields.h"
+#include "asterisk/manager.h"
 
 #include "sig_wat.h"
 
@@ -360,7 +362,43 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	ast_assert(wat != NULL);
-	ast_verb(3, "Span %d: SMS received\n %s\n", wat->span + 1, sms_event->message);
+	ast_verb(3, "Span %d: SMS received from %s\n %s\n", wat->span + 1, sms_event->calling_num.digits, sms_event->message);
+
+	if (sms_event->type == WAT_SMS_TXT) {
+		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
+						"Span: %d\r\n"
+						"CallingNumber: %s (type:%d plan:%d)\r\n"
+						"Type: %s\r\n"
+						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+						"MessageLength: %u\r\n"
+						"Message:%s\r\n\r\n",
+						wat->span + 1,
+						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+						(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
+						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
+						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
+						sms_event->scts.timezone,
+						sms_event->len,
+						sms_event->message);
+	} else {
+		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
+						"Span: %d\r\n"
+						"CallingNumber: %s (type:%d plan:%d)\r\n"
+						"ServiceCentre: %s (type:%d plan:%d)\r\n"
+						"Type: %s\r\n"
+						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+						"MessageLength: %u\r\n"
+						"Message:%s\r\n\r\n",
+						wat->span + 1,
+						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+						sms_event->pdu.smsc.digits, sms_event->pdu.smsc.type, sms_event->pdu.smsc.plan,
+						(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
+						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
+						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
+						sms_event->scts.timezone,
+						sms_event->len,
+						sms_event->message);
+	}
 }
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
