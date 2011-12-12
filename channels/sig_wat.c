@@ -371,7 +371,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 						"Type: %s\r\n"
 						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
 						"MessageLength: %u\r\n"
-						"Message:%s\r\n\r\n",
+						"Message: %s\r\n\r\n",
 						wat->span + 1,
 						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
 						(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
@@ -388,7 +388,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 						"Type: %s\r\n"
 						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
 						"MessageLength: %u\r\n"
-						"Message:%s\r\n\r\n",
+						"Message: %s\r\n\r\n",
 						wat->span + 1,
 						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
 						sms_event->pdu.smsc.digits, sms_event->pdu.smsc.type, sms_event->pdu.smsc.plan,
