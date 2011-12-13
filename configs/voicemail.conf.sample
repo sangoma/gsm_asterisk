@@ -34,8 +34,7 @@ serveremail=asterisk
 ; Should the email contain the voicemail as an attachment
 attach=yes
 ; Maximum number of messages per folder.  If not specified, a default value
-; (100) is used.  Maximum value for this option is 9999.  If set to 0, a
-; mailbox will be greetings-only.
+; (100) is used.  Maximum value for this option is 9999.
 ;maxmsg=100
 ; Maximum length of a voicemail message in seconds
 ;maxsecs=180
@@ -66,7 +65,7 @@ maxlogins=3
 ;userscontext=default
 ;
 ; If you need to have an external program, i.e. /usr/bin/myapp
-; called when a voicemail is left, delivered, or your voicemailbox
+; called when a voicemail is left, delivered, or your voicemailbox 
 ; is checked, uncomment this.
 ;externnotify=/usr/bin/myapp
 
@@ -85,32 +84,17 @@ maxlogins=3
 ;externpass=/usr/bin/myapp
 ;externpassnotify=/usr/bin/myapp
 
-; If you would like to have an external program called when a user changes the
-; voicemail password for the purpose of doing validation on the new password,
-; then use this option.  The script can decide whether or not the new password
-; meets minimum password strength requirements before the Voicemail application
-; accepts the password.  If the script decides that the password is not acceptable,
-; the user will be informed that the new password does not meet minimum password
-; requirements, and they will be asked to enter another password.
-;
-; The arguments passed to this script are <mailbox> <context> <old pw> <new pw>.
-;
-; The script should print "VALID" to stdout to indicate that the new password
-; is acceptable.  If the password is considered too weak, the script should print
-; "INVALID" to stdout.
-;
-; There is an example script in the contrib/scripts/ directory, voicemailpwcheck.py,
-; which implements some basic password checking, and can be used as a starting point
-; for use with this option.
-;
-;externpasscheck=/usr/local/bin/voicemailpwcheck.py
+; If you need to have an external program, i.e. /usr/bin/myapp
+; called when a user changes her voicemail password, uncomment this:
+;externpasscheck=/usr/bin/myapp
+; Arguments for this script are:
+; mailbox context oldpass newpass
 
 ; For the directory, you can override the intro file if you want
 ;directoryintro=dir-intro
 ; The character set for voicemail messages can be specified here
-; default: ISO-8859-1
-;charset=UTF-8
-; The ADSI feature descriptor number to download to
+;charset=ISO-8859-1
+; The ADSI feature descriptor number to download to 
 ;adsifdn=0000000F
 ; The ADSI security lock code
 ;adsisec=9BDBF7AC
@@ -164,11 +148,6 @@ emaildateformat=%A, %B %d, %Y at %r
 ; 24h date format
 ;emaildateformat=%A, %d %B %Y at %H:%M:%S
 ;
-; Default for pager use
-pagerdateformat=%A, %B %d, %Y at %r
-; Short 24h date format for pager use
-;pagerdateformat=%T %D
-;
 ; You can override the default program to send e-mail if you wish, too
 ;
 ;mailcmd=/usr/sbin/sendmail -t
@@ -178,27 +157,27 @@ pagerdateformat=%A, %B %d, %Y at %r
 ;                    ; enables polling mailboxes for changes.  Normally, it will
 ;                    ; expect that changes are only made when someone called in
 ;                    ; to one of the voicemail applications.
-;                    ;   Examples of situations that would require this option are
-;                    ; web interfaces to voicemail or an email client in the case
+;                    ;   Examples of situations that would require this option are 
+;                    ; web interfaces to voicemail or an email client in the case 
 ;                    ; of using IMAP storage.
-;                    ; Default: no
+;
 ;pollfreq=30         ;   If the "pollmailboxes" option is enabled, this option
 ;                    ; sets the polling frequency.  The default is once every
 ;                    ; 30 seconds.
-; If using IMAP storage, specify whether voicemail greetings should be stored
+; If using IMAP storage, specify whether voicemail greetings should be stored 
 ; via IMAP. If no, then greetings are stored as if IMAP storage were not enabled
 ;imapgreetings=no
 ; If imapgreetings=yes, then specify which folder to store your greetings in. If
 ; you do not specify a folder, then INBOX will be used
 ;greetingsfolder=INBOX
-; Some IMAP server implementations store folders under INBOX instead of
+; Some IMAP server implementations store folders under INBOX instead of 
 ; using a top level folder (ex. INBOX/Friends).  In this case, user
 ; imapparentfolder to set the parent folder. For example, Cyrus IMAP does
 ; NOT use INBOX as the parent. Default is to have no parent folder set.
 ;imapparentfolder=INBOX
-;
-;
-;
+; 
+; 
+; 
 ; Each mailbox is listed in the form <mailbox>=<password>,<name>,<email>,<pager_email>,<options>
 ; if the e-mail is specified, a message will be sent when a message is
 ; received, to the given mailbox. If pager is specified, a message will be
@@ -208,31 +187,24 @@ pagerdateformat=%A, %B %d, %Y at %r
 ; Advanced options example is extension 4069
 ; NOTE: All options can be expressed globally in the general section, and
 ; overridden in the per-mailbox settings, unless listed otherwise.
-;
+; 
 ; tz=central 		; Timezone from zonemessages below. Irrelevant if envelope=no.
-; locale=de_DE.UTF-8	; set the locale for generation of the date/time strings (make 
-			; sure the locales are installed in your operating system; e.g
-			; on Debian Linux you can use "dpkg-reconfigure locales").
-			; If you use UTF-8 locales, make sure to set the "charset" option
-			; to UTF-8 too. If you mix different locales for different users
-			; you should avoid words in the emaildateformat specification, e.g.:
-			; emaildateformat=%A, %d %B %Y, %H:%M:%S
 ; attach=yes 		; Attach the voicemail to the notification email *NOT* the pager email
 ; attachfmt=wav49	; Which format to attach to the email.  Normally this is the
 			; first format specified in the format parameter above, but this
 			; option lets you customize the format sent to particular mailboxes.
 			; Useful if Windows users want wav49, but Linux users want gsm.
 			; [per-mailbox only]
-; saycid=yes 		; Say the caller id information before the message. If not described,
+; saycid=yes 		; Say the caller id information before the message. If not described, 
 			;     or set to no, it will be in the envelope
-; cidinternalcontexts=intern	; Internal Context for Name Playback instead of
+; cidinternalcontexts=intern	; Internal Context for Name Playback instead of 
 			; extension digits when saying caller id.
 ; sayduration=no 	; Turn on/off the duration information before the message. [ON by default]
 ; saydurationm=2        ; Specify the minimum duration to say. Default is 2 minutes
-; dialout=fromvm ; Context to dial out from [option 4 from mailbox's advanced menu].
-                 ; If not specified, option 4 will not be listed and dialing out
+; dialout=fromvm ; Context to dial out from [option 4 from mailbox's advanced menu]. 
+                 ; If not specified, option 4 will not be listed and dialing out 
                  ; from within VoiceMailMain() will not be permitted.
-sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
+sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside 
                   ; VoiceMailMain() [option 5 from mailbox's advanced menu].
                   ; If set to 'no', option 5 will not be listed.
 ; searchcontexts=yes	; Current default behavior is to search only the default context
@@ -241,7 +213,7 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
 			; Note: If you have this option enabled, then you will be required to have
 			; unique mailbox names across all contexts. Otherwise, an ambiguity is created
 			; since it is impossible to know which mailbox to retrieve when one is requested.
-; callback=fromvm 	; Context to call back from
+; callback=fromvm 	; Context to call back from  
 			;     if not listed, calling the sender back will not be permitted
 ; exitcontext=fromvm    ; Context to go to on user exit such as * or 0
                         ;     The default is the current context.
@@ -250,10 +222,10 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
                     ; reach an operator.  This option REQUIRES an 'o' extension in the
                     ; same context (or in exitcontext, if set), as that is where the
                     ; 0 key will send you.  [OFF by default]
-; envelope=no 		; Turn on/off envelope playback before message playback. [ON by default]
+; envelope=no 		; Turn on/off envelope playback before message playback. [ON by default] 
 			;     This does NOT affect option 3,3 from the advanced options menu
 ; delete=yes		; After notification, the voicemail is deleted from the server. [per-mailbox only]
-			;     This is intended for use with users who wish to receive their
+			;     This is intended for use with users who wish to receive their 
 			;     voicemail ONLY by email. Note:  "deletevoicemail" is provided as an
 			;     equivalent option for Realtime configuration.
 ; volgain=0.0		; Emails bearing the voicemail may arrive in a volume too
@@ -261,6 +233,7 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
 			;     much gain to add to the message when sending a voicemail.
 			;     NOTE: sox must be installed for this option to work.
 ; nextaftercmd=yes	; Skips to the next message after hitting 7 or 9 to delete/save current message.
+			;     [global option only at this time] 
 ; forcename=yes		; Forces a new user to record their name.  A new user is
 			;     determined by the password being the same as
 			;     the mailbox number.  The default is "no".
@@ -270,28 +243,9 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
 			;     The default is "no".
 ; tempgreetwarn=yes	; Remind the user that their temporary greeting is set
 
-; passwordlocation=spooldir
-                    ; Usually the voicemail password (vmsecret) is stored in
-                    ; this configuration file.  By setting this option you can
-                    ; specify where Asterisk should read/write the vmsecret.
-                    ; Supported options:
-                    ;   voicemail.conf:
-                    ;     This is the default option.  The secret is read from
-                    ;     and written to voicemail.conf (or users.conf).
-                    ;   spooldir:
-                    ;     The secret is stored in a separate file in the user's
-                    ;     voicemail spool directory in a file named secret.conf.
-                    ;     Please ensure that normal Linux users are not
-                    ;     permitted to access Asterisk's spool directory as the
-                    ;     secret is stored in plain text.  If a secret is not
-                    ;     found in this directory, the password in
-                    ;     voicemail.conf (or users.conf) will be used.
-                    ; Note that this option does not affect password storage for
-                    ; realtime users, which are still stored in the realtime
-                    ; backend.
-; messagewrap=no    ; Enable next/last message to wrap around to
-                    ; first (from last) and last (from first) message
-                    ; The default is "no".
+;messagewrap=no	; Enable next/last message to wrap around to
+			; first (from last) and last (from first) message
+			; The default is "no".
 ; minpassword=0 ; Enforce minimum password length
 
 ; vm-password=custom_sound
@@ -318,12 +272,6 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
 ; vm-pls-try-again=custom_sound
                         ; Customize which sound file is used instead of the
                         ; default prompt that says "Please try again."
-; vm-prepend-timeout=custom_sound
-                        ; Customize which sound file is used when the user
-                        ; times out while recording a prepend message instead
-                        ; of the default prompt that says "then press pound"
-                        ; note that this will currently follow vm-pls-try-again.
-                        ; this behavior is subject to change in the near future.
 ; listen-control-forward-key=#	; Customize the key that fast-forwards message playback
 ; listen-control-reverse-key=*	; Customize the key that rewinds message playback
 ; listen-control-pause-key=0	; Customize the key that pauses/unpauses message playback
@@ -339,37 +287,37 @@ sendvoicemail=yes ; Allow the user to compose and send a voicemail while inside
 
 
 [zonemessages]
-; Users may be located in different timezones, or may have different
-; message announcements for their introductory message when they enter
-; the voicemail system. Set the message and the timezone each user
-; hears here. Set the user into one of these zones with the tz= attribute
-; in the options field of the mailbox. Of course, language substitution
-; still applies here so you may have several directory trees that have
-; alternate language choices.
-;
-; Look in /usr/share/zoneinfo/ for names of timezones.
-; Look at the manual page for strftime for a quick tutorial on how the
-; variable substitution is done on the values below.
-;
-; Supported values:
+; Users may be located in different timezones, or may have different 
+; message announcements for their introductory message when they enter 
+; the voicemail system. Set the message and the timezone each user 
+; hears here. Set the user into one of these zones with the tz= attribute 
+; in the options field of the mailbox. Of course, language substitution 
+; still applies here so you may have several directory trees that have 
+; alternate language choices. 
+; 
+; Look in /usr/share/zoneinfo/ for names of timezones. 
+; Look at the manual page for strftime for a quick tutorial on how the 
+; variable substitution is done on the values below. 
+; 
+; Supported values: 
 ; 'filename'    filename of a soundfile (single ticks around the filename
 ;               required)
-; ${VAR}        variable substitution
-; A or a        Day of week (Saturday, Sunday, ...)
-; B or b or h   Month name (January, February, ...)
-; d or e        numeric day of month (first, second, ..., thirty-first)
-; Y             Year
-; I or l        Hour, 12 hour clock
-; H             Hour, 24 hour clock (single digit hours preceded by "oh")
-; k             Hour, 24 hour clock (single digit hours NOT preceded by "oh")
-; M             Minute, with 00 pronounced as "o'clock"
+; ${VAR}        variable substitution 
+; A or a        Day of week (Saturday, Sunday, ...) 
+; B or b or h   Month name (January, February, ...) 
+; d or e        numeric day of month (first, second, ..., thirty-first) 
+; Y             Year 
+; I or l        Hour, 12 hour clock 
+; H             Hour, 24 hour clock (single digit hours preceded by "oh") 
+; k             Hour, 24 hour clock (single digit hours NOT preceded by "oh") 
+; M             Minute, with 00 pronounced as "o'clock" 
 ; N             Minute, with 00 pronounced as "hundred" (US military time)
-; P or p        AM or PM
+; P or p        AM or PM 
 ; Q             "today", "yesterday" or ABdY
-;               (*note: not standard strftime value)
+;               (*note: not standard strftime value) 
 ; q             "" (for today), "yesterday", weekday, or ABdY
-;               (*note: not standard strftime value)
-; R             24 hour time, including minute
+;               (*note: not standard strftime value) 
+; R             24 hour time, including minute 
 ;
 eastern=America/New_York|'vm-received' Q 'digits/at' IMp
 central=America/Chicago|'vm-received' Q 'digits/at' IMp
@@ -411,9 +359,9 @@ european=Europe/Copenhagen|'vm-received' a d b 'digits/at' HM
 ;
 
 ;
-; When using IMAP storage, imapuser, imappassword, and imapfolder can be used to specify the
+; When using IMAP storage, imapuser and imappassword can be used to specify the
 ; user's credentials.
 ;
 ;[imapvm]
-;4324 => 7764,Ellis Redding,red@buxton.us,,imapuser=eredding|imappassword=g3tbusy|imapfolder=notinbox
+;4324 => 7764,Ellis Redding,red@buxton.us,,imapuser=eredding|imappassword=g3tbusy
 ;4325 => 2392,Andrew Dufresne,andy@dufresne.info,,imapuser=adufresne|imappassword=rockh@mmer

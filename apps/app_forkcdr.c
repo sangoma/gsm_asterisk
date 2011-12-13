@@ -26,13 +26,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 209594 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -188,7 +184,7 @@ static void ast_cdr_fork(struct ast_channel *chan, struct ast_flags optflags, ch
 	while (cdr->next)
 		cdr = cdr->next;
 	
-	if (!(newcdr = ast_cdr_dup_unique(cdr)))
+	if (!(newcdr = ast_cdr_dup(cdr)))
 		return;
 	
 	ast_cdr_append(cdr, newcdr);
@@ -230,7 +226,7 @@ static void ast_cdr_fork(struct ast_channel *chan, struct ast_flags optflags, ch
 	ast_set_flag(cdr, AST_CDR_FLAG_CHILD | AST_CDR_FLAG_LOCKED);
 }
 
-static int forkcdr_exec(struct ast_channel *chan, const char *data)
+static int forkcdr_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	char *argcopy = NULL;

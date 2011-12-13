@@ -25,14 +25,10 @@
  * \arg Extensions: g729 
  * \ingroup formats
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -50,7 +46,7 @@ static struct ast_frame *g729_read(struct ast_filestream *s, int *whennext)
 	int res;
 	/* Send a frame from the file to the appropriate channel */
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_G729A, 0);
+	s->fr.subclass = AST_FORMAT_G729A;
 	s->fr.mallocd = 0;
 	s->fr.samples = G729A_SAMPLES;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, BUF_SIZE);
@@ -70,8 +66,8 @@ static int g729_write(struct ast_filestream *fs, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_G729A) {
-		ast_log(LOG_WARNING, "Asked to write non-G729 frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_G729A) {
+		ast_log(LOG_WARNING, "Asked to write non-G729 frame (%d)!\n", f->subclass);
 		return -1;
 	}
 	if (f->datalen % 10) {
@@ -125,9 +121,10 @@ static off_t g729_tell(struct ast_filestream *fs)
 	return (offset/BUF_SIZE)*G729A_SAMPLES;
 }
 
-static struct ast_format_def g729_f = {
+static const struct ast_format g729_f = {
 	.name = "g729",
 	.exts = "g729",
+	.format = AST_FORMAT_G729A,
 	.write = g729_write,
 	.seek = g729_seek,
 	.trunc = g729_trunc,
@@ -138,19 +135,18 @@ static struct ast_format_def g729_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&g729_f.format, AST_FORMAT_G729A, 0);
-	if (ast_format_def_register(&g729_f))
+	if (ast_format_register(&g729_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(g729_f.name);
-}
+	return ast_format_unregister(g729_f.name);
+}	
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw G.729 data",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw G729 data",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

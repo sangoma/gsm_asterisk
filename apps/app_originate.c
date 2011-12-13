@@ -32,13 +32,9 @@
  *       Set options for call files.
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337262 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -70,9 +66,6 @@ static const char app_originate[] = "Originate";
 			<parameter name="arg3" required="false">
 				<para>If the type is <literal>exten</literal>, then this is the priority that the channel is sent to.  If the type is <literal>app</literal>, then this parameter is ignored.</para>
 			</parameter>
-			<parameter name="timeout" required="false">
-				<para>Timeout in seconds. Default is 30 seconds.</para>
-			</parameter>
 		</syntax>
 		<description>
 		<para>This application originates an outbound call and connects it to a specified extension or application.  This application will block until the outgoing call fails or gets answered.  At that point, this application will exit with the status variable set and dialplan processing will continue.</para>
@@ -96,7 +89,7 @@ static const char app_originate[] = "Originate";
 	</application>
  ***/
 
-static int originate_exec(struct ast_channel *chan, const char *data)
+static int originate_exec(struct ast_channel *chan, void *data)
 {
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(tech_data);
@@ -104,22 +97,16 @@ static int originate_exec(struct ast_channel *chan, const char *data)
 		AST_APP_ARG(arg1);
 		AST_APP_ARG(arg2);
 		AST_APP_ARG(arg3);
-		AST_APP_ARG(timeout);
 	);
 	char *parse;
 	char *chantech, *chandata;
 	int res = -1;
+	int outgoing_res = 0;
 	int outgoing_status = 0;
-	unsigned int timeout = 30;
+	static const unsigned int timeout = 30;
 	static const char default_exten[] = "s";
-	struct ast_format tmpfmt;
-	struct ast_format_cap *cap_slin = ast_format_cap_alloc_nolock();
 
 	ast_autoservice_start(chan);
-	if (!cap_slin) {
-		goto return_cleanup;
-	}
-	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_ERROR, "Originate() requires arguments\n");
@@ -133,13 +120,6 @@ static int originate_exec(struct ast_channel *chan, const char *data)
 	if (args.argc < 3) {
 		ast_log(LOG_ERROR, "Incorrect number of arguments\n");
 		goto return_cleanup;
-	}
-
-	if (!ast_strlen_zero(args.timeout)) {
-		if(sscanf(args.timeout, "%u", &timeout) != 1) {
-			ast_log(LOG_NOTICE, "Invalid timeout: '%s'. Setting timeout to 30 seconds\n", args.timeout);
-			timeout = 30;
-		}
 	}
 
 	chandata = ast_strdupa(args.tech_data);
@@ -168,14 +148,14 @@ static int originate_exec(struct ast_channel *chan, const char *data)
 		ast_debug(1, "Originating call to '%s/%s' and connecting them to extension %s,%s,%d\n",
 				chantech, chandata, args.arg1, exten, priority);
 
-		ast_pbx_outgoing_exten(chantech, cap_slin, chandata,
+		outgoing_res = ast_pbx_outgoing_exten(chantech, AST_FORMAT_SLINEAR, chandata,
 				timeout * 1000, args.arg1, exten, priority, &outgoing_status, 0, NULL,
 				NULL, NULL, NULL, NULL);
 	} else if (!strcasecmp(args.type, "app")) {
 		ast_debug(1, "Originating call to '%s/%s' and connecting them to %s(%s)\n",
 				chantech, chandata, args.arg1, S_OR(args.arg2, ""));
 
-		ast_pbx_outgoing_app(chantech, cap_slin, chandata,
+		outgoing_res = ast_pbx_outgoing_app(chantech, AST_FORMAT_SLINEAR, chandata,
 				timeout * 1000, args.arg1, args.arg2, &outgoing_status, 0, NULL,
 				NULL, NULL, NULL, NULL);
 	} else {
@@ -214,7 +194,7 @@ return_cleanup:
 			break;
 		}
 	}
-	cap_slin = ast_format_cap_destroy(cap_slin);
+
 	ast_autoservice_stop(chan);
 
 	return res;

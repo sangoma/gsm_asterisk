@@ -18,8 +18,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief Comma Separated Value CDR records.
  *
  * \author Mark Spencer <markster@digium.com>
@@ -28,13 +28,11 @@
  * \ingroup cdr_drivers
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335556 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 158374 $")
+
+#include <time.h>
 
 #include "asterisk/paths.h"	/* use ast_config_AST_LOG_DIR */
 #include "asterisk/config.h"
@@ -50,11 +48,10 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335556 $")
 #define DATE_FORMAT "%Y-%m-%d %T"
 
 static int usegmtime = 0;
-static int accountlogs = 1;
 static int loguniqueid = 0;
 static int loguserfield = 0;
 static int loaded = 0;
-static const char config[] = "cdr.conf";
+static char *config = "cdr.conf";
 
 /* #define CSV_LOGUNIQUEID 1 */
 /* #define CSV_LOGUSERFIELD 1 */
@@ -95,43 +92,48 @@ AST_MUTEX_DEFINE_STATIC(acf_lock);
 static int load_config(int reload)
 {
 	struct ast_config *cfg;
-	struct ast_variable *v;
+	struct ast_variable *var;
+	const char *tmp;
 	struct ast_flags config_flags = { reload ? CONFIG_FLAG_FILEUNCHANGED : 0 };
 
 	if (!(cfg = ast_config_load(config, config_flags)) || cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_WARNING, "unable to load config: %s\n", config);
 		return 0;
-	} else if (cfg == CONFIG_STATUS_FILEUNCHANGED) {
+	} else if (cfg == CONFIG_STATUS_FILEUNCHANGED)
 		return 1;
-	}
 
-	accountlogs = 1;
 	usegmtime = 0;
 	loguniqueid = 0;
 	loguserfield = 0;
 
-	if (!(v = ast_variable_browse(cfg, "csv"))) {
+	if (!(var = ast_variable_browse(cfg, "csv"))) {
 		ast_config_destroy(cfg);
 		return 0;
 	}
 
-	for (; v; v = v->next) {
-		if (!strcasecmp(v->name, "usegmtime")) {
-			usegmtime = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "accountlogs")) {
-			/* Turn on/off separate files per accountcode. Default is on (as before) */
-			accountlogs = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "loguniqueid")) {
-			loguniqueid = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "loguserfield")) {
-			loguserfield = ast_true(v->value);
-		}
+	if ((tmp = ast_variable_retrieve(cfg, "csv", "usegmtime"))) {
+		usegmtime = ast_true(tmp);
+		if (usegmtime)
+			ast_debug(1, "logging time in GMT\n");
 	}
+
+	if ((tmp = ast_variable_retrieve(cfg, "csv", "loguniqueid"))) {
+		loguniqueid = ast_true(tmp);
+		if (loguniqueid)
+			ast_debug(1, "logging CDR field UNIQUEID\n");
+	}
+
+	if ((tmp = ast_variable_retrieve(cfg, "csv", "loguserfield"))) {
+		loguserfield = ast_true(tmp);
+		if (loguserfield)
+			ast_debug(1, "logging CDR user-defined field\n");
+	}
+
 	ast_config_destroy(cfg);
 	return 1;
 }
 
-static int append_string(char *buf, const char *s, size_t bufsize)
+static int append_string(char *buf, char *s, size_t bufsize)
 {
 	int pos = strlen(buf), spos = 0, error = -1;
 
@@ -304,7 +306,7 @@ static int csv_log(struct ast_cdr *cdr)
 		ast_log(LOG_ERROR, "Unable to re-open master file %s : %s\n", csvmaster, strerror(errno));
 	}
 
-	if (accountlogs && !ast_strlen_zero(cdr->accountcode)) {
+	if (!ast_strlen_zero(cdr->accountcode)) {
 		if (writefile(buf, cdr->accountcode))
 			ast_log(LOG_WARNING, "Unable to write CSV record to account file '%s' : %s\n", cdr->accountcode, strerror(errno));
 	}
@@ -323,9 +325,8 @@ static int load_module(void)
 {
 	int res;
 
-	if (!load_config(0)) {
+	if(!load_config(0))
 		return AST_MODULE_LOAD_DECLINE;
-	}
 
 	if ((res = ast_cdr_register(name, ast_module_info->description, csv_log))) {
 		ast_log(LOG_ERROR, "Unable to register CSV CDR handling\n");
@@ -348,9 +349,8 @@ static int reload(void)
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Comma Separated Values CDR Backend",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Comma Separated Values CDR Backend",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.load_pri = AST_MODPRI_CDR_DRIVER,
 	       );

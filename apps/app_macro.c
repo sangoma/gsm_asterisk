@@ -25,14 +25,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
-	<replacement>app_stack (GoSub)</replacement>
- */
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338086 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 295843 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -41,7 +36,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338086 $")
 #include "asterisk/config.h"
 #include "asterisk/utils.h"
 #include "asterisk/lock.h"
-#include "asterisk/app.h"
 
 /*** DOCUMENTATION
 	<application name="Macro" language="en_US">
@@ -164,7 +158,7 @@ static char *exit_app = "MacroExit";
 
 static void macro_fixup(void *data, struct ast_channel *old_chan, struct ast_channel *new_chan);
 
-static struct ast_datastore_info macro_ds_info = {
+struct ast_datastore_info macro_ds_info = {
 	.type = "MACRO",
 	.chan_fixup = macro_fixup,
 };
@@ -222,7 +216,7 @@ static struct ast_exten *find_matching_priority(struct ast_context *c, const cha
 	return NULL;
 }
 
-static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive)
+static int _macro_exec(struct ast_channel *chan, void *data, int exclusive)
 {
 	const char *s;
 	char *tmp;
@@ -242,14 +236,13 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	int offset, depth = 0, maxdepth = 7;
 	int setmacrocontext=0;
 	int autoloopflag, inhangup = 0;
-	struct ast_str *tmp_subst = NULL;
   
 	char *save_macro_exten;
 	char *save_macro_context;
 	char *save_macro_priority;
 	char *save_macro_offset;
 	struct ast_datastore *macro_store = ast_channel_datastore_find(chan, &macro_ds_info, NULL);
-
+ 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "Macro() requires arguments. See \"core show application macro\" for help.\n");
 		return -1;
@@ -293,6 +286,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		return 0;
 	}
 	snprintf(depthc, sizeof(depthc), "%d", depth + 1);
+	pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
 
 	tmp = ast_strdupa(data);
 	rest = tmp;
@@ -303,10 +297,9 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	}
 
 	snprintf(fullmacro, sizeof(fullmacro), "macro-%s", macro);
-	if (!ast_exists_extension(chan, fullmacro, "s", 1,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+	if (!ast_exists_extension(chan, fullmacro, "s", 1, chan->cid.cid_num)) {
 		if (!ast_context_find(fullmacro)) 
-			ast_log(LOG_WARNING, "No such context '%s' for macro '%s'. Was called by %s@%s\n", fullmacro, macro, chan->exten, chan->context);
+			ast_log(LOG_WARNING, "No such context '%s' for macro '%s'\n", fullmacro, macro);
 		else
 			ast_log(LOG_WARNING, "Context '%s' for macro '%s' lacks 's' extension, priority 1\n", fullmacro, macro);
 		return 0;
@@ -323,11 +316,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		}
 		ast_autoservice_stop(chan);
 	}
-
-	if (!(tmp_subst = ast_str_create(16))) {
-		return -1;
-	}
-
+	
 	/* Save old info */
 	oldpriority = chan->priority;
 	ast_copy_string(oldexten, chan->exten, sizeof(oldexten));
@@ -353,8 +342,6 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	save_macro_offset = ast_strdup(pbx_builtin_getvar_helper(chan, "MACRO_OFFSET"));
 	pbx_builtin_setvar_helper(chan, "MACRO_OFFSET", NULL);
 
-	pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
-
 	/* Setup environment for new run */
 	chan->exten[0] = 's';
 	chan->exten[1] = '\0';
@@ -376,8 +363,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	ast_channel_unlock(chan);
 	autoloopflag = ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP);
 	ast_set_flag(chan, AST_FLAG_IN_AUTOLOOP);
-	while (ast_exists_extension(chan, chan->context, chan->exten, chan->priority,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+	while(ast_exists_extension(chan, chan->context, chan->exten, chan->priority, chan->cid.cid_num)) {
 		struct ast_context *c;
 		struct ast_exten *e;
 		int foundx;
@@ -393,8 +379,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 					if (ast_rdlock_context(c)) {
 						ast_log(LOG_WARNING, "Unable to lock context?\n");
 					} else {
-						e = find_matching_priority(c, chan->exten, chan->priority,
-							S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+						e = find_matching_priority(c, chan->exten, chan->priority, chan->cid.cid_num);
 						if (e) { /* This will only be undefined for pbx_realtime, which is majorly broken. */
 							ast_copy_string(runningapp, ast_get_extension_app(e), sizeof(runningapp));
 							ast_copy_string(runningdata, ast_get_extension_app_data(e), sizeof(runningdata));
@@ -410,10 +395,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		/* Reset the macro depth, if it was changed in the last iteration */
 		pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
 
-		res = ast_spawn_extension(chan, chan->context, chan->exten, chan->priority,
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL),
-			&foundx, 1);
-		if (res) {
+		if ((res = ast_spawn_extension(chan, chan->context, chan->exten, chan->priority, chan->cid.cid_num, &foundx,1))) {
 			/* Something bad happened, or a hangup has been requested. */
 			if (((res >= '0') && (res <= '9')) || ((res >= 'A') && (res <= 'F')) ||
 		    	(res == '*') || (res == '#')) {
@@ -438,10 +420,8 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 			gosub_level++;
 			ast_debug(1, "Incrementing gosub_level\n");
 		} else if (!strcasecmp(runningapp, "GOSUBIF")) {
-			char *cond, *app_arg;
-			char *app2;
-			ast_str_substitute_variables(&tmp_subst, 0, chan, runningdata);
-			app2 = ast_str_buffer(tmp_subst);
+			char tmp2[1024], *cond, *app_arg, *app2 = tmp2;
+			pbx_substitute_variables_helper(chan, runningdata, tmp2, sizeof(tmp2) - 1);
 			cond = strsep(&app2, "?");
 			app_arg = strsep(&app2, ":");
 			if (pbx_checkcondition(cond)) {
@@ -463,23 +443,19 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 			ast_debug(1, "Decrementing gosub_level\n");
 		} else if (!strncasecmp(runningapp, "EXEC", 4)) {
 			/* Must evaluate args to find actual app */
-			char *tmp2, *tmp3 = NULL;
-			ast_str_substitute_variables(&tmp_subst, 0, chan, runningdata);
-			tmp2 = ast_str_buffer(tmp_subst);
+			char tmp2[1024], *tmp3 = NULL;
+			pbx_substitute_variables_helper(chan, runningdata, tmp2, sizeof(tmp2) - 1);
 			if (!strcasecmp(runningapp, "EXECIF")) {
-				if ((tmp3 = strchr(tmp2, '|'))) {
+				tmp3 = strchr(tmp2, '|');
+				if (tmp3)
 					*tmp3++ = '\0';
-				}
-				if (!pbx_checkcondition(tmp2)) {
+				if (!pbx_checkcondition(tmp2))
 					tmp3 = NULL;
-				}
-			} else {
+			} else
 				tmp3 = tmp2;
-			}
 
-			if (tmp3) {
+			if (tmp3)
 				ast_debug(1, "Last app: %s\n", tmp3);
-			}
 
 			if (tmp3 && !strncasecmp(tmp3, "GOSUB", 5)) {
 				gosub_level++;
@@ -556,7 +532,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 			if (sscanf(offsets, "%30d", &offset) == 1) {
 				if (ast_exists_extension(chan, chan->context, chan->exten,
 					chan->priority + offset + 1,
-					S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+					chan->cid.cid_num)) {
 					chan->priority += offset;
 				}
 			}
@@ -576,22 +552,21 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		}
 	}
 	ast_channel_unlock(chan);
-	ast_free(tmp_subst);
 
 	return res;
 }
 
-static int macro_exec(struct ast_channel *chan, const char *data)
+static int macro_exec(struct ast_channel *chan, void *data)
 {
 	return _macro_exec(chan, data, 0);
 }
 
-static int macroexclusive_exec(struct ast_channel *chan, const char *data)
+static int macroexclusive_exec(struct ast_channel *chan, void *data)
 {
 	return _macro_exec(chan, data, 1);
 }
 
-static int macroif_exec(struct ast_channel *chan, const char *data) 
+static int macroif_exec(struct ast_channel *chan, void *data) 
 {
 	char *expr = NULL, *label_a = NULL, *label_b = NULL;
 	int res = 0;
@@ -616,7 +591,7 @@ static int macroif_exec(struct ast_channel *chan, const char *data)
 	return res;
 }
 			
-static int macro_exit_exec(struct ast_channel *chan, const char *data)
+static int macro_exit_exec(struct ast_channel *chan, void *data)
 {
 	return MACRO_EXIT_RESULT;
 }

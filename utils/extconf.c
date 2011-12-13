@@ -23,11 +23,6 @@
  * for operations outside of asterisk. A huge, awful hack.
  *
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
 #undef DEBUG_THREADS
@@ -2812,63 +2807,6 @@ static int ast_true(const char *s)
 	return 0;
 }
 
-#define ONE_MILLION	1000000
-/*
- * put timeval in a valid range. usec is 0..999999
- * negative values are not allowed and truncated.
- */
-static struct timeval tvfix(struct timeval a)
-{
-	if (a.tv_usec >= ONE_MILLION) {
-		ast_log(LOG_WARNING, "warning too large timestamp %ld.%ld\n",
-			(long)a.tv_sec, (long int) a.tv_usec);
-		a.tv_sec += a.tv_usec / ONE_MILLION;
-		a.tv_usec %= ONE_MILLION;
-	} else if (a.tv_usec < 0) {
-		ast_log(LOG_WARNING, "warning negative timestamp %ld.%ld\n",
-			(long)a.tv_sec, (long int) a.tv_usec);
-		a.tv_usec = 0;
-	}
-	return a;
-}
-
-struct timeval ast_tvadd(struct timeval a, struct timeval b);
-struct timeval ast_tvadd(struct timeval a, struct timeval b)
-{
-	/* consistency checks to guarantee usec in 0..999999 */
-	a = tvfix(a);
-	b = tvfix(b);
-	a.tv_sec += b.tv_sec;
-	a.tv_usec += b.tv_usec;
-	if (a.tv_usec >= ONE_MILLION) {
-		a.tv_sec++;
-		a.tv_usec -= ONE_MILLION;
-	}
-	return a;
-}
-
-struct timeval ast_tvsub(struct timeval a, struct timeval b);
-struct timeval ast_tvsub(struct timeval a, struct timeval b)
-{
-	/* consistency checks to guarantee usec in 0..999999 */
-	a = tvfix(a);
-	b = tvfix(b);
-	a.tv_sec -= b.tv_sec;
-	a.tv_usec -= b.tv_usec;
-	if (a.tv_usec < 0) {
-		a.tv_sec-- ;
-		a.tv_usec += ONE_MILLION;
-	}
-	return a;
-}
-#undef ONE_MILLION
-
-void ast_mark_lock_failed(void *lock_addr);
-void ast_mark_lock_failed(void *lock_addr)
-{
-	/* Pretend to do something. */
-}
-
 /* stolen from pbx.c */
 #define VAR_BUF_SIZE 4096
 
@@ -3157,7 +3095,7 @@ static void pbx_builtin_setvar_helper(struct ast_channel *chan, const char *name
 
 }
 
-static int pbx_builtin_setvar(struct ast_channel *chan, const void *data)
+static int pbx_builtin_setvar(struct ast_channel *chan, void *data)
 {
 	char *name, *value, *mydata;
 	int argc;
@@ -3192,9 +3130,9 @@ static int pbx_builtin_setvar(struct ast_channel *chan, const void *data)
 	return(0);
 }
 
-int localized_pbx_builtin_setvar(struct ast_channel *chan, const void *data);
+int localized_pbx_builtin_setvar(struct ast_channel *chan, void *data);
 
-int localized_pbx_builtin_setvar(struct ast_channel *chan, const void *data)
+int localized_pbx_builtin_setvar(struct ast_channel *chan, void *data)
 {
 	return pbx_builtin_setvar(chan, data);
 }
@@ -6259,15 +6197,5 @@ int localized_pbx_load_module(void)
 	printf("=========\n");
 	
 	return 0;
-}
-
-/* For platforms which don't have pthread_rwlock_timedrdlock() */
-struct timeval ast_tvnow(void);
-
-struct timeval ast_tvnow(void)
-{
-	struct timeval t;
-	gettimeofday(&t, NULL);
-	return t;
 }
 

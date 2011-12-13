@@ -16,8 +16,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief Custom SQLite3 CDR records.
  *
  * \author Adapted by Alejandro Rios <alejandro.rios@avatar.com.co> and
@@ -34,13 +34,13 @@
 
 /*** MODULEINFO
 	<depend>sqlite3</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 257068 $")
 
+#include <time.h>
 #include <sqlite3.h>
 
 #include "asterisk/paths.h"	/* use ast_config_AST_LOG_DIR */
@@ -57,8 +57,8 @@ AST_MUTEX_DEFINE_STATIC(lock);
 
 static const char config_file[] = "cdr_sqlite3_custom.conf";
 
-static const char desc[] = "Customizable SQLite3 CDR Backend";
-static const char name[] = "cdr_sqlite3_custom";
+static char *desc = "Customizable SQLite3 CDR Backend";
+static char *name = "cdr_sqlite3_custom";
 static sqlite3 *db = NULL;
 
 static char table[80];
@@ -229,6 +229,7 @@ static int write_cdr(struct ast_cdr *cdr)
 	int res = 0;
 	char *error = NULL;
 	char *sql = NULL;
+	struct ast_channel dummy = { 0, };
 	int count = 0;
 
 	if (db == NULL) {
@@ -242,26 +243,16 @@ static int write_cdr(struct ast_cdr *cdr)
 		char *escaped;
 		char subst_buf[2048];
 		struct values *value;
-		struct ast_channel *dummy;
 		struct ast_str *value_string = ast_str_create(1024);
-
-		dummy = ast_dummy_channel_alloc();
-		if (!dummy) {
-			ast_log(LOG_ERROR, "Unable to allocate channel for variable subsitution.\n");
-			ast_free(value_string);
-			ast_mutex_unlock(&lock);
-			return 0;
-		}
-		dummy->cdr = ast_cdr_dup(cdr);
+		dummy.cdr = cdr;
 		AST_LIST_TRAVERSE(&sql_values, value, list) {
-			pbx_substitute_variables_helper(dummy, value->expression, subst_buf, sizeof(subst_buf) - 1);
+			pbx_substitute_variables_helper(&dummy, value->expression, subst_buf, sizeof(subst_buf) - 1);
 			escaped = sqlite3_mprintf("%q", subst_buf);
 			ast_str_append(&value_string, 0, "%s'%s'", ast_str_strlen(value_string) ? "," : "", escaped);
 			sqlite3_free(escaped);
 		}
 		sql = sqlite3_mprintf("INSERT INTO %q (%s) VALUES (%s)", table, columns, ast_str_buffer(value_string));
 		ast_debug(1, "About to log: %s\n", sql);
-		ast_channel_unref(dummy);
 		ast_free(value_string);
 	}
 
@@ -355,9 +346,8 @@ static int reload(void)
 	return res;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "SQLite3 Custom CDR Module",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "SQLite3 Custom CDR Module",
 	.load = load_module,
 	.unload = unload_module,
 	.reload = reload,
-	.load_pri = AST_MODPRI_CDR_DRIVER,
 );

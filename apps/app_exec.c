@@ -26,12 +26,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 251887 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -128,68 +125,63 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
  * affecting the dialplan.
  */
 
-static const char app_exec[] = "Exec";
-static const char app_tryexec[] = "TryExec";
-static const char app_execif[] = "ExecIf";
+static char *app_exec = "Exec";
+static char *app_tryexec = "TryExec";
+static char *app_execif = "ExecIf";
 
-static int exec_exec(struct ast_channel *chan, const char *data)
+static int exec_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
-	char *s, *appname, *endargs;
+	char *s, *appname, *endargs, args[MAXRESULT];
 	struct ast_app *app;
-	struct ast_str *args = NULL;
 
 	if (ast_strlen_zero(data))
 		return 0;
 
 	s = ast_strdupa(data);
+	args[0] = 0;
 	appname = strsep(&s, "(");
 	if (s) {
 		endargs = strrchr(s, ')');
 		if (endargs)
 			*endargs = '\0';
-		if ((args = ast_str_create(16))) {
-			ast_str_substitute_variables(&args, 0, chan, s);
-		}
+		pbx_substitute_variables_helper(chan, s, args, MAXRESULT - 1);
 	}
 	if (appname) {
 		app = pbx_findapp(appname);
 		if (app) {
-			res = pbx_exec(chan, app, args ? ast_str_buffer(args) : NULL);
+			res = pbx_exec(chan, app, args);
 		} else {
 			ast_log(LOG_WARNING, "Could not find application (%s)\n", appname);
 			res = -1;
 		}
 	}
 
-	ast_free(args);
 	return res;
 }
 
-static int tryexec_exec(struct ast_channel *chan, const char *data)
+static int tryexec_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
-	char *s, *appname, *endargs;
+	char *s, *appname, *endargs, args[MAXRESULT];
 	struct ast_app *app;
-	struct ast_str *args = NULL;
 
 	if (ast_strlen_zero(data))
 		return 0;
 
 	s = ast_strdupa(data);
+	args[0] = 0;
 	appname = strsep(&s, "(");
 	if (s) {
 		endargs = strrchr(s, ')');
 		if (endargs)
 			*endargs = '\0';
-		if ((args = ast_str_create(16))) {
-			ast_str_substitute_variables(&args, 0, chan, s);
-		}
+		pbx_substitute_variables_helper(chan, s, args, MAXRESULT - 1);
 	}
 	if (appname) {
 		app = pbx_findapp(appname);
 		if (app) {
-			res = pbx_exec(chan, app, args ? ast_str_buffer(args) : NULL);
+			res = pbx_exec(chan, app, args);
 			pbx_builtin_setvar_helper(chan, "TRYSTATUS", res ? "FAILED" : "SUCCESS");
 		} else {
 			ast_log(LOG_WARNING, "Could not find application (%s)\n", appname);
@@ -197,11 +189,10 @@ static int tryexec_exec(struct ast_channel *chan, const char *data)
 		}
 	}
 
-	ast_free(args);
 	return 0;
 }
 
-static int execif_exec(struct ast_channel *chan, const char *data)
+static int execif_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	char *truedata = NULL, *falsedata = NULL, *end, *firstcomma, *firstquestion;

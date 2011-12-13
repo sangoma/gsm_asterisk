@@ -9,7 +9,7 @@
  */
 
 /*---------------------------------------------------------------------------*\
-  $Id: poll-compat.h 284598 2010-09-02 05:02:54Z tilghman $
+  $Id: poll-compat.h 284593 2010-09-01 22:59:50Z tilghman $
 
   NAME
 
@@ -121,19 +121,5 @@ int ast_internal_poll(struct pollfd *pArray, unsigned long n_fds, int timeout);
  * the tv argument is modified to indicate the time remaining.
  */
 int ast_poll2(struct pollfd *pArray, unsigned long n_fds, struct timeval *tv);
-
-/*!
- * \brief Shortcut for conversion of FD_ISSET to poll(2)-based
- */
-static inline int ast_poll_fd_index(struct pollfd *haystack, int nfds, int needle)
-{
-	int i;
-	for (i = 0; i < nfds; i++) {
-		if (haystack[i].fd == needle) {
-			return i;
-		}
-	}
-	return -1;
-}
 
 #endif /* __AST_POLL_COMPAT_H */

@@ -234,18 +234,16 @@ static void display_mem_info(WINDOW *menu, struct member *mem, int start, int en
 		}
 		waddstr(menu, buf);
 	}
-
-	if (!mem->is_separator) { /* Separators lack support levels */
-		{ /* support level */
-			wmove(menu, end - start + 6, max_x / 2 - 16);
-			snprintf(buf, sizeof(buf), "Support Level: %s", mem->support_level);
-			if (mem->replacement && *mem->replacement) {
-				char buf2[64];
-				snprintf(buf2, sizeof(buf2), ", Replaced by: %s", mem->replacement);
-				strncat(buf, buf2, sizeof(buf) - strlen(buf) - 1);
-			}
-			waddstr(menu, buf);
+	{ /* support level */
+		wmove(menu, end - start + 6, max_x / 2 - 16);
+		snprintf(buf, sizeof(buf), "Support Level: %s",
+				(mem->support_level && *mem->support_level) ? mem->support_level : "core");
+		if (mem->replacement && *mem->replacement) {
+			char buf2[64];
+			snprintf(buf2, sizeof(buf2), ", Replaced by: %s", mem->replacement);
+			strncat(buf, buf2, sizeof(buf) - strlen(buf) - 1);
 		}
+		waddstr(menu, buf);
 	}
 }
 
@@ -283,8 +281,6 @@ static void draw_category_menu(WINDOW *menu, struct category *cat, int start, in
 		i++;
 		if ((mem->depsfailed == HARD_FAILURE) || (mem->conflictsfailed == HARD_FAILURE)) {
 			snprintf(buf, sizeof(buf), "XXX %s", mem->name);
-		} else if (mem->is_separator) {
-			snprintf(buf, sizeof(buf), "    --- %s ---", mem->name);
 		} else if (mem->depsfailed == SOFT_FAILURE) {
 			snprintf(buf, sizeof(buf), "<%s> %s", mem->enabled ? "*" : " ", mem->name);
 		} else if (mem->conflictsfailed == SOFT_FAILURE) {
@@ -862,7 +858,6 @@ static void play_space(void)
 	int quit = 0;
 	struct blip *blip;
 	alien_sleeptime = 1000;
-	score = 0;
 
 	while(alien_sleeptime > 100) {
 
@@ -893,10 +888,8 @@ static void play_space(void)
 				/* ignore unknown input */
 				break;
 			}
-			if (quit) {
-				alien_sleeptime = 1;
+			if (quit)
 				break;
-			}
 			if (!(jiffies % 25)) {
 				if (move_aliens() || move_bombs()) {
 					alien_sleeptime = 1;

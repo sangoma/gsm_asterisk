@@ -24,13 +24,12 @@
 
 /*** MODULEINFO
 	<depend>res_ael_share</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
 #if !defined(STANDALONE)
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 310448 $")
 #endif
 
 #include <ctype.h>
@@ -132,7 +131,7 @@ static int aeldebug = 0;
 #ifndef STANDALONE
 static char *aelsub = "AELSub";
 
-static int aelsub_exec(struct ast_channel *chan, const char *vdata)
+static int aelsub_exec(struct ast_channel *chan, void *vdata)
 {
 	char buf[256], *data = ast_strdupa(vdata);
 	struct ast_app *gosub = pbx_findapp("Gosub");
@@ -303,7 +302,7 @@ AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Asterisk Extension Langu
 	       );
 
 #ifdef AAL_ARGCHECK
-static const char * const ael_funclist[] =
+static char *ael_funclist[] =
 {
 	"AGENT",
 	"ARRAY",

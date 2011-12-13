@@ -7,7 +7,7 @@
 ; Templates provide a group of settings from which provisioning takes place.
 ; A template may be based upon any template that has been specified before
 ; it.  If the template that an entry is based on is not specified then it is
-; presumed to be 'default' (unless it is the first of course).
+; presumed to be 'default' (unless it is the first of course).  
 ;
 ; Templates which begin with 'si-' are used for provisioning units with
 ; specific service identifiers.  For example the entry "si-000364000126"
@@ -53,7 +53,7 @@ codec=ulaw
 ;
 flags=register,heartbeat
 ;
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of this parameter.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of this parameter.
 ;tos=ef
 ;
 ; Example iaxy provisioning

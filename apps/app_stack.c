@@ -26,13 +26,12 @@
  */
 
 /*** MODULEINFO
-	<use type="module">res_agi</use>
-	<support_level>core</support_level>
+	<use>res_agi</use>
  ***/
 
 #include "asterisk.h"
  
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 264753 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -165,27 +164,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			<ref type="application">Return</ref>
 		</see-also>
 	</function>
-	<agi name="gosub" language="en_US">
-		<synopsis>
-			Cause the channel to execute the specified dialplan subroutine.
-		</synopsis>
-		<syntax>
-			<parameter name="context" required="true" />
-			<parameter name="extension" required="true" />
-			<parameter name="priority" required="true" />
-			<parameter name="optional-argument" />
-		</syntax>
-		<description>
-			<para>Cause the channel to execute the specified dialplan subroutine,
-			returning to the dialplan with execution of a Return().</para>
-		</description>
-	</agi>
  ***/
 
-static const char * const app_gosub = "Gosub";
-static const char * const app_gosubif = "GosubIf";
-static const char * const app_return = "Return";
-static const char * const app_pop = "StackPop";
+static const char *app_gosub = "Gosub";
+static const char *app_gosubif = "GosubIf";
+static const char *app_return = "Return";
+static const char *app_pop = "StackPop";
 
 static void gosub_free(void *data);
 
@@ -283,7 +267,7 @@ static void gosub_free(void *data)
 	ast_free(oldlist);
 }
 
-static int pop_exec(struct ast_channel *chan, const char *data)
+static int pop_exec(struct ast_channel *chan, void *data)
 {
 	struct ast_datastore *stack_store = ast_channel_datastore_find(chan, &stack_info, NULL);
 	struct gosub_stack_frame *oldframe;
@@ -307,12 +291,12 @@ static int pop_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-static int return_exec(struct ast_channel *chan, const char *data)
+static int return_exec(struct ast_channel *chan, void *data)
 {
 	struct ast_datastore *stack_store = ast_channel_datastore_find(chan, &stack_info, NULL);
 	struct gosub_stack_frame *oldframe;
 	AST_LIST_HEAD(, gosub_stack_frame) *oldlist;
-	const char *retval = data;
+	char *retval = data;
 	int res = 0;
 
 	if (!stack_store) {
@@ -341,7 +325,7 @@ static int return_exec(struct ast_channel *chan, const char *data)
 	return res;
 }
 
-static int gosub_exec(struct ast_channel *chan, const char *data)
+static int gosub_exec(struct ast_channel *chan, void *data)
 {
 	struct ast_datastore *stack_store = ast_channel_datastore_find(chan, &stack_info, NULL);
 	AST_LIST_HEAD(, gosub_stack_frame) *oldlist;
@@ -414,9 +398,7 @@ static int gosub_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	if (!ast_exists_extension(chan, chan->context, chan->exten,
-		ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP) ? chan->priority + 1 : chan->priority,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+	if (!ast_exists_extension(chan, chan->context, chan->exten, ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP) ? chan->priority + 1 : chan->priority, chan->cid.cid_num)) {
 		ast_log(LOG_ERROR, "Attempt to reach a non-existent destination for gosub: (Context:%s, Extension:%s, Priority:%d)\n",
 				chan->context, chan->exten, ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP) ? chan->priority + 1 : chan->priority);
 		ast_copy_string(chan->context, newframe->context, sizeof(chan->context));
@@ -444,7 +426,7 @@ static int gosub_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-static int gosubif_exec(struct ast_channel *chan, const char *data)
+static int gosubif_exec(struct ast_channel *chan, void *data)
 {
 	char *args;
 	int res=0;
@@ -576,7 +558,7 @@ static struct ast_custom_function peek_function = {
 	.read = peek_read,
 };
 
-static int handle_gosub(struct ast_channel *chan, AGI *agi, int argc, const char * const *argv)
+static int handle_gosub(struct ast_channel *chan, AGI *agi, int argc, char **argv)
 {
 	int old_priority, priority;
 	char old_context[AST_MAX_CONTEXT], old_extension[AST_MAX_EXTENSION];
@@ -591,15 +573,12 @@ static int handle_gosub(struct ast_channel *chan, AGI *agi, int argc, const char
 
 	if (sscanf(argv[3], "%30d", &priority) != 1 || priority < 1) {
 		/* Lookup the priority label */
-		priority = ast_findlabel_extension(chan, argv[1], argv[2], argv[3],
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
-		if (priority < 0) {
+		if ((priority = ast_findlabel_extension(chan, argv[1], argv[2], argv[3], chan->cid.cid_num)) < 0) {
 			ast_log(LOG_ERROR, "Priority '%s' not found in '%s@%s'\n", argv[3], argv[2], argv[1]);
 			ast_agi_send(agi->fd, chan, "200 result=-1 Gosub label not found\n");
 			return RESULT_FAILURE;
 		}
-	} else if (!ast_exists_extension(chan, argv[1], argv[2], priority,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+	} else if (!ast_exists_extension(chan, argv[1], argv[2], priority, chan->cid.cid_num)) {
 		ast_agi_send(agi->fd, chan, "200 result=-1 Gosub label not found\n");
 		return RESULT_FAILURE;
 	}
@@ -674,12 +653,19 @@ static int handle_gosub(struct ast_channel *chan, AGI *agi, int argc, const char
 	return RESULT_SUCCESS;
 }
 
-static struct agi_command gosub_agi_command =
-	{ { "gosub", NULL }, handle_gosub, NULL, NULL, 0 };
+static char usage_gosub[] =
+" Usage: GOSUB <context> <extension> <priority> [<optional-argument>]\n"
+"   Cause the channel to execute the specified dialplan subroutine, returning\n"
+" to the dialplan with execution of a Return()\n";
+
+struct agi_command gosub_agi_command =
+	{ { "gosub", NULL }, handle_gosub, "Execute a dialplan subroutine", usage_gosub , 0 };
 
 static int unload_module(void)
 {
-	ast_agi_unregister(ast_module_info->self, &gosub_agi_command);
+	if (ast_agi_unregister) {
+		 ast_agi_unregister(ast_module_info->self, &gosub_agi_command);
+	}
 
 	ast_unregister_application(app_return);
 	ast_unregister_application(app_pop);
@@ -693,7 +679,9 @@ static int unload_module(void)
 
 static int load_module(void)
 {
-	ast_agi_register(ast_module_info->self, &gosub_agi_command);
+	if (ast_agi_register) {
+		 ast_agi_register(ast_module_info->self, &gosub_agi_command);
+	}
 
 	ast_register_application_xml(app_pop, pop_exec);
 	ast_register_application_xml(app_return, return_exec);
@@ -705,8 +693,4 @@ static int load_module(void)
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Dialplan subroutines (Gosub, Return, etc)",
-		.load = load_module,
-		.unload = unload_module,
-		.nonoptreq = "res_agi",
-		);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Dialplan subroutines (Gosub, Return, etc)");

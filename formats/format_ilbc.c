@@ -25,13 +25,9 @@
  * \ingroup formats
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -49,7 +45,7 @@ static struct ast_frame *ilbc_read(struct ast_filestream *s, int *whennext)
 	int res;
 	/* Send a frame from the file to the appropriate channel */
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_ILBC, 0);
+	s->fr.subclass = AST_FORMAT_ILBC;
 	s->fr.mallocd = 0;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, ILBC_BUF_SIZE);
 	if ((res = fread(s->fr.data.ptr, 1, s->fr.datalen, s->f)) != s->fr.datalen) {
@@ -68,8 +64,8 @@ static int ilbc_write(struct ast_filestream *fs, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_ILBC) {
-		ast_log(LOG_WARNING, "Asked to write non-iLBC frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_ILBC) {
+		ast_log(LOG_WARNING, "Asked to write non-iLBC frame (%d)!\n", f->subclass);
 		return -1;
 	}
 	if (f->datalen % 50) {
@@ -123,9 +119,10 @@ static off_t ilbc_tell(struct ast_filestream *fs)
 	return (offset/ILBC_BUF_SIZE)*ILBC_SAMPLES;
 }
 
-static struct ast_format_def ilbc_f = {
+static const struct ast_format ilbc_f = {
 	.name = "iLBC",
 	.exts = "ilbc",
+	.format = AST_FORMAT_ILBC,
 	.write = ilbc_write,
 	.seek = ilbc_seek,
 	.trunc = ilbc_trunc,
@@ -136,19 +133,18 @@ static struct ast_format_def ilbc_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&ilbc_f.format, AST_FORMAT_ILBC, 0);
-	if (ast_format_def_register(&ilbc_f))
+	if (ast_format_register(&ilbc_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(ilbc_f.name);
-}
+	return ast_format_unregister(ilbc_f.name);
+}	
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw iLBC data",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

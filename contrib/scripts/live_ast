@@ -63,7 +63,7 @@
 # Likewise, the same trick can be used to build vs. a local copy of zaptel:
 #   ln -s /path/to/checkout/of/zaptel/include .
 #   ln -s /path/to/checkout/of/zaptel/zaptel .
-#LIVE_AST_ZAPTEL_PATH="/path/to/checkout/of/zaptel"
+#LIVE_AST_ZPATEL_PATH="/path/to/checkout/of/zaptel"
 #
 #LIVE_AST_DAHDI_PATH="/path/to/dahdi-linux/dir"
 #LIVE_AST_DAHDITOOLS_PATH="/path/to/dahdi-tools/dir"
@@ -98,10 +98,6 @@
 # live_ast will edit makeopts to use that second copy after ./configure
 # is run.
 #LIVE_AST_BRISTUFFED_LIBPRI=yes
-#
-# LIVE_AST_VALGRIND_ARGS:
-# Parameters to pass to valgrind if using the 'valgrind' command.
-#LIVE_AST_VALGRIND_ARGS="-v --leak-check=full --suppressions=contrib/valgrind.supp --log-file=valgrind.log"
 #
 # LIVE_AST_FOR_SYSTEM
 # When generating asterisk.conf, use most components from the installed 
@@ -143,8 +139,8 @@ if [ "$LIVE_AST_DAHDITOOLS_PATH" != '' ]; then
   LIVE_AST_LD_PATH_EXTRA="$LIVE_AST_LD_PATH_EXTRA $LIVE_AST_DAHDITOOLS_PATH"
 fi
 
-if [ "$LIVE_AST_ZAPLIVE_PATH" != '' ]; then
-  ZAPLIVE_USR_DIR="$LIVE_AST_ZAPLIVE_PATH/live/usr"
+if [ "$LIVE_AST_ZPALIVE_PATH" != '' ]; then
+  ZAPLIVE_USR_DIR="$LIVE_AST_ZPALIVE_PATH/live/usr"
   LIVE_AST_CONFIGURE_PARAMS="$LIVE_AST_CONFIGURE_PARAMS --with-tonezone=$ZAPLIVE_USR_DIR"
   LIVE_AST_CONFIGURE_PARAMS="$LIVE_AST_CONFIGURE_PARAMS --with-zaptel=$ZAPALIVE_USR_DIR"
   LIVE_AST_CONFIGURE_PARAMS="$LIVE_AST_CONFIGURE_PARAMS --with-zaptel_transcode=$ZAPALIVE_USR_DIR"
@@ -171,23 +167,9 @@ gen_live_conf() {
   | sed  -e '/^#* \(Begin\|End\) Samples/d' >"$LIVE_CONF"
 }
 
-# (re?)generate the ./live/asterisk wrapper script
-gen_live_asterisk() {
-  cat <<EOF >"$BASE_DIR/asterisk"
-#!/bin/sh
-# a wrapper to run asterisk from the "live" copy:
-cd "$PWD"
-exec "$0" run "\$@"
-EOF
-}
-
-command="$1"
-if [ $# -gt 0 ]; then
-  shift
-fi
-
-case "$command" in
+case "$1" in
 configure)
+  shift
   ./configure $LIVE_AST_CONFIGURE_PARAMS "$@"
   if [ "$LIVE_AST_FORCE_DEF_CONF" != '' ]; then
     rm -f menuselect.makeopts
@@ -200,20 +182,37 @@ configure)
   fi
   ;;
 install)
-  make install DESTDIR="$BASE_DIR" "$@"
+  make install DESTDIR="$BASE_DIR"
   ;;
 samples)
-  make samples DESTDIR="$BASE_DIR" "$@"
-  sed -r -i \
-    -e '/^\[directories\]\(!\)/s/\(!\).*//' \
-    -e "/^\[directories\]/a; rem-out any of the following to use Asterisk's defaults:" \
-    -e "/^ast(etc|mod|varlib|data|agi|run|spool|log|db|key)dir\>/s| /| $BASE_DIR/|" \
-    "$AST_CONF"
+  make samples DESTDIR="$BASE_DIR"
   if [ "$LIVE_AST_FOR_SYSTEM" != '' ]; then
-    sed -r -i \
-      -e "/^ast(etc|varlib|data|agi|run|spool|log|db|key)dir\>/s|^|;|" \
-      -e "/^;astrundir\>/aastrundir    => /var/run/asterisk" \
-      "$AST_CONF"
+    cat <<EOF >"$AST_CONF"
+[directories]
+; rem-out any of the following to use Asterisk's defaults:
+;astetcdir    => $BASE_DIR/etc/asterisk
+astmoddir    => $BASE_DIR/usr/lib/asterisk/modules
+;astvarlibdir => $BASE_DIR/var/lib/asterisk
+;astdatadir   => $BASE_DIR/var/lib/asterisk
+;astagidir    => $BASE_DIR/var/lib/asterisk/agi
+;astrundir    => $BASE_DIR/var/run
+astrundir    => /var/run/asterisk
+;astspooldir  => $BASE_DIR/var/spool/asterisk
+;astlogdir    => $BASE_DIR/var/log/asterisk
+EOF
+  else
+    cat <<EOF >"$AST_CONF"
+[directories]
+; rem-out any of the following to use Asterisk's defaults:
+astetcdir    => $BASE_DIR/etc/asterisk
+astmoddir    => $BASE_DIR/usr/lib/asterisk/modules
+astvarlibdir => $BASE_DIR/var/lib/asterisk
+astdatadir   => $BASE_DIR/var/lib/asterisk
+astagidir    => $BASE_DIR/var/lib/asterisk/agi
+astrundir    => $BASE_DIR/var/run
+astspooldir  => $BASE_DIR/var/spool/asterisk
+astlogdir    => $BASE_DIR/var/log/asterisk
+EOF
   fi
   # disable some modules that bind on a port that is already in use by a
   # main Asterisk copy, and would crash asterisk in failing:
@@ -226,7 +225,12 @@ samples)
   cat <<EOF >"$GDB_INIT"
 set args -C "$AST_CONF" -c
 EOF
-  gen_live_asterisk
+cat <<EOF >"$BASE_DIR/asterisk"
+#!/bin/sh
+# a wrapper to run asterisk from the "live" copy:
+cd "$PWD"
+exec "$0" run "\$@"
+EOF
   chmod +x "$BASE_DIR/asterisk"
   # Generate a sample config file for live_ast itself:
   gen_live_conf
@@ -236,43 +240,21 @@ conf-file)
   gen_live_conf
   ;;
 run)
+  shift
   set_ld_env
   $AST_BIN -C $AST_CONF "$@"
-  ;;
-valgrind)
-  set_ld_env
-  valgrind $LIVE_AST_VALGRIND_ARGS $AST_BIN -C $AST_CONF "$@"
-  ;;
-rsync)
-  remote_host="$1"
-  remote_dir="$2"
-  me=`basename $0`
-  # FIXME: assumes varrundir is /var/run/asterisk
-  rsync -ai "$0" \
-    --exclude '/live/asterisk' \
-    --exclude '/live/var/run/asterisk/*' --exclude '/live/var/log/asterisk/*' \
-    live "$remote_host:$remote_dir/"
-  ssh $remote_host "cd '$remote_dir' && ./$me gen-live-asterisk"
-  ;;
-gen-live-asterisk)
-  gen_live_asterisk
   ;;
 gdb)
   set_ld_env
   gdb -x $GDB_INIT $AST_BIN
   ;;
 *)
-  echo "$0: Unknown command '$command'. Aborting"
-  echo
   echo "$0: Usage:              Equivalent of:"
   echo "$0 configure [params]   ./configure [params]"
   echo "$0 install              make install"
   echo "$0 samples              make samples"
   echo "$0 run [params]         asterisk [params]"
   echo "$0 gdb                  gdb asterisk"
-  echo "$0 valgrind             valgrind asterisk"
-  echo "$0 rsync [user@]host dir  copy files over to [user@]host:dir"
-  echo "$0 gen-live-asterisk    regenerate the wrapper ./live/asterisk"
   echo "$0 conf-file            create live.conf if it does not exist"
   exit 1
   ;;

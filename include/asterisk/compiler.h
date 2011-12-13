@@ -41,12 +41,6 @@
 #define attribute_const
 #endif
 
-#ifdef HAVE_ATTRIBUTE_deprecated
-#define attribute_deprecated __attribute__((deprecated))
-#else
-#define attribute_deprecated
-#endif
-
 #ifdef HAVE_ATTRIBUTE_unused
 #define attribute_unused __attribute__((unused))
 #else
@@ -73,5 +67,17 @@
 
 /* Some older version of GNU gcc (3.3.5 on OpenBSD 4.3 for example) dont like 'NULL' as sentinel */
 #define SENTINEL ((char *)NULL)
+
+#ifdef HAVE_ATTRIBUTE_weak
+#define attribute_weak __attribute__((weak))
+#else
+#define attribute_weak
+#endif
+
+#ifdef HAVE_ATTRIBUTE_weak_import
+#define attribute_weak_import __attribute__((weak_import))
+#else
+#define attribute_weak_import
+#endif
 
 #endif /* _ASTERISK_COMPILER_H */

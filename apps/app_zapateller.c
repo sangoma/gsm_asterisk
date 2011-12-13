@@ -24,14 +24,10 @@
  * 
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 153365 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -78,7 +74,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 static char *app = "Zapateller";
 
-static int zapateller_exec(struct ast_channel *chan, const char *data)
+static int zapateller_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	int i, answer = 0, nocallerid = 0;
@@ -107,12 +103,8 @@ static int zapateller_exec(struct ast_channel *chan, const char *data)
 			res = ast_safe_sleep(chan, 500);
 	}
 
-	if (nocallerid	/* Zap caller if no caller id. */
-		&& chan->caller.id.number.valid
-		&& !ast_strlen_zero(chan->caller.id.number.str)) {
-		/* We have caller id. */
+	if (!ast_strlen_zero(chan->cid.cid_num) && nocallerid)
 		return res;
-	}
 
 	if (!res) 
 		res = ast_tonepair(chan, 950, 0, 330, 0);

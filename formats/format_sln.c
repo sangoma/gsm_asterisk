@@ -17,31 +17,31 @@
 
 /*! \file
  *
- * \brief RAW SLINEAR Formats
+ * \brief RAW SLINEAR Format
+ * \arg File name extensions: sln, raw
  * \ingroup formats
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
 #include "asterisk/endian.h"
 
-static struct ast_frame *generic_read(struct ast_filestream *s, int *whennext, unsigned int buf_size, enum ast_format_id id)
+#define BUF_SIZE	320		/* 320 bytes, 160 samples */
+#define	SLIN_SAMPLES	160
+
+static struct ast_frame *slinear_read(struct ast_filestream *s, int *whennext)
 {
 	int res;
 	/* Send a frame from the file to the appropriate channel */
 
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, id, 0);
+	s->fr.subclass = AST_FORMAT_SLINEAR;
 	s->fr.mallocd = 0;
-	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, buf_size);
+	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, BUF_SIZE);
 	if ((res = fread(s->fr.data.ptr, 1, s->fr.datalen, s->f)) < 1) {
 		if (res)
 			ast_log(LOG_WARNING, "Short read (%d) (%s)!\n", res, strerror(errno));
@@ -52,15 +52,15 @@ static struct ast_frame *generic_read(struct ast_filestream *s, int *whennext, u
 	return &s->fr;
 }
 
-static int generic_write(struct ast_filestream *fs, struct ast_frame *f, enum ast_format_id id)
+static int slinear_write(struct ast_filestream *fs, struct ast_frame *f)
 {
 	int res;
 	if (f->frametype != AST_FRAME_VOICE) {
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != id) {
-		ast_log(LOG_WARNING, "Asked to write non-slinear frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_SLINEAR) {
+		ast_log(LOG_WARNING, "Asked to write non-slinear frame (%d)!\n", f->subclass);
 		return -1;
 	}
 	if ((res = fwrite(f->data.ptr, 1, f->datalen, fs->f)) != f->datalen) {
@@ -103,172 +103,32 @@ static off_t slinear_tell(struct ast_filestream *fs)
 	return ftello(fs->f) / 2;
 }
 
-static int slinear_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR);}
-static struct ast_frame *slinear_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 320, AST_FORMAT_SLINEAR);}
-static struct ast_format_def slin_f = {
+static const struct ast_format slin_f = {
 	.name = "sln",
 	.exts = "sln|raw",
+	.format = AST_FORMAT_SLINEAR,
 	.write = slinear_write,
 	.seek = slinear_seek,
 	.trunc = slinear_trunc,
 	.tell = slinear_tell,
 	.read = slinear_read,
-	.buf_size = 320 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear12_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR12);}
-static struct ast_frame *slinear12_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 480, AST_FORMAT_SLINEAR12);}
-static struct ast_format_def slin12_f = {
-	.name = "sln12",
-	.exts = "sln12",
-	.write = slinear12_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear12_read,
-	.buf_size = 480 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear16_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR16);}
-static struct ast_frame *slinear16_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 640, AST_FORMAT_SLINEAR16);}
-static struct ast_format_def slin16_f = {
-	.name = "sln16",
-	.exts = "sln16",
-	.write = slinear16_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear16_read,
-	.buf_size = 640 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear24_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR24);}
-static struct ast_frame *slinear24_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 960, AST_FORMAT_SLINEAR24);}
-static struct ast_format_def slin24_f = {
-	.name = "sln24",
-	.exts = "sln24",
-	.write = slinear24_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear24_read,
-	.buf_size = 960 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear32_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR32);}
-static struct ast_frame *slinear32_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 1280, AST_FORMAT_SLINEAR32);}
-static struct ast_format_def slin32_f = {
-	.name = "sln32",
-	.exts = "sln32",
-	.write = slinear32_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear32_read,
-	.buf_size = 1280 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear44_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR44);}
-static struct ast_frame *slinear44_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 1764, AST_FORMAT_SLINEAR44);}
-static struct ast_format_def slin44_f = {
-	.name = "sln44",
-	.exts = "sln44",
-	.write = slinear44_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear44_read,
-	.buf_size = 1764 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear48_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR48);}
-static struct ast_frame *slinear48_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 1920, AST_FORMAT_SLINEAR48);}
-static struct ast_format_def slin48_f = {
-	.name = "sln48",
-	.exts = "sln48",
-	.write = slinear48_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear48_read,
-	.buf_size = 1920 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear96_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR96);}
-static struct ast_frame *slinear96_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 3840, AST_FORMAT_SLINEAR96);}
-static struct ast_format_def slin96_f = {
-	.name = "sln96",
-	.exts = "sln96",
-	.write = slinear96_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear96_read,
-	.buf_size = 3840 + AST_FRIENDLY_OFFSET,
-};
-
-static int slinear192_write(struct ast_filestream *fs, struct ast_frame *f){return generic_write(fs, f, AST_FORMAT_SLINEAR192);}
-static struct ast_frame *slinear192_read(struct ast_filestream *s, int *whennext){return generic_read(s, whennext, 7680, AST_FORMAT_SLINEAR192);}
-static struct ast_format_def slin192_f = {
-	.name = "sln192",
-	.exts = "sln192",
-	.write = slinear192_write,
-	.seek = slinear_seek,
-	.trunc = slinear_trunc,
-	.tell = slinear_tell,
-	.read = slinear192_read,
-	.buf_size = 7680 + AST_FRIENDLY_OFFSET,
-};
-
-static struct ast_format_def *slin_list[] = {
-	&slin_f,
-	&slin12_f,
-	&slin16_f,
-	&slin24_f,
-	&slin32_f,
-	&slin44_f,
-	&slin48_f,
-	&slin96_f,
-	&slin192_f,
+	.buf_size = BUF_SIZE + AST_FRIENDLY_OFFSET,
 };
 
 static int load_module(void)
 {
-	int i;
-	ast_format_set(&slin_f.format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&slin12_f.format, AST_FORMAT_SLINEAR12, 0);
-	ast_format_set(&slin16_f.format, AST_FORMAT_SLINEAR16, 0);
-	ast_format_set(&slin24_f.format, AST_FORMAT_SLINEAR24, 0);
-	ast_format_set(&slin32_f.format, AST_FORMAT_SLINEAR32, 0);
-	ast_format_set(&slin44_f.format, AST_FORMAT_SLINEAR44, 0);
-	ast_format_set(&slin48_f.format, AST_FORMAT_SLINEAR48, 0);
-	ast_format_set(&slin96_f.format, AST_FORMAT_SLINEAR96, 0);
-	ast_format_set(&slin192_f.format, AST_FORMAT_SLINEAR192, 0);
-
-	for (i = 0; i < ARRAY_LEN(slin_list); i++) {
-		if (ast_format_def_register(slin_list[i])) {
-			return AST_MODULE_LOAD_FAILURE;
-		}
-	}
-
+	if (ast_format_register(&slin_f))
+		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	int res = 0;
-	int i = 0;
+	return ast_format_unregister(slin_f.name);
+}	
 
-	for (i = 0; i < ARRAY_LEN(slin_list); i++) {
-		if (ast_format_def_unregister(slin_list[i]->name)) {
-			res |= AST_MODULE_LOAD_FAILURE;
-		}
-	}
-	return res;
-}
-
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw Signed Linear Audio support (SLN) 8khz-192khz",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw Signed Linear Audio support (SLN)",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

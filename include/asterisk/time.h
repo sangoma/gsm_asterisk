@@ -43,9 +43,9 @@ typedef typeof(tv.tv_usec) ast_suseconds_t;
  * \return the difference in seconds
  */
 AST_INLINE_API(
-int64_t ast_tvdiff_sec(struct timeval end, struct timeval start),
+int ast_tvdiff_sec(struct timeval end, struct timeval start),
 {
-	int64_t result = end.tv_sec - start.tv_sec;
+	int result = end.tv_sec - start.tv_sec;
 	if (result > 0 && end.tv_usec < start.tv_usec)
 		result--;
 	else if (result < 0 && end.tv_usec > start.tv_usec)
@@ -76,7 +76,7 @@ int64_t ast_tvdiff_us(struct timeval end, struct timeval start),
  * \return the difference in milliseconds
  */
 AST_INLINE_API(
-int64_t ast_tvdiff_ms(struct timeval end, struct timeval start),
+int ast_tvdiff_ms(struct timeval end, struct timeval start),
 {
 	/* the offset by 1,000,000 below is intentional...
 	   it avoids differences in the way that division
@@ -171,7 +171,7 @@ struct timeval ast_tv(ast_time_t sec, ast_suseconds_t usec),
 AST_INLINE_API(
 struct timeval ast_samp2tv(unsigned int _nsamp, unsigned int _rate),
 {
-	return ast_tv(_nsamp / _rate, (_nsamp % _rate) * (1000000 / (float) _rate));
+	return ast_tv(_nsamp / _rate, ((_nsamp % _rate) * (4000000 / _rate)) / 4); /* this calculation is accurate up to 32000Hz. */
 }
 )
 

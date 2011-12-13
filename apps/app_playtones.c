@@ -25,13 +25,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 176627 $")
 
 #include "asterisk/module.h"
 #include "asterisk/pbx.h"
@@ -76,7 +72,7 @@ static const char stopplaytones_app[] = "StopPlayTones";
 	</application>
  ***/
 
-static int handle_playtones(struct ast_channel *chan, const char *data)
+static int handle_playtones(struct ast_channel *chan, void *data)
 {
 	struct ast_tone_zone_sound *ts;
 	int res;
@@ -103,7 +99,7 @@ static int handle_playtones(struct ast_channel *chan, const char *data)
 	return res;
 }
 
-static int handle_stopplaytones(struct ast_channel *chan, const char *data)
+static int handle_stopplaytones(struct ast_channel *chan, void *data)
 {
 	ast_playtones_stop(chan);
 

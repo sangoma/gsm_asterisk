@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 320606 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 320562 $")
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -180,7 +180,7 @@ static void *handle_tcptls_connection(void *data)
 					X509_NAME *name = X509_get_subject_name(peer);
 					int pos = -1;
 					int found = 0;
-
+				
 					for (;;) {
 						/* Walk the certificate to check all available "Common Name" */
 						/* XXX Probably should do a gethostbyname on the hostname and compare that as well */
@@ -239,10 +239,11 @@ void *ast_tcptls_server_root(void *data)
 {
 	struct ast_tcptls_session_args *desc = data;
 	int fd;
-	struct ast_sockaddr addr;
+	struct sockaddr_in sin;
+	socklen_t sinlen;
 	struct ast_tcptls_session_instance *tcptls_session;
 	pthread_t launched;
-
+	
 	for (;;) {
 		int i, flags;
 
@@ -251,7 +252,8 @@ void *ast_tcptls_server_root(void *data)
 		i = ast_wait_for_input(desc->accept_fd, desc->poll_timeout);
 		if (i <= 0)
 			continue;
-		fd = ast_accept(desc->accept_fd, &addr);
+		sinlen = sizeof(sin);
+		fd = accept(desc->accept_fd, (struct sockaddr *) &sin, &sinlen);
 		if (fd < 0) {
 			if ((errno != EAGAIN) && (errno != EINTR))
 				ast_log(LOG_WARNING, "Accept failed: %s\n", strerror(errno));
@@ -270,10 +272,10 @@ void *ast_tcptls_server_root(void *data)
 		fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
 		tcptls_session->fd = fd;
 		tcptls_session->parent = desc;
-		ast_sockaddr_copy(&tcptls_session->remote_address, &addr);
+		memcpy(&tcptls_session->remote_address, &sin, sizeof(tcptls_session->remote_address));
 
 		tcptls_session->client = 0;
-
+			
 		/* This thread is now the only place that controls the single ref to tcptls_session */
 		if (ast_pthread_create_detached_background(&launched, NULL, handle_tcptls_connection, tcptls_session)) {
 			ast_log(LOG_WARNING, "Unable to launch helper thread: %s\n", strerror(errno));
@@ -296,48 +298,18 @@ static int __ssl_setup(struct ast_tls_config *cfg, int client)
 	SSL_load_error_strings();
 	SSLeay_add_ssl_algorithms();
 
-	if (client) {
-#ifndef OPENSSL_NO_SSL2
-		if (ast_test_flag(&cfg->flags, AST_SSL_SSLV2_CLIENT)) {
-			cfg->ssl_ctx = SSL_CTX_new(SSLv2_client_method());
-		} else
-#endif
-		if (ast_test_flag(&cfg->flags, AST_SSL_SSLV3_CLIENT)) {
-			cfg->ssl_ctx = SSL_CTX_new(SSLv3_client_method());
-		} else if (ast_test_flag(&cfg->flags, AST_SSL_TLSV1_CLIENT)) {
-			cfg->ssl_ctx = SSL_CTX_new(TLSv1_client_method());
-		} else {
-			/* SSLv23_client_method() sends SSLv2, this was the original
-			 * default for ssl clients before the option was given to
-			 * pick what protocol a client should use.  In order not
-			 * to break expected behavior it remains the default. */
-			cfg->ssl_ctx = SSL_CTX_new(SSLv23_client_method());
-		}
-	} else {
-		/* SSLv23_server_method() supports TLSv1, SSLv2, and SSLv3 inbound connections. */
-		cfg->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-	}
-
-	if (!cfg->ssl_ctx) {
+	if (!(cfg->ssl_ctx = SSL_CTX_new( client ? SSLv23_client_method() : SSLv23_server_method() ))) {
 		ast_debug(1, "Sorry, SSL_CTX_new call returned null...\n");
 		cfg->enabled = 0;
 		return 0;
 	}
 	if (!ast_strlen_zero(cfg->certfile)) {
-		char *tmpprivate = ast_strlen_zero(cfg->pvtfile) ? cfg->certfile : cfg->pvtfile;
-		if (SSL_CTX_use_certificate_file(cfg->ssl_ctx, cfg->certfile, SSL_FILETYPE_PEM) == 0) {
+		if (SSL_CTX_use_certificate_file(cfg->ssl_ctx, cfg->certfile, SSL_FILETYPE_PEM) == 0 ||
+		    SSL_CTX_use_PrivateKey_file(cfg->ssl_ctx, cfg->certfile, SSL_FILETYPE_PEM) == 0 ||
+		    SSL_CTX_check_private_key(cfg->ssl_ctx) == 0 ) {
 			if (!client) {
 				/* Clients don't need a certificate, but if its setup we can use it */
-				ast_verb(0, "SSL error loading cert file. <%s>", cfg->certfile);
-				sleep(2);
-				cfg->enabled = 0;
-				return 0;
-			}
-		}
-		if ((SSL_CTX_use_PrivateKey_file(cfg->ssl_ctx, tmpprivate, SSL_FILETYPE_PEM) == 0) || (SSL_CTX_check_private_key(cfg->ssl_ctx) == 0 )) {
-			if (!client) {
-				/* Clients don't need a private key, but if its setup we can use it */
-				ast_verb(0, "SSL error loading private key file. <%s>", tmpprivate);
+				ast_verb(0, "SSL cert error <%s>", cfg->certfile);
 				sleep(2);
 				cfg->enabled = 0;
 				return 0;
@@ -378,10 +350,10 @@ struct ast_tcptls_session_instance *ast_tcptls_client_start(struct ast_tcptls_se
 		goto client_start_error;
 	}
 
-	if (ast_connect(desc->accept_fd, &desc->remote_address)) {
-		ast_log(LOG_ERROR, "Unable to connect %s to %s: %s\n",
+	if (connect(desc->accept_fd, (const struct sockaddr *) &desc->remote_address, sizeof(desc->remote_address))) {
+		ast_log(LOG_ERROR, "Unable to connect %s to %s:%d: %s\n",
 			desc->name,
-			ast_sockaddr_stringify(&desc->remote_address),
+			ast_inet_ntoa(desc->remote_address.sin_addr), ntohs(desc->remote_address.sin_port),
 			strerror(errno));
 		goto client_start_error;
 	}
@@ -412,19 +384,18 @@ struct ast_tcptls_session_instance *ast_tcptls_client_create(struct ast_tcptls_s
 	struct ast_tcptls_session_instance *tcptls_session = NULL;
 
 	/* Do nothing if nothing has changed */
-	if (!ast_sockaddr_cmp(&desc->old_address, &desc->remote_address)) {
+	if (!memcmp(&desc->old_address, &desc->remote_address, sizeof(desc->old_address))) {
 		ast_debug(1, "Nothing changed in %s\n", desc->name);
 		return NULL;
 	}
 
 	/* If we return early, there is no connection */
-	ast_sockaddr_setnull(&desc->old_address);
+	desc->old_address.sin_family = 0;
 
 	if (desc->accept_fd != -1)
 		close(desc->accept_fd);
 
-	desc->accept_fd = socket(ast_sockaddr_is_ipv6(&desc->remote_address) ?
-				 AF_INET6 : AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	desc->accept_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (desc->accept_fd < 0) {
 		ast_log(LOG_WARNING, "Unable to allocate socket for %s: %s\n",
 			desc->name, strerror(errno));
@@ -433,12 +404,12 @@ struct ast_tcptls_session_instance *ast_tcptls_client_create(struct ast_tcptls_s
 
 	/* if a local address was specified, bind to it so the connection will
 	   originate from the desired address */
-	if (!ast_sockaddr_isnull(&desc->local_address)) {
+	if (desc->local_address.sin_family != 0) {
 		setsockopt(desc->accept_fd, SOL_SOCKET, SO_REUSEADDR, &x, sizeof(x));
-		if (ast_bind(desc->accept_fd, &desc->local_address)) {
-			ast_log(LOG_ERROR, "Unable to bind %s to %s: %s\n",
-				desc->name,
-				ast_sockaddr_stringify(&desc->local_address),
+		if (bind(desc->accept_fd, (struct sockaddr *) &desc->local_address, sizeof(desc->local_address))) {
+			ast_log(LOG_ERROR, "Unable to bind %s to %s:%d: %s\n",
+			desc->name,
+				ast_inet_ntoa(desc->local_address.sin_addr), ntohs(desc->local_address.sin_port),
 				strerror(errno));
 			goto error;
 		}
@@ -452,11 +423,10 @@ struct ast_tcptls_session_instance *ast_tcptls_client_create(struct ast_tcptls_s
 	tcptls_session->fd = desc->accept_fd;
 	tcptls_session->parent = desc;
 	tcptls_session->parent->worker_fn = NULL;
-	ast_sockaddr_copy(&tcptls_session->remote_address,
-			  &desc->remote_address);
+	memcpy(&tcptls_session->remote_address, &desc->remote_address, sizeof(tcptls_session->remote_address));
 
 	/* Set current info */
-	ast_sockaddr_copy(&desc->old_address, &desc->remote_address);
+	desc->old_address = desc->remote_address;
 	return tcptls_session;
 
 error:
@@ -471,44 +441,43 @@ void ast_tcptls_server_start(struct ast_tcptls_session_args *desc)
 {
 	int flags;
 	int x = 1;
-
+	
 	/* Do nothing if nothing has changed */
-	if (!ast_sockaddr_cmp(&desc->old_address, &desc->local_address)) {
+	if (!memcmp(&desc->old_address, &desc->local_address, sizeof(desc->old_address))) {
 		ast_debug(1, "Nothing changed in %s\n", desc->name);
 		return;
 	}
-
+	
 	/* If we return early, there is no one listening */
-	ast_sockaddr_setnull(&desc->old_address);
-
+	desc->old_address.sin_family = 0;
+	
 	/* Shutdown a running server if there is one */
 	if (desc->master != AST_PTHREADT_NULL) {
 		pthread_cancel(desc->master);
 		pthread_kill(desc->master, SIGURG);
 		pthread_join(desc->master, NULL);
 	}
-
+	
 	if (desc->accept_fd != -1)
 		close(desc->accept_fd);
 
 	/* If there's no new server, stop here */
-	if (ast_sockaddr_isnull(&desc->local_address)) {
+	if (desc->local_address.sin_family == 0) {
 		ast_debug(2, "Server disabled:  %s\n", desc->name);
 		return;
 	}
 
-	desc->accept_fd = socket(ast_sockaddr_is_ipv6(&desc->local_address) ?
-				 AF_INET6 : AF_INET, SOCK_STREAM, 0);
+	desc->accept_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (desc->accept_fd < 0) {
 		ast_log(LOG_ERROR, "Unable to allocate socket for %s: %s\n", desc->name, strerror(errno));
 		return;
 	}
-
+	
 	setsockopt(desc->accept_fd, SOL_SOCKET, SO_REUSEADDR, &x, sizeof(x));
-	if (ast_bind(desc->accept_fd, &desc->local_address)) {
-		ast_log(LOG_ERROR, "Unable to bind %s to %s: %s\n",
+	if (bind(desc->accept_fd, (struct sockaddr *) &desc->local_address, sizeof(desc->local_address))) {
+		ast_log(LOG_ERROR, "Unable to bind %s to %s:%d: %s\n",
 			desc->name,
-			ast_sockaddr_stringify(&desc->local_address),
+			ast_inet_ntoa(desc->local_address.sin_addr), ntohs(desc->local_address.sin_port),
 			strerror(errno));
 		goto error;
 	}
@@ -519,16 +488,15 @@ void ast_tcptls_server_start(struct ast_tcptls_session_args *desc)
 	flags = fcntl(desc->accept_fd, F_GETFL);
 	fcntl(desc->accept_fd, F_SETFL, flags | O_NONBLOCK);
 	if (ast_pthread_create_background(&desc->master, NULL, desc->accept_fn, desc)) {
-		ast_log(LOG_ERROR, "Unable to launch thread for %s on %s: %s\n",
+		ast_log(LOG_ERROR, "Unable to launch thread for %s on %s:%d: %s\n",
 			desc->name,
-			ast_sockaddr_stringify(&desc->local_address),
+			ast_inet_ntoa(desc->local_address.sin_addr), ntohs(desc->local_address.sin_port),
 			strerror(errno));
 		goto error;
 	}
 
 	/* Set current info */
-	ast_sockaddr_copy(&desc->old_address, &desc->local_address);
-
+	desc->old_address = desc->local_address;
 	return;
 
 error:
@@ -548,51 +516,4 @@ void ast_tcptls_server_stop(struct ast_tcptls_session_args *desc)
 		close(desc->accept_fd);
 	desc->accept_fd = -1;
 	ast_debug(2, "Stopped server :: %s\n", desc->name);
-}
-
-int ast_tls_read_conf(struct ast_tls_config *tls_cfg, struct ast_tcptls_session_args *tls_desc, const char *varname, const char *value)
-{
-	if (!strcasecmp(varname, "tlsenable") || !strcasecmp(varname, "sslenable")) {
-		tls_cfg->enabled = ast_true(value) ? 1 : 0;
-	} else if (!strcasecmp(varname, "tlscertfile") || !strcasecmp(varname, "sslcert") || !strcasecmp(varname, "tlscert")) {
-		ast_free(tls_cfg->certfile);
-		tls_cfg->certfile = ast_strdup(value);
-	} else if (!strcasecmp(varname, "tlsprivatekey") || !strcasecmp(varname, "sslprivatekey")) {
-		ast_free(tls_cfg->pvtfile);
-		tls_cfg->pvtfile = ast_strdup(value);
-	} else if (!strcasecmp(varname, "tlscipher") || !strcasecmp(varname, "sslcipher")) {
-		ast_free(tls_cfg->cipher);
-		tls_cfg->cipher = ast_strdup(value);
-	} else if (!strcasecmp(varname, "tlscafile")) {
-		ast_free(tls_cfg->cafile);
-		tls_cfg->cafile = ast_strdup(value);
-	} else if (!strcasecmp(varname, "tlscapath") || !strcasecmp(varname, "tlscadir")) {
-		ast_free(tls_cfg->capath);
-		tls_cfg->capath = ast_strdup(value);
-	} else if (!strcasecmp(varname, "tlsverifyclient")) {
-		ast_set2_flag(&tls_cfg->flags, ast_true(value), AST_SSL_VERIFY_CLIENT);
-	} else if (!strcasecmp(varname, "tlsdontverifyserver")) {
-		ast_set2_flag(&tls_cfg->flags, ast_true(value), AST_SSL_DONT_VERIFY_SERVER);
-	} else if (!strcasecmp(varname, "tlsbindaddr") || !strcasecmp(varname, "sslbindaddr")) {
-		if (ast_parse_arg(value, PARSE_ADDR, &tls_desc->local_address))
-			ast_log(LOG_WARNING, "Invalid %s '%s'\n", varname, value);
-	} else if (!strcasecmp(varname, "tlsclientmethod") || !strcasecmp(varname, "sslclientmethod")) {
-		if (!strcasecmp(value, "tlsv1")) {
-			ast_set_flag(&tls_cfg->flags, AST_SSL_TLSV1_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_SSLV3_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_SSLV2_CLIENT);
-		} else if (!strcasecmp(value, "sslv3")) {
-			ast_set_flag(&tls_cfg->flags, AST_SSL_SSLV3_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_SSLV2_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_TLSV1_CLIENT);
-		} else if (!strcasecmp(value, "sslv2")) {
-			ast_set_flag(&tls_cfg->flags, AST_SSL_SSLV2_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_TLSV1_CLIENT);
-			ast_clear_flag(&tls_cfg->flags, AST_SSL_SSLV3_CLIENT);
-		}
-	} else {
-		return -1;
-	}
-
-	return 0;
 }

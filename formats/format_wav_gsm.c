@@ -26,14 +26,10 @@
  * e-mail attachments mainly.
  * \ingroup formats
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -52,7 +48,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #define	MSGSM_SAMPLES		(2*GSM_SAMPLES)	/* samples in an MSGSM block */
 
 /* begin binary data: */
-static char msgsm_silence[] = /* 65 */
+char msgsm_silence[] = /* 65 */
 {0x48,0x17,0xD6,0x84,0x02,0x80,0x24,0x49,0x92,0x24,0x89,0x02,0x80,0x24,0x49
 ,0x92,0x24,0x89,0x02,0x80,0x24,0x49,0x92,0x24,0x89,0x02,0x80,0x24,0x49,0x92
 ,0x24,0x09,0x82,0x74,0x61,0x4D,0x28,0x00,0x48,0x92,0x24,0x49,0x92,0x28,0x00
@@ -399,7 +395,7 @@ static struct ast_frame *wav_read(struct ast_filestream *s, int *whennext)
 	struct wavg_desc *fs = (struct wavg_desc *)s->_private;
 
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_GSM, 0);
+	s->fr.subclass = AST_FORMAT_GSM;
 	s->fr.offset = AST_FRIENDLY_OFFSET;
 	s->fr.samples = GSM_SAMPLES;
 	s->fr.mallocd = 0;
@@ -436,8 +432,8 @@ static int wav_write(struct ast_filestream *s, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_GSM) {
-		ast_log(LOG_WARNING, "Asked to write non-GSM frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_GSM) {
+		ast_log(LOG_WARNING, "Asked to write non-GSM frame (%d)!\n", f->subclass);
 		return -1;
 	}
 	/* XXX this might fail... if the input is a multiple of MSGSM_FRAME_SIZE
@@ -525,9 +521,10 @@ static off_t wav_tell(struct ast_filestream *fs)
 	return (offset - MSGSM_DATA_OFFSET)/MSGSM_FRAME_SIZE*MSGSM_SAMPLES;
 }
 
-static struct ast_format_def wav49_f = {
+static const struct ast_format wav49_f = {
 	.name = "wav49",
 	.exts = "WAV|wav49",
+	.format = AST_FORMAT_GSM,
 	.open =	wav_open,
 	.rewrite = wav_rewrite,
 	.write = wav_write,
@@ -541,19 +538,18 @@ static struct ast_format_def wav49_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&wav49_f.format, AST_FORMAT_GSM, 0);
-	if (ast_format_def_register(&wav49_f))
+	if (ast_format_register(&wav49_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(wav49_f.name);
-}
+	return ast_format_unregister(wav49_f.name);
+}	
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Microsoft WAV format (Proprietary GSM)",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

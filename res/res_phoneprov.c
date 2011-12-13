@@ -26,10 +26,6 @@
  * \author Terry Wilson <twilson@digium.com>
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
 #include <sys/ioctl.h>
@@ -38,7 +34,7 @@
 #ifdef SOLARIS
 #include <sys/sockio.h>
 #endif
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 222187 $")
 
 #include "asterisk/channel.h"
 #include "asterisk/file.h"
@@ -68,37 +64,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #endif /* LOW_MEMORY */
 
 #define VAR_BUF_SIZE 4096
-
-/*** DOCUMENTATION
-	<function name="PP_EACH_EXTENSION" language="en_US">
-		<synopsis>
-			Execute specified template for each extension.
-		</synopsis>
-		<syntax>
-			<parameter name="mac" required="true" />
-			<parameter name="template" required="true" />
-		</syntax>
-		<description>
-			<para>Output the specified template for each extension associated with the specified MAC address.</para>
-		</description>
-	</function>
-	<function name="PP_EACH_USER" language="en_US">
-		<synopsis>
-			Generate a string for each phoneprov user.
-		</synopsis>
-		<syntax>
-			<parameter name="string" required="true" />
-			<parameter name="exclude_mac" required="true" />
-		</syntax>
-		<description>
-			<para>Pass in a string, with phoneprov variables you want substituted in the format of
-			%{VARNAME}, and you will get the string rendered for each user in phoneprov
-			excluding ones with MAC address <replaceable>exclude_mac</replaceable>. Probably not
-			useful outside of res_phoneprov.</para>
-			<para>Example: ${PP_EACH_USER(&lt;item&gt;&lt;fn&gt;%{DISPLAY_NAME}&lt;/fn&gt;&lt;/item&gt;|${MAC})</para>
-		</description>
-	</function>
- ***/
 
 /*! \brief for use in lookup_iface */
 static struct in_addr __ourip = { .s_addr = 0x00000000, };
@@ -190,6 +155,19 @@ static struct ao2_container *profiles;
 static struct ao2_container *http_routes;
 static struct ao2_container *users;
 
+/*! \brief Extensions whose mime types we think we know */
+static struct {
+	char *ext;
+	char *mtype;
+} mimetypes[] = {
+	{ "png", "image/png" },
+	{ "xml", "text/xml" },
+	{ "jpg", "image/jpeg" },
+	{ "js", "application/x-javascript" },
+	{ "wav", "audio/x-wav" },
+	{ "mp3", "audio/mpeg" },
+};
+
 static char global_server[80] = "";	/*!< Server to substitute into templates */
 static char global_serverport[6] = "";	/*!< Server port to substitute into templates */
 static char global_default_profile[80] = "";	/*!< Default profile to use if one isn't specified */
@@ -197,6 +175,22 @@ static char global_default_profile[80] = "";	/*!< Default profile to use if one 
 /*! \brief List of global variables currently available: VOICEMAIL_EXTEN, EXTENSION_LENGTH */
 static struct varshead global_variables;
 static ast_mutex_t globals_lock;
+
+/*! \brief Return mime type based on extension */
+static char *ftype2mtype(const char *ftype)
+{
+	int x;
+
+	if (ast_strlen_zero(ftype))
+		return NULL;
+
+	for (x = 0;x < ARRAY_LEN(mimetypes);x++) {
+		if (!strcasecmp(ftype, mimetypes[x].ext))
+			return mimetypes[x].mtype;
+	}
+
+	return NULL;
+}
 
 /* iface is the interface (e.g. eth0); address is the return value */
 static int lookup_iface(const char *iface, struct in_addr *address)
@@ -404,23 +398,20 @@ static void set_timezone_variables(struct varshead *headp, const char *zone)
 }
 
 /*! \brief Callback that is executed everytime an http request is received by this module */
-static int phoneprov_callback(struct ast_tcptls_session_instance *ser, const struct ast_http_uri *urih, const char *uri, enum ast_http_method method, struct ast_variable *get_vars, struct ast_variable *headers)
+static struct ast_str *phoneprov_callback(struct ast_tcptls_session_instance *ser, const struct ast_http_uri *urih, const char *uri, enum ast_http_method method, struct ast_variable *vars, struct ast_variable *headers, int *status, char **title, int *contentlength)
 {
 	struct http_route *route;
 	struct http_route search_route = {
 		.uri = uri,
 	};
-	struct ast_str *result;
+	struct ast_str *result = ast_str_create(512);
 	char path[PATH_MAX];
 	char *file = NULL;
 	int len;
 	int fd;
-	struct ast_str *http_header;
-
-	if (method != AST_HTTP_GET && method != AST_HTTP_HEAD) {
-		ast_http_error(ser, 501, "Not Implemented", "Attempt to use unimplemented / unsupported method");
-		return -1;
-	}
+	char buf[256];
+	struct timeval now = ast_tvnow();
+	struct ast_tm tm;
 
 	if (!(route = ao2_find(http_routes, &search_route, OBJ_POINTER))) {
 		goto out404;
@@ -443,17 +434,33 @@ static int phoneprov_callback(struct ast_tcptls_session_instance *ser, const str
 			goto out500;
 		}
 
-		http_header = ast_str_create(80);
-		ast_str_set(&http_header, 0, "Content-type: %s\r\n",
-			route->file->mime_type);
+		ast_strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S %Z", ast_localtime(&now, &tm, "GMT"));
+		fprintf(ser->f, "HTTP/1.1 200 OK\r\n"
+			"Server: Asterisk/%s\r\n"
+			"Date: %s\r\n"
+			"Connection: close\r\n"
+			"Cache-Control: no-cache, no-store\r\n"
+			"Content-Length: %d\r\n"
+			"Content-Type: %s\r\n\r\n",
+			ast_get_version(), buf, len, route->file->mime_type);
 
-		ast_http_send(ser, method, 200, NULL, http_header, NULL, fd, 0);
+		while ((len = read(fd, buf, sizeof(buf))) > 0) {
+			if (fwrite(buf, 1, len, ser->f) != len) {
+				if (errno != EPIPE) {
+					ast_log(LOG_WARNING, "fwrite() failed: %s\n", strerror(errno));
+				} else {
+					ast_debug(3, "Requester closed the connection while downloading '%s'\n", path);
+				}
+				break;
+			}
+		}
 
 		close(fd);
 		route = unref_route(route);
-		return 0;
+		return NULL;
 	} else { /* Dynamic file */
-		struct ast_str *tmp;
+		int bufsize;
+		char *tmp;
 
 		len = load_file(path, &file);
 		if (len < 0) {
@@ -469,7 +476,12 @@ static int phoneprov_callback(struct ast_tcptls_session_instance *ser, const str
 			goto out500;
 		}
 
-		if (!(tmp = ast_str_create(len))) {
+		/* XXX This is a hack -- maybe sum length of all variables in route->user->headp and add that? */
+ 		bufsize = len + VAR_BUF_SIZE;
+
+		/* malloc() instead of alloca() here, just in case the file is bigger than
+		 * we have enough stack space for. */
+		if (!(tmp = ast_calloc(1, bufsize))) {
 			if (file) {
 				ast_free(file);
 			}
@@ -501,44 +513,39 @@ static int phoneprov_callback(struct ast_tcptls_session_instance *ser, const str
 			}
 		}
 
-		ast_str_substitute_variables_varshead(&tmp, 0, AST_LIST_FIRST(&route->user->extensions)->headp, file);
+		pbx_substitute_variables_varshead(AST_LIST_FIRST(&route->user->extensions)->headp, file, tmp, bufsize);
 
 		if (file) {
 			ast_free(file);
 		}
 
-		http_header = ast_str_create(80);
-		ast_str_set(&http_header, 0, "Content-type: %s\r\n",
-			route->file->mime_type);
+		ast_str_append(&result, 0,
+			"Content-Type: %s\r\n"
+			"Content-length: %d\r\n"
+			"\r\n"
+			"%s", route->file->mime_type, (int) strlen(tmp), tmp);
 
-		if (!(result = ast_str_create(512))) {
-			ast_log(LOG_ERROR, "Could not create result string!\n");
-			if (tmp) {
-				ast_free(tmp);
-			}
-			ast_free(http_header);
-			goto out500;
-		}
-		ast_str_append(&result, 0, "%s", ast_str_buffer(tmp)); 
-
-		ast_http_send(ser, method, 200, NULL, http_header, result, 0, 0);
 		if (tmp) {
 			ast_free(tmp);
 		}
 
 		route = unref_route(route);
 
-		return 0;
+		return result;
 	}
 
 out404:
-	ast_http_error(ser, 404, "Not Found", "Nothing to see here.  Move along.");
-	return -1;
+	*status = 404;
+	*title = strdup("Not Found");
+	*contentlength = 0;
+	return ast_http_error(404, "Not Found", NULL, "The requested URL was not found on this server.");
 
 out500:
 	route = unref_route(route);
-	ast_http_error(ser, 500, "Internal Error", "An internal error has occured.");
-	return -1;
+	*status = 500;
+	*title = strdup("Internal Server Error");
+	*contentlength = 0;
+	return ast_http_error(500, "Internal Error", NULL, "An internal error has occured.");
 }
 
 /*! \brief Build a route structure and add it to the list of available http routes
@@ -631,7 +638,12 @@ static void build_profile(const char *name, struct ast_variable *v)
 				AST_APP_ARG(mimetype);
 			);
 
-			if (!(pp_file = ast_calloc_with_stringfields(1, struct phoneprov_file, 32))) {
+			if (!(pp_file = ast_calloc(1, sizeof(*pp_file)))) {
+				profile = unref_profile(profile);
+				return;
+			}
+			if (ast_string_field_init(pp_file, 32)) {
+				ast_free(pp_file);
 				profile = unref_profile(profile);
 				return;
 			}
@@ -647,8 +659,7 @@ static void build_profile(const char *name, struct ast_variable *v)
 			 * 3) Default mime type specified in profile
 			 * 4) text/plain
 			 */
-			ast_string_field_set(pp_file, mime_type, S_OR(args.mimetype,
-				(S_OR(S_OR(ast_http_ftype2mtype(file_extension), profile->default_mime_type), "text/plain"))));
+			ast_string_field_set(pp_file, mime_type, S_OR(args.mimetype, (S_OR(S_OR(ftype2mtype(file_extension), profile->default_mime_type), "text/plain"))));
 
 			if (!strcasecmp(v->name, "static_file")) {
 				ast_string_field_set(pp_file, format, args.filename);
@@ -702,7 +713,13 @@ static struct extension *build_extension(struct ast_config *cfg, const char *nam
 	const char *tmp;
 	int i;
 
-	if (!(exten = ast_calloc_with_stringfields(1, struct extension, 32))) {
+	if (!(exten = ast_calloc(1, sizeof(*exten)))) {
+		return NULL;
+	}
+
+	if (ast_string_field_init(exten, 32)) {
+		ast_free(exten);
+		exten = NULL;
 		return NULL;
 	}
 
@@ -843,24 +860,17 @@ static struct user *build_user(const char *mac, struct phone_profile *profile)
 static int add_user_extension(struct user *user, struct extension *exten)
 {
 	struct ast_var_t *var;
-	struct ast_str *str = ast_str_create(16);
-
-	if (!str) {
-		return -1;
-	}
 
 	/* Append profile variables here, and substitute variables on profile
 	 * setvars, so that we can use user specific variables in them */
 	AST_LIST_TRAVERSE(user->profile->headp, var, entries) {
+		char expand_buf[VAR_BUF_SIZE] = {0,};
 		struct ast_var_t *var2;
 
-		ast_str_substitute_variables_varshead(&str, 0, exten->headp, var->value);
-		if ((var2 = ast_var_assign(var->name, ast_str_buffer(str)))) {
+		pbx_substitute_variables_varshead(exten->headp, var->value, expand_buf, sizeof(expand_buf));
+		if ((var2 = ast_var_assign(var->name, expand_buf)))
 			AST_LIST_INSERT_TAIL(exten->headp, var2, entries);
-		}
 	}
-
-	ast_free(str);
 
 	if (AST_LIST_EMPTY(&user->extensions)) {
 		AST_LIST_INSERT_HEAD(&user->extensions, exten, entry);
@@ -887,18 +897,14 @@ static int add_user_extension(struct user *user, struct extension *exten)
 static int build_user_routes(struct user *user)
 {
 	struct phoneprov_file *pp_file;
-	struct ast_str *str;
-
-	if (!(str = ast_str_create(16))) {
-		return -1;
-	}
 
 	AST_LIST_TRAVERSE(&user->profile->dynamic_files, pp_file, entry) {
-		ast_str_substitute_variables_varshead(&str, 0, AST_LIST_FIRST(&user->extensions)->headp, pp_file->format);
-		build_route(pp_file, user, ast_str_buffer(str));
+		char expand_buf[VAR_BUF_SIZE] = { 0, };
+
+		pbx_substitute_variables_varshead(AST_LIST_FIRST(&user->extensions)->headp, pp_file->format, expand_buf, sizeof(expand_buf));
+		build_route(pp_file, user, expand_buf);
 	}
 
-	ast_free(str);
 	return 0;
 }
 
@@ -1079,21 +1085,16 @@ static void delete_profiles(void)
 }
 
 /*! \brief A dialplan function that can be used to print a string for each phoneprov user */
-static int pp_each_user_helper(struct ast_channel *chan, char *data, char *buf, struct ast_str **bufstr, int len)
+static int pp_each_user_exec(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	char *tmp;
+	char *tmp, expand_buf[VAR_BUF_SIZE] = {0,};
 	struct ao2_iterator i;
 	struct user *user;
-	struct ast_str *str;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(string);
 		AST_APP_ARG(exclude_mac);
 	);
 	AST_STANDARD_APP_ARGS(args, data);
-
-	if (!(str = ast_str_create(16))) {
-		return -1;
-	}
 
 	/* Fix data by turning %{ into ${ */
 	while ((tmp = strstr(args.string, "%{")))
@@ -1104,46 +1105,36 @@ static int pp_each_user_helper(struct ast_channel *chan, char *data, char *buf, 
 		if (!ast_strlen_zero(args.exclude_mac) && !strcasecmp(user->macaddress, args.exclude_mac)) {
 			continue;
 		}
-		ast_str_substitute_variables_varshead(&str, len, AST_LIST_FIRST(&user->extensions)->headp, args.string);
-		if (buf) {
-			size_t slen = len;
-			ast_build_string(&buf, &slen, "%s", ast_str_buffer(str));
-		} else {
-			ast_str_append(bufstr, len, "%s", ast_str_buffer(str));
-		}
+		pbx_substitute_variables_varshead(AST_LIST_FIRST(&user->extensions)->headp, args.string, expand_buf, sizeof(expand_buf));
+		ast_build_string(&buf, &len, "%s", expand_buf);
 		user = unref_user(user);
 	}
 	ao2_iterator_destroy(&i);
 
-	ast_free(str);
 	return 0;
-}
-
-static int pp_each_user_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
-{
-	return pp_each_user_helper(chan, data, buf, NULL, len);
-}
-
-static int pp_each_user_read2(struct ast_channel *chan, const char *cmd, char *data, struct ast_str **buf, ssize_t len)
-{
-	return pp_each_user_helper(chan, data, NULL, buf, len);
 }
 
 static struct ast_custom_function pp_each_user_function = {
 	.name = "PP_EACH_USER",
-	.read = pp_each_user_read,
-	.read2 = pp_each_user_read2,
+	.synopsis = "Generate a string for each phoneprov user",
+	.syntax = "PP_EACH_USER(<string>|<exclude_mac>)",
+	.desc =
+		"Pass in a string, with phoneprov variables you want substituted in the format of\n"
+		"%{VARNAME}, and you will get the string rendered for each user in phoneprov\n"
+		"excluding ones with MAC address <exclude_mac>. Probably not useful outside of\n"
+		"res_phoneprov.\n"
+		"\nExample: ${PP_EACH_USER(<item><fn>%{DISPLAY_NAME}</fn></item>|${MAC})",
+	.read = pp_each_user_exec,
 };
 
 /*! \brief A dialplan function that can be used to output a template for each extension attached to a user */
-static int pp_each_extension_helper(struct ast_channel *chan, const char *cmd, char *data, char *buf, struct ast_str **bufstr, int len)
+static int pp_each_extension_exec(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
 	struct user *user;
 	struct extension *exten;
 	char path[PATH_MAX];
 	char *file;
 	int filelen;
-	struct ast_str *str;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(mac);
 		AST_APP_ARG(template);
@@ -1175,42 +1166,27 @@ static int pp_each_extension_helper(struct ast_channel *chan, const char *cmd, c
 		return 0;
 	}
 
-	if (!(str = ast_str_create(filelen))) {
-		return 0;
-	}
-
 	AST_LIST_TRAVERSE(&user->extensions, exten, entry) {
-		ast_str_substitute_variables_varshead(&str, 0, exten->headp, file);
-		if (buf) {
-			size_t slen = len;
-			ast_build_string(&buf, &slen, "%s", ast_str_buffer(str));
-		} else {
-			ast_str_append(bufstr, len, "%s", ast_str_buffer(str));
-		}
+		char expand_buf[VAR_BUF_SIZE] = {0,};
+		pbx_substitute_variables_varshead(exten->headp, file, expand_buf, sizeof(expand_buf));
+		ast_build_string(&buf, &len, "%s", expand_buf);
 	}
 
 	ast_free(file);
-	ast_free(str);
 
 	user = unref_user(user);
 
 	return 0;
 }
 
-static int pp_each_extension_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
-{
-	return pp_each_extension_helper(chan, cmd, data, buf, NULL, len);
-}
-
-static int pp_each_extension_read2(struct ast_channel *chan, const char *cmd, char *data, struct ast_str **buf, ssize_t len)
-{
-	return pp_each_extension_helper(chan, cmd, data, NULL, buf, len);
-}
-
 static struct ast_custom_function pp_each_extension_function = {
 	.name = "PP_EACH_EXTENSION",
-	.read = pp_each_extension_read,
-	.read2 = pp_each_extension_read2,
+	.synopsis = "Execute specified template for each extension",
+	.syntax = "PP_EACH_EXTENSION(<mac>|<template>)",
+	.desc =
+		"Output the specified template for each extension associated with the specified\n"
+		"MAC address.",
+	.read = pp_each_extension_exec,
 };
 
 /*! \brief CLI command to list static and dynamic routes */
@@ -1266,6 +1242,7 @@ static struct ast_http_uri phoneprovuri = {
 	.description = "Asterisk HTTP Phone Provisioning Tool",
 	.uri = "phoneprov",
 	.has_subtree = 1,
+	.supports_get = 1,
 	.data = NULL,
 	.key = __FILE__,
 };
@@ -1337,7 +1314,7 @@ static int reload(void)
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "HTTP Phone Provisioning",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_GLOBAL_SYMBOLS, "HTTP Phone Provisioning",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,

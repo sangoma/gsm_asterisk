@@ -27,12 +27,11 @@
 
 /*** MODULEINFO
 	<defaultenabled>no</defaultenabled>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 153747 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -60,7 +59,7 @@ static char *app = "IVRDemo";
 
 static int ivr_demo_func(struct ast_channel *chan, void *data)
 {
-	ast_verbose("IVR Demo, data is %s!\n", (char *) data);
+	ast_verbose("IVR Demo, data is %s!\n", (char *)data);
 	return 0;
 }
 
@@ -94,24 +93,22 @@ AST_IVR_DECLARE_MENU(ivr_demo, "IVR Demo Main Menu", 0,
 	{ NULL },
 });
 
-static int skel_exec(struct ast_channel *chan, const char *data)
+
+static int skel_exec(struct ast_channel *chan, void *data)
 {
 	int res=0;
-	char *tmp;
 	
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_WARNING, "skel requires an argument (filename)\n");
 		return -1;
 	}
 	
-	tmp = ast_strdupa(data);
-
 	/* Do our thing here */
 
 	if (chan->_state != AST_STATE_UP)
 		res = ast_answer(chan);
 	if (!res)
-		res = ast_ivr_menu_run(chan, &ivr_demo, tmp);
+		res = ast_ivr_menu_run(chan, &ivr_demo, data);
 	
 	return res;
 }

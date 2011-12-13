@@ -10,10 +10,10 @@
 persistentmembers = yes
 ;
 ; AutoFill Behavior
-;    The old behavior of the queue (autofill=no) is to have a serial type behavior
+;    The old/current behavior of the queue has a serial type behavior 
 ;    in that the queue will make all waiting callers wait in the queue
 ;    even if there is more than one available member ready to take
-;    calls until the head caller is connected with the member they
+;    calls until the head caller is connected with the member they 
 ;    were trying to get to. The next waiting caller in line then
 ;    becomes the head caller, and they are then connected with the
 ;    next available member and all available members and waiting callers
@@ -21,31 +21,32 @@ persistentmembers = yes
 ;    autofill=yes makes sure that when the waiting callers are connecting
 ;    with available members in a parallel fashion until there are
 ;    no more available members or no more waiting callers. This is
-;    probably more along the lines of how a queue should work and
-;    in most cases, you will want to enable this behavior. If you
-;    do not specify or comment out this option, it will default to yes.
+;    probably more along the lines of how a queue should work and 
+;    in most cases, you will want to enable this behavior. If you 
+;    do not specify or comment out this option, it will default to no
+;    to keep backward compatibility with the old behavior.
 ;
-;autofill = no
+autofill = yes
 ;
 ; Monitor Type
 ;    By setting monitor-type = MixMonitor, when specifying monitor-format
 ;    to enable recording of queue member conversations, app_queue will
-;    now use the new MixMonitor application instead of Monitor so
+;    now use the new MixMonitor application instead of Monitor so 
 ;    the concept of "joining/mixing" the in/out files now goes away
 ;    when this is enabled. You can set the default type for all queues
 ;    here, and then also change monitor-type for individual queues within
-;    queue by using the same configuration parameter within a queue
+;    queue by using the same configuration parameter within a queue 
 ;    configuration block. If you do not specify or comment out this option,
 ;    it will default to the old 'Monitor' behavior to keep backward
-;    compatibility.
+;    compatibility. 
 ;
 monitor-type = MixMonitor
 ;
-; UpdateCDR behavior.
+; UpdateCDR behavior. 
 ;    This option is implemented to mimic chan_agents behavior of populating
-;    CDR dstchannel field of a call with an agent name, which you can set
-;    at the login time with AddQueueMember membername parameter.
-;
+;    CDR dstchannel field of a call with an agent name, which you can set 
+;    at the login time with AddQueueMember membername parameter. 
+; 
 ; updatecdr = no
 
 ;
@@ -55,28 +56,11 @@ monitor-type = MixMonitor
 ; example: Queue(dave,t,,,45)
 
 ; shared_lastcall will make the lastcall and calls received be the same in
-; members logged in more than one queue.  This is useful to make the queue
-; respect the wrapuptime of another queue for a shared member.
-; The default value is yes.
+; members logged in more than one queue.
+; This is useful to make the queue respect the wrapuptime of another queue
+; for a shared member
 ;
-;shared_lastcall=no
-;
-; Negative_penalty_invalid will treat members with a negative penalty as logged off
-;
-;negative_penalty_invalid = no
-;
-; log_membername_as_agent will cause app_queue to log the membername rather than
-; the interface for the ADDMEMBER and REMOVEMEMBER events when a state_interface
-; is set.  The default value (no) maintains backward compatibility.
-;
-;log_membername_as_agent = no
-;
-; app_queue allows calls to members in a "Unknown" state to be treated as available
-; setting check_state_unknown = yes will cause app_queue to query the channel driver
-; to better determine the state this only applies to queues with ringinuse or ignorebusy
-; set appropriately. 
-;
-;check_state_unknown = no
+shared_lastcall=no
 ;
 ;[markq]
 ;
@@ -130,12 +114,6 @@ monitor-type = MixMonitor
 ;
 ;context = qoutcon
 ;
-; A limit can be set to disregard penalty settings when the queue has
-; too few members.  No penalty will be weighed in if there are only X
-; or fewer queue members. (default 0)
-;
-;penaltymemberslimit = 5
-;
 ;----------------------QUEUE TIMING OPTIONS------------------------------------
 ; A Queue has two different "timeout" values associated with it. One is the
 ; timeout parameter configured in queues.conf. This timeout specifies the
@@ -153,7 +131,7 @@ monitor-type = MixMonitor
 ; The member's phone is rung for 5 seconds and he does not answer.
 ; The retry time of 4 seconds occurs.
 ; The queue selects a second member to call.
-;
+; 
 ; How long does that second member's phone ring? Does it ring for 5 seconds
 ; since the timeout set in app_queue is 5 seconds? Does it ring for 1 second since
 ; the caller has been in the queue for 9 seconds and is supposed to be removed after
@@ -162,8 +140,8 @@ monitor-type = MixMonitor
 ; rather use the time specified in the configuration file even if it means having the
 ; caller stay in the queue longer than the time specified in the application argument.
 ; For the scenario described above, timeoutpriority=conf would result in the second
-; member's phone ringing for 5 seconds. By specifying "app" as the value for
-; timeoutpriority, you are saying that the timeout specified as the argument to the
+; member's phone ringing for 5 seconds. By specifying "app" as the value for 
+; timeoutpriority, you are saying that the timeout specified as the argument to the 
 ; Queue application is more important. In the scenario above, timeoutpriority=app
 ; would result in the second member's phone ringing for 1 second.
 ;
@@ -171,7 +149,7 @@ monitor-type = MixMonitor
 ; and the configuration file timeout is set to 0, but the application argument timeout is
 ; non-zero, then the timeoutpriority is ignored and the application argument is used as
 ; the timeout. Furthermore, if no application argument timeout is specified, then the
-; timeoutpriority option is ignored and the configuration file timeout is always used
+; timeoutpriority option is ignored and the configuration file timeout is always used 
 ; when calling queue members.
 ;
 ; In timeoutpriority=conf mode however timeout specified in config file will take higher
@@ -189,8 +167,8 @@ monitor-type = MixMonitor
 ;timeoutpriority = app|conf
 ;
 ;-----------------------END QUEUE TIMING OPTIONS---------------------------------
-; Weight of queue - when compared to other queues, higher weights get
-; first shot at available channels when the same channel is included in
+; Weight of queue - when compared to other queues, higher weights get 
+; first shot at available channels when the same channel is included in 
 ; more than one queue.
 ;
 ;weight=0
@@ -208,44 +186,28 @@ monitor-type = MixMonitor
 ;autofill=yes
 ;
 ; Autopause will pause a queue member if they fail to answer a call
-; no: Member will not be paused
-; yes: Member will be paused only in the queue where the timeout took place
-; all: Memeber will be paused in all queues he/she is a member
+;
 ;autopause=yes
-;
-; Autopausedelay delay autopause for autopausedelay seconds from the
-; last call if a member has not taken a call the delay has no effect.
-;autopausedelay=60
-;
-; Autopausebusy controls whether or not a queue member is set as paused
-; automatically upon the member device reporting busy. The autopausedelay
-; option applies. Defaults to 'no'.
-;autopausebusy=no
-;
-; Autopauseunavail controls whether or not a queue member is set as paused
-; automatically upon the member device reporting congestion. The autopausedely
-; option applies. Defaults to 'no'.
-;autopauseunavail=no
 ;
 ; Maximum number of people waiting in the queue (0 for unlimited)
 ;
 ;maxlen = 0
 ;
-; If set to yes, just prior to the caller being bridged with a queue member
+; If set to yes, just prior to the caller being bridged with a queue member 
 ; the following variables will be set
 ; MEMBERINTERFACE is the interface name (eg. Agent/1234)
 ; MEMBERNAME is the member name (eg. Joe Soap)
-; MEMBERCALLS is the number of calls that interface has taken,
-; MEMBERLASTCALL is the last time the member took a call.
-; MEMBERPENALTY is the penalty of the member
+; MEMBERCALLS is the number of calls that interface has taken, 
+; MEMBERLASTCALL is the last time the member took a call. 
+; MEMBERPENALTY is the penalty of the member 
 ; MEMBERDYNAMIC indicates if a member is dynamic or not
 ; MEMBERREALTIME indicates if a member is realtime or not
 ;
 ;setinterfacevar=no
 ;
-; If set to yes, just prior to the caller being bridged with a queue member
+; If set to yes, just prior to the caller being bridged with a queue member 
 ; the following variables will be set:
-; QEHOLDTIME callers hold time
+; QEHOLDTIME callers hold time 
 ; QEORIGINALPOS original position of the caller in the queue
 ;
 ;setqueueentryvar=no
@@ -255,7 +217,7 @@ monitor-type = MixMonitor
 ; and just prior to the caller leaving the queue
 ; QUEUENAME name of the queue
 ; QUEUEMAX maxmimum number of calls allowed
-; QUEUESTRATEGY the strategy of the queue;
+; QUEUESTRATEGY the strategy of the queue; 
 ; QUEUECALLS number of calls currently in the queue
 ; QUEUEHOLDTIME current average hold time
 ; QUEUECOMPLETED number of completed calls for the queue
@@ -266,17 +228,17 @@ monitor-type = MixMonitor
 ;setqueuevar=no
 ;
 ; if set, run this macro when connected to the queue member
-; you can override this macro by setting the macro option on
+; you can override this macro by setting the macro option on 
 ; the queue application
 ;
 ; membermacro=somemacro
 
-; How often to announce queue position and/or estimated
+; How often to announce queue position and/or estimated 
 ; holdtime to caller (0=off)
 ; Note that this value is ignored if the caller's queue
 ; position has changed (see min-announce-frequency)
 ;
-;announce-frequency = 90
+;announce-frequency = 90 
 ;
 ; The absolute minimum time between the start of each
 ; queue position and/or estimated holdtime announcement
@@ -293,12 +255,6 @@ monitor-type = MixMonitor
 ; Should the periodic announcements be played in a random order? Default is no.
 ;
 ;random-periodic-announce=no
-;
-; If set to yes, the periodic announcment frequency will be timed from the end
-; of each announcment rather than from the start of each announcment.  This
-; defaults to off.
-;
-;relative-periodic-announce=yes
 ;
 ; Should we include estimated hold time in position announcements?
 ; Either yes, no, or only once.
@@ -342,15 +298,13 @@ monitor-type = MixMonitor
 ; queue-thankyou=
 ;
 			;	("You are now first in line.")
-;queue-youarenext = queue-youarenext
+;queue-youarenext = queue-youarenext		
 			;	("There are")
 ;queue-thereare	= queue-thereare
 			;	("calls waiting.")
 ;queue-callswaiting = queue-callswaiting
 			;	("The current est. holdtime is")
 ;queue-holdtime = queue-holdtime
-			;	("minute.")
-;queue-minute = queue-minute
 			;	("minutes.")
 ;queue-minutes = queue-minutes
 			;	("seconds.")
@@ -362,7 +316,7 @@ monitor-type = MixMonitor
 			;       ("All reps busy / wait for next")
 ;periodic-announce = queue-periodic-announce
 ;
-; A set of periodic announcements can be defined by separating
+; A set of periodic announcements can be defined by separating 
 ; periodic announcements to reproduce by commas. For example:
 ;periodic-announce = queue-periodic-announce,your-call-is-important,please-wait
 ;
@@ -401,7 +355,7 @@ monitor-type = MixMonitor
 ;
 ; You can specify the options supplied to MixMonitor by calling (from the dialplan)
 ;   Set(MONITOR_OPTIONS=av(<x>)V(<x>)W(<x>))
-; The 'b' option for MixMonitor (only save audio to the file while bridged) is
+; The 'b' option for MixMonitor (only save audio to the file while bridged) is 
 ; implied.
 ;
 ; You can specify a post recording command to be executed after the end of
@@ -422,9 +376,9 @@ monitor-type = MixMonitor
 ; whether a caller may join a queue depending on several factors of member availability.
 ; Similarly, then leavewhenempty option controls whether a caller may remain in a queue
 ; he has already joined. Both options take a comma-separated list of factors which
-; contribute towards whether a caller may join/remain in the queue. The list of
+; contribute towards whether a caller may join/remain in the queue. The list of 
 ; factors which contribute to these option is as follows:
-;
+; 
 ; paused: a member is not considered available if he is paused
 ; penalty: a member is not considered available if his penalty is less than QUEUE_MAX_PENALTY
 ; inuse: a member is not considered available if he is currently on a call
@@ -437,14 +391,14 @@ monitor-type = MixMonitor
 ;          current device state.
 ; wrapup: A member is not considered available if he is currently in his wrapuptime after
 ;         taking a call.
-;
+; 
 ; For the "joinempty" option, when a caller attempts to enter a queue, the members of that
 ; queue are examined. If all members are deemed to be unavailable due to any of the conditions
 ; listed for the "joinempty" option, then the caller will be unable to enter the queue. For the
 ; "leavewhenempty" option, the state of the members of the queue are checked periodically during
 ; the caller's stay in the queue. If all of the members are unavailable due to any of the above
 ; conditions, then the caller will be removed from the queue.
-;
+; 
 ; Some examples:
 ;
 ;joinempty = paused,inuse,invalid
@@ -454,7 +408,7 @@ monitor-type = MixMonitor
 ;
 ;leavewhenempty = inuse,ringing
 ;
-; A caller will be removed from the queue if at least one member cannot be found
+; A caller will be removed from the queue if at least one member cannot be found 
 ; who is not on the phone, or whose phone is not ringing.
 ;
 ; For the sake of backwards-compatibility, the joinempty and leavewhenempty
@@ -477,7 +431,6 @@ monitor-type = MixMonitor
 ; If this is set to yes, the following manager events will be generated:
 ; QueueMemberStatus
 ; (may generate a WHOLE LOT of extra manager events)
-; The default value is yes and this can not be set globally.
 ;
 ; eventmemberstatus = no
 ;
@@ -490,9 +443,6 @@ monitor-type = MixMonitor
 ; known to be 'in use' (via the channel driver supporting that device state)
 ; uncomment this option. (Note: only the SIP channel driver currently is able
 ; to report 'in use'.)
-;
-; A member can have the ignorebusy flag set or unset when ringinuse is set to
-; allow a per member control.
 ;
 ; ringinuse = no
 ;
@@ -508,7 +458,7 @@ monitor-type = MixMonitor
 ;
 ; timeoutrestart = no
 ;
-; If you wish to implement a rule defined in queuerules.conf (see
+; If you wish to implement a rule defined in queuerules.conf (see 
 ; configs/queuerules.conf.sample from the asterisk source directory for
 ; more information about penalty rules) by default, you may specify this
 ; by setting defaultrule to the rule's name
@@ -525,10 +475,6 @@ monitor-type = MixMonitor
 ; comma. This interface will be the one for which app_queue receives device
 ; state notifications, even though the first interface specified is the one
 ; that is actually called.
-;
-; A hint can also be used in place of the state interface using the format
-; hint:<extension>@<context>. If no context is specified then 'default' will
-; be used.
 ;
 ; It is important to ensure that channel drivers used for members are loaded
 ; before app_queue.so itself or they may be marked invalid until reload. This

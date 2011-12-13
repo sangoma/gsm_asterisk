@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 294536 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 271869 $");
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -79,9 +79,9 @@ static char *ais_clm_show_members(struct ast_cli_entry *e, int cmd, struct ast_c
 
 	switch (cmd) {
 	case CLI_INIT:
-		e->command = "ais clm show members";
+		e->command = "ais show clm members";
 		e->usage =
-			"Usage: ais clm show members\n"
+			"Usage: ais show clm members\n"
 			"       List members of the cluster using the CLM (Cluster Membership) service.\n";
 		return NULL;
 

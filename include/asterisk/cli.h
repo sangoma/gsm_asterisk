@@ -57,20 +57,6 @@ void ast_cli(int fd, const char *fmt, ...)
  */
 #define ESS(x) ((x) == 1 ? "" : "s")
 
-/*! \brief return Yes or No depending on the argument.
- * This is used in many places in CLI command, having a function to generate
- * this helps maintaining a consistent output (and possibly emitting the
- * output in other languages, at some point).
- */
-#define AST_CLI_YESNO(x) (x) ? "Yes" : "No"
-
-/*! \brief return On or Off depending on the argument.
- * This is used in many places in CLI command, having a function to generate
- * this helps maintaining a consistent output (and possibly emitting the
- * output in other languages, at some point).
- */
-#define AST_CLI_ONOFF(x) (x) ? "On" : "Off"
-
 /*! \page CLI_command_API CLI command API
 
    CLI commands are described by a struct ast_cli_entry that contains
@@ -111,7 +97,7 @@ void ast_cli(int fd, const char *fmt, ...)
 \code
 static char *test_new_cli(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	static const char * const choices[] = { "one", "two", "three", NULL };
+	static char *choices = { "one", "two", "three", NULL };
 
         switch (cmd) {
         case CLI_INIT:
@@ -142,7 +128,7 @@ static char *test_new_cli(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 /*! \brief calling arguments for new-style handlers. 
 * \arg \ref CLI_command_API
 */
-enum ast_cli_command {
+enum ast_cli_fn {
 	CLI_INIT = -2,		/* return the usage string */
 	CLI_GENERATE = -3,	/* behave as 'generator', remap argv to struct ast_cli_args */
 	CLI_HANDLER = -4,	/* run the normal handler */
@@ -150,25 +136,27 @@ enum ast_cli_command {
 
 /* argument for new-style CLI handler */
 struct ast_cli_args {
-	const int fd;
-	const int argc;
-	const char * const *argv;
+	int fd;
+	int argc;
+	char **argv;
 	const char *line;	/* the current input line */
 	const char *word;	/* the word we want to complete */
-	const int pos;		/* position of the word to complete */
-	const int n;		/* the iteration count (n-th entry we generate) */
+	int pos;		/* position of the word to complete */
+	int n;			/* the iteration count (n-th entry we generate) */
 };
+
+struct ast_cli_entry;
+typedef char *(*cli_fn)(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 
 /*! \brief descriptor for a cli entry. 
  * \arg \ref CLI_command_API
  */
 struct ast_cli_entry {
-	const char * const cmda[AST_MAX_CMD_LEN];	/*!< words making up the command.
-							 * set the first entry to NULL for a new-style entry.
-							 */
+	char * const cmda[AST_MAX_CMD_LEN];	/*!< words making up the command.
+						* set the first entry to NULL for a new-style entry. */
 
-	const char * const summary; 			/*!< Summary of the command (< 60 characters) */
-	const char * usage; 				/*!< Detailed usage information */
+	const char *summary; 			/*!< Summary of the command (< 60 characters) */
+	const char *usage; 			/*!< Detailed usage information */
 
 	int inuse; 				/*!< For keeping track of usage */
 	struct module *module;			/*!< module this belongs to */
@@ -178,18 +166,14 @@ struct ast_cli_entry {
 	 */
 	int args;				/*!< number of non-null entries in cmda */
 	char *command;				/*!< command, non-null for new-style entries */
-	char *(*handler)(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+	cli_fn handler;
 	/*! For linking */
 	AST_LIST_ENTRY(ast_cli_entry) list;
 };
 
-#if defined(__cplusplus) || defined(c_plusplus)
-#define AST_CLI_DEFINE(fn, txt) { { "" }, txt, NULL, 0, NULL, NULL, 0, 0, NULL, fn }
-#else
 /* XXX the parser in gcc 2.95 gets confused if you don't put a space
  * between the last arg before VA_ARGS and the comma */
 #define AST_CLI_DEFINE(fn, txt , ... )	{ .handler = fn, .summary = txt, ## __VA_ARGS__ }
-#endif
 
 /*!
  * Helper function to generate cli entries from a NULL-terminated array.
@@ -199,7 +183,7 @@ struct ast_cli_entry {
   \code
     char *my_generate(const char *line, const char *word, int pos, int n)
     {
-        static const char * const choices[] = { "one", "two", "three", NULL };
+        static char *choices = { "one", "two", "three", NULL };
 	if (pos == 2)
         	return ast_cli_complete(word, choices, n);
 	else
@@ -207,7 +191,7 @@ struct ast_cli_entry {
     }
   \endcode
  */
-char *ast_cli_complete(const char *word, const char * const choices[], int pos);
+char *ast_cli_complete(const char *word, char *const choices[], int pos);
 
 /*! 
  * \brief Interprets a command

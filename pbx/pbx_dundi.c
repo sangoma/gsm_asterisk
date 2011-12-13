@@ -23,13 +23,12 @@
 
 /*** MODULEINFO
 	<depend>zlib</depend>
-	<use type="external">crypto</use>
-	<support_level>extended</support_level>
+	<use>crypto</use>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 271763 $")
 
 #include "asterisk/network.h"
 #include <sys/ioctl.h>
@@ -62,6 +61,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/crypto.h"
 #include "asterisk/astdb.h"
 #include "asterisk/acl.h"
+#include "asterisk/aes.h"
 #include "asterisk/app.h"
 
 #include "dundi-parser.h"
@@ -174,7 +174,7 @@ enum {
 #endif
 
 static struct io_context *io;
-static struct ast_sched_context *sched;
+static struct sched_context *sched;
 static int netsocket = -1;
 static pthread_t netthreadid = AST_PTHREADT_NULL;
 static pthread_t precachethreadid = AST_PTHREADT_NULL;
@@ -287,7 +287,7 @@ struct dundi_mapping {
 	int options;
 	int tech;
 	int dead;
-	char dest[512];
+	char dest[AST_MAX_EXTENSION];
 	AST_LIST_ENTRY(dundi_mapping) list;
 };
 
@@ -1313,8 +1313,8 @@ static int update_key(struct dundi_peer *peer)
 	int res;
 	if (!peer->keyexpire || (peer->keyexpire < time(NULL))) {
 		build_iv(key);
-		ast_aes_set_encrypt_key(key, &peer->us_ecx);
-		ast_aes_set_decrypt_key(key, &peer->us_dcx);
+		ast_aes_encrypt_key(key, &peer->us_ecx);
+		ast_aes_decrypt_key(key, &peer->us_dcx);
 		ekey = ast_key_get(peer->inkey, AST_KEY_PUBLIC);
 		if (!ekey) {
 			ast_log(LOG_NOTICE, "No such key '%s' for creating RSA encrypted shared key for '%s'!\n",
@@ -1516,8 +1516,8 @@ static int check_key(struct dundi_peer *peer, unsigned char *newkey, unsigned ch
 	memcpy(peer->rxenckey, newkey, 128);
 	memcpy(peer->rxenckey + 128, newsig, 128);
 	peer->them_keycrc32 = crc32(0L, peer->rxenckey, 128);
-	ast_aes_set_decrypt_key(dst, &peer->them_dcx);
-	ast_aes_set_encrypt_key(dst, &peer->them_ecx);
+	ast_aes_decrypt_key(dst, &peer->them_dcx);
+	ast_aes_encrypt_key(dst, &peer->them_ecx);
 	return 1;
 }
 
@@ -2470,7 +2470,7 @@ static char *dundi_do_lookup(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		ast_cli(a->fd, "%3d. %5d %s/%s (%s)\n", x + 1, dr[x].weight, dr[x].tech, dr[x].dest, dundi_flags2str(fs, sizeof(fs), dr[x].flags));
 		ast_cli(a->fd, "     from %s, expires in %d s\n", dr[x].eid_str, dr[x].expiration);
 	}
-	ast_cli(a->fd, "DUNDi lookup completed in %" PRIi64 " ms\n", ast_tvdiff_ms(ast_tvnow(), start));
+	ast_cli(a->fd, "DUNDi lookup completed in %d ms\n", ast_tvdiff_ms(ast_tvnow(), start));
 	return CLI_SUCCESS;
 }
 
@@ -2507,7 +2507,7 @@ static char *dundi_do_precache(struct ast_cli_entry *e, int cmd, struct ast_cli_
 		ast_cli(a->fd, "DUNDi precache returned error.\n");
 	else if (!res)
 		ast_cli(a->fd, "DUNDi precache returned no error.\n");
-	ast_cli(a->fd, "DUNDi lookup completed in %" PRIi64 " ms\n", ast_tvdiff_ms(ast_tvnow(), start));
+	ast_cli(a->fd, "DUNDi lookup completed in %d ms\n", ast_tvdiff_ms(ast_tvnow(), start));
 	return CLI_SUCCESS;
 }
 
@@ -2604,7 +2604,6 @@ static char *dundi_show_peer(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		}
 		ast_cli(a->fd, "Peer:    %s\n", ast_eid_to_str(eid_str, sizeof(eid_str), &peer->eid));
 		ast_cli(a->fd, "Model:   %s\n", model2str(peer->model));
-		ast_cli(a->fd, "Order:   %s\n", order);
 		ast_cli(a->fd, "Host:    %s\n", peer->addr.sin_addr.s_addr ? ast_inet_ntoa(peer->addr.sin_addr) : "<Unspecified>");
 		ast_cli(a->fd, "Port:    %d\n", ntohs(peer->addr.sin_port));
 		ast_cli(a->fd, "Dynamic: %s\n", peer->dynamic ? "yes" : "no");
@@ -3948,7 +3947,7 @@ static struct ast_custom_function dundi_function = {
 	.read = dundifunc_read,
 };
 
-static unsigned int dundi_result_id;
+unsigned int dundi_result_id;
 
 struct dundi_result_datastore {
 	struct dundi_result results[MAX_RESULTS];
@@ -4680,7 +4679,7 @@ static int set_config(char *config_file, struct sockaddr_in* sin, int reload)
 	v = ast_variable_browse(cfg, "general");
 	while(v) {
 		if (!strcasecmp(v->name, "port")){
-			sin->sin_port = htons(atoi(v->value));
+			sin->sin_port = ntohs(atoi(v->value));
 			if(last_port==0){
 				last_port=sin->sin_port;
 			} else if(sin->sin_port != last_port)
@@ -4805,7 +4804,7 @@ static int unload_module(void)
 	ast_custom_function_unregister(&dundi_result_function);
 	close(netsocket);
 	io_context_destroy(io);
-	ast_sched_context_destroy(sched);
+	sched_context_destroy(sched);
 
 	mark_mappings();
 	prune_mappings();
@@ -4833,12 +4832,12 @@ static int load_module(void)
 	dundi_set_error(dundi_error_output);
 
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(DUNDI_PORT);
+	sin.sin_port = ntohs(DUNDI_PORT);
 	sin.sin_addr.s_addr = INADDR_ANY;
 
 	/* Make a UDP socket */
 	io = io_context_create();
-	sched = ast_sched_context_create();
+	sched = sched_context_create();
 
 	if (!io || !sched)
 		return AST_MODULE_LOAD_DECLINE;
@@ -4882,6 +4881,5 @@ AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Distributed Universal Nu
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.nonoptreq = "res_crypto",
 	       );
 

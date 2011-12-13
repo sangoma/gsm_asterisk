@@ -27,13 +27,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 174945 $")
 
 #include <sys/stat.h>
 
@@ -59,7 +55,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 	</application>
  ***/
 
-static const char app[] = "Dictate";
+static char *app = "Dictate";
 
 typedef enum {
 	DFLAG_RECORD = (1 << 0),
@@ -85,7 +81,7 @@ static int play_and_wait(struct ast_channel *chan, char *file, char *digits)
 	return res;
 }
 
-static int dictate_exec(struct ast_channel *chan, const char *data)
+static int dictate_exec(struct ast_channel *chan, void *data)
 {
 	char *path = NULL, filein[256], *filename = "";
 	char *parse;
@@ -101,6 +97,7 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 	int ffactor = 320 * 80,
 		res = 0,
 		done = 0,
+		oldr = 0,
 		lastop = 0,
 		samples = 0,
 		speed = 1,
@@ -108,8 +105,6 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 		len = 0,
 		maxlen = 0,
 		mode = 0;
-	struct ast_format oldr;
-	ast_format_clear(&oldr);
 
 	snprintf(dftbase, sizeof(dftbase), "%s/dictate", ast_config_AST_SPOOL_DIR);
 	if (!ast_strlen_zero(data)) {
@@ -126,8 +121,8 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 	if (args.argc > 1 && args.filename) {
 		filename = args.filename;
 	}
-	ast_format_copy(&oldr, &chan->readformat);
-	if ((res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR)) < 0) {
+	oldr = chan->readformat;
+	if ((res = ast_set_read_format(chan, AST_FORMAT_SLINEAR)) < 0) {
 		ast_log(LOG_WARNING, "Unable to set to linear mode.\n");
 		return -1;
 	}
@@ -170,7 +165,7 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 		samples = 0;
 		while (!done && ((res = ast_waitfor(chan, -1)) > -1) && fs && (f = ast_read(chan))) {
 			if (digit) {
-				struct ast_frame fr = {AST_FRAME_DTMF, { .integer = digit } };
+				struct ast_frame fr = {AST_FRAME_DTMF, digit};
 				ast_queue_frame(chan, &fr);
 				digit = 0;
 			}
@@ -178,7 +173,7 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 				int got = 1;
 				switch(mode) {
 				case DMODE_PLAY:
-					switch (f->subclass.integer) {
+					switch(f->subclass) {
 					case '1':
 						ast_set_flag(&flags, DFLAG_PAUSE);
 						mode = DMODE_RECORD;
@@ -207,7 +202,7 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 					}
 					break;
 				case DMODE_RECORD:
-					switch (f->subclass.integer) {
+					switch(f->subclass) {
 					case '1':
 						ast_set_flag(&flags, DFLAG_PAUSE);
 						mode = DMODE_PLAY;
@@ -224,7 +219,7 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 					got = 0;
 				}
 				if (!got) {
-					switch (f->subclass.integer) {
+					switch(f->subclass) {
 					case '#':
 						done = 1;
 						continue;
@@ -335,8 +330,8 @@ static int dictate_exec(struct ast_channel *chan, const char *data)
 			ast_frfree(f);
 		}
 	}
-	if (oldr.id) {
-		ast_set_read_format(chan, &oldr);
+	if (oldr) {
+		ast_set_read_format(chan, oldr);
 	}
 	return 0;
 }

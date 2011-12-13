@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306010 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 257950 $")
 
 #include <math.h>
 
@@ -38,22 +38,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306010 $")
 #include "asterisk/cli.h"
 #include "asterisk/module.h"
 #include "asterisk/astobj2.h"
-#include "asterisk/data.h"
 
 #include "asterisk/_private.h" /* _init(), _reload() */
-
-#define DATA_EXPORT_TONE_ZONE(MEMBER)					\
-	MEMBER(ast_tone_zone, country, AST_DATA_STRING)			\
-	MEMBER(ast_tone_zone, description, AST_DATA_STRING)		\
-	MEMBER(ast_tone_zone, nrringcadence, AST_DATA_UNSIGNED_INTEGER)
-
-AST_DATA_STRUCTURE(ast_tone_zone, DATA_EXPORT_TONE_ZONE);
-
-#define DATA_EXPORT_TONE_ZONE_SOUND(MEMBER)			\
-	MEMBER(ast_tone_zone_sound, name, AST_DATA_STRING)	\
-	MEMBER(ast_tone_zone_sound, data, AST_DATA_STRING)
-
-AST_DATA_STRUCTURE(ast_tone_zone_sound, DATA_EXPORT_TONE_ZONE_SOUND);
 
 /* Globals */
 static const char config[] = "indications.conf";
@@ -116,7 +102,7 @@ struct playtones_state {
 	int npos;
 	int oldnpos;
 	int pos;
-	struct ast_format origwfmt;
+	int origwfmt;
 	struct ast_frame f;
 	unsigned char offset[AST_FRIENDLY_OFFSET];
 	short data[4000];
@@ -127,7 +113,7 @@ static void playtones_release(struct ast_channel *chan, void *params)
 	struct playtones_state *ps = params;
 
 	if (chan) {
-		ast_set_write_format(chan, &ps->origwfmt);
+		ast_set_write_format(chan, ps->origwfmt);
 	}
 
 	if (ps->items) {
@@ -147,9 +133,9 @@ static void *playtones_alloc(struct ast_channel *chan, void *params)
 		return NULL;
 	}
 
-	ast_format_copy(&ps->origwfmt, &chan->writeformat);
+	ps->origwfmt = chan->writeformat;
 
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR)) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to signed linear format (write)\n", chan->name);
 		playtones_release(NULL, ps);
 		ps = NULL;
@@ -223,7 +209,7 @@ static int playtones_generator(struct ast_channel *chan, void *data, int len, in
 	}
 
 	ps->f.frametype = AST_FRAME_VOICE;
-	ast_format_set(&ps->f.subclass.format, AST_FORMAT_SLINEAR, 0);
+	ps->f.subclass = AST_FORMAT_SLINEAR;
 	ps->f.datalen = len;
 	ps->f.samples = samples;
 	ps->f.offset = AST_FRIENDLY_OFFSET;
@@ -416,12 +402,12 @@ struct ao2_iterator ast_tone_zone_iterator_init(void)
 	return ao2_iterator_init(ast_tone_zones, 0);
 }
 
-/*! \brief Set global indication country 
-   If no country is specified or we are unable to find the zone, then return not found */
+/* Set global indication country */
 static int ast_set_indication_country(const char *country)
 {
 	struct ast_tone_zone *zone = NULL;
 
+	/* If no country is specified or we are unable to find the zone, then return not found */
 	if (ast_strlen_zero(country) || !(zone = ast_get_indication_zone(country))) {
 		return -1;
 	}
@@ -440,7 +426,7 @@ static int ast_set_indication_country(const char *country)
 	return 0;
 }
 
-/*! \brief locate ast_tone_zone, given the country. if country == NULL, use the default country */
+/* locate ast_tone_zone, given the country. if country == NULL, use the default country */
 struct ast_tone_zone *ast_get_indication_zone(const char *country)
 {
 	struct ast_tone_zone *tz = NULL;
@@ -530,7 +516,7 @@ static void ast_tone_zone_destructor(void *obj)
 	}
 }
 
-/*! \brief add a new country, if country exists, it will be replaced. */
+/* add a new country, if country exists, it will be replaced. */
 static int ast_register_indication_country(struct ast_tone_zone *zone)
 {
 	ao2_lock(ast_tone_zones);
@@ -546,7 +532,7 @@ static int ast_register_indication_country(struct ast_tone_zone *zone)
 	return 0;
 }
 
-/*! \brief remove an existing country and all its indications, country must exist. */
+/* remove an existing country and all its indications, country must exist. */
 static int ast_unregister_indication_country(const char *country)
 {
 	struct ast_tone_zone *tz = NULL;
@@ -610,7 +596,7 @@ static int ast_register_indication(struct ast_tone_zone *zone, const char *indic
 	return 0;
 }
 
-/*! \brief remove an existing country's indication. Both country and indication must exist */
+/* remove an existing country's indication. Both country and indication must exist */
 static int ast_unregister_indication(struct ast_tone_zone *zone, const char *indication)
 {
 	struct ast_tone_zone_sound *ts;
@@ -895,8 +881,7 @@ static int is_valid_tone_zone(struct ast_tone_zone *zone)
 	return res;
 }
 
-/*!\brief
- *
+/*!
  * \note This is called with the tone zone locked.
  */
 static void store_tone_zone_ring_cadence(struct ast_tone_zone *zone, const char *val)
@@ -995,7 +980,7 @@ static int parse_tone_zone(struct ast_config *cfg, const char *country)
 	return 0;
 }
 
-/*! \brief
+/*!
  * Mark the zone and its tones before parsing configuration.  We will use this
  * to know what to remove after configuration is parsed.
  */
@@ -1017,7 +1002,7 @@ static int tone_zone_mark(void *obj, void *arg, int flags)
 	return 0;
 }
 
-/*! \brief
+/*!
  * Prune tones no longer in the configuration, and have the tone zone unlinked
  * if it is no longer in the configuration at all.
  */
@@ -1115,33 +1100,6 @@ static int ast_tone_zone_cmp(void *obj, void *arg, int flags)
 
 	return (!strcasecmp(zone->country, zone_arg->country)) ?
 			CMP_MATCH | CMP_STOP : 0;
-}
-
-int ast_tone_zone_data_add_structure(struct ast_data *tree, struct ast_tone_zone *zone)
-{
-	struct ast_data *data_zone_sound;
-	struct ast_tone_zone_sound *s;
-
-	ast_data_add_structure(ast_tone_zone, tree, zone);
-
-	if (AST_LIST_EMPTY(&zone->tones)) {
-		return 0;
-	}
-
-	data_zone_sound = ast_data_add_node(tree, "tones");
-	if (!data_zone_sound) {
-		return -1;
-	}
-
-	ast_tone_zone_lock(zone);
-
-	AST_LIST_TRAVERSE(&zone->tones, s, entry) {
-		ast_data_add_structure(ast_tone_zone_sound, data_zone_sound, s);
-	}
-
-	ast_tone_zone_unlock(zone);
-
-	return 0;
 }
 
 /*! \brief Load indications module */

@@ -27,12 +27,11 @@
 
 /*** MODULEINFO
 	<depend>ixjuser</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284593 $")
 
 #include <ctype.h>
 #include <sys/socket.h>
@@ -95,7 +94,7 @@ static int echocancel = AEC_OFF;
 
 static int silencesupression = 0;
 
-static struct ast_format_cap *prefcap;
+static int prefformat = AST_FORMAT_G729A | AST_FORMAT_G723_1 | AST_FORMAT_SLINEAR | AST_FORMAT_ULAW;
 
 /* Protect the interface list (of phone_pvt's) */
 AST_MUTEX_DEFINE_STATIC(iflock);
@@ -126,8 +125,8 @@ static struct phone_pvt {
 	int fd;							/* Raw file descriptor for this device */
 	struct ast_channel *owner;		/* Channel we belong to, possibly NULL */
 	int mode;						/* Is this in the  */
-	struct ast_format lastformat;            /* Last output format */
-	struct ast_format lastinput;             /* Last input format */
+	int lastformat;					/* Last output format */
+	int lastinput;					/* Last input format */
 	int ministate;					/* Miniature state, for dialtone mode */
 	char dev[256];					/* Device name */
 	struct phone_pvt *next;			/* Next channel in list */
@@ -151,7 +150,7 @@ static struct phone_pvt {
 static char cid_num[AST_MAX_EXTENSION];
 static char cid_name[AST_MAX_EXTENSION];
 
-static struct ast_channel *phone_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+static struct ast_channel *phone_request(const char *type, int format, void *data, int *cause);
 static int phone_digit_begin(struct ast_channel *ast, char digit);
 static int phone_digit_end(struct ast_channel *ast, char digit, unsigned int duration);
 static int phone_call(struct ast_channel *ast, char *dest, int timeout);
@@ -164,9 +163,10 @@ static int phone_send_text(struct ast_channel *ast, const char *text);
 static int phone_fixup(struct ast_channel *old, struct ast_channel *new);
 static int phone_indicate(struct ast_channel *chan, int condition, const void *data, size_t datalen);
 
-static struct ast_channel_tech phone_tech = {
+static const struct ast_channel_tech phone_tech = {
 	.type = "Phone",
 	.description = tdesc,
+	.capabilities = AST_FORMAT_G723_1 | AST_FORMAT_SLINEAR | AST_FORMAT_ULAW | AST_FORMAT_G729A,
 	.requester = phone_request,
 	.send_digit_begin = phone_digit_begin,
 	.send_digit_end = phone_digit_end,
@@ -210,9 +210,9 @@ static int phone_indicate(struct ast_channel *chan, int condition, const void *d
 		ioctl(p->fd, IXJCTL_PSTN_SET_STATE, PSTN_ON_HOOK);
 		usleep(320000);
 		ioctl(p->fd, IXJCTL_PSTN_SET_STATE, PSTN_OFF_HOOK);
-		ast_format_clear(&p->lastformat);
-		res = 0;
-		break;
+			p->lastformat = -1;
+			res = 0;
+			break;
 	case AST_CONTROL_HOLD:
 		ast_moh_start(chan, data, NULL);
 		break;
@@ -272,7 +272,7 @@ static int phone_digit_end(struct ast_channel *ast, char digit, unsigned int dur
 		ioctl(p->fd, IXJCTL_PSTN_SET_STATE, PSTN_ON_HOOK);
 		usleep(320000);
 		ioctl(p->fd, IXJCTL_PSTN_SET_STATE, PSTN_OFF_HOOK);
-		ast_format_clear(&p->lastformat);
+		p->lastformat = -1;
 		return 0;
 	default:
 		ast_log(LOG_WARNING, "Unknown digit '%c'\n", digit);
@@ -280,7 +280,7 @@ static int phone_digit_end(struct ast_channel *ast, char digit, unsigned int dur
 	}
 	ast_debug(1, "Dialed %d\n", outdigit);
 	ioctl(p->fd, PHONE_PLAY_TONE, outdigit);
-	ast_format_clear(&p->lastformat);
+	p->lastformat = -1;
 	return 0;
 }
 
@@ -296,21 +296,20 @@ static int phone_call(struct ast_channel *ast, char *dest, int timeout)
 	ast_localtime(&UtcTime, &tm, NULL);
 
 	memset(&cid, 0, sizeof(PHONE_CID));
-    snprintf(cid.month, sizeof(cid.month), "%02d",(tm.tm_mon + 1));
-    snprintf(cid.day, sizeof(cid.day),     "%02d", tm.tm_mday);
-    snprintf(cid.hour, sizeof(cid.hour),   "%02d", tm.tm_hour);
-    snprintf(cid.min, sizeof(cid.min),     "%02d", tm.tm_min);
+	if(&tm != NULL) {
+		snprintf(cid.month, sizeof(cid.month), "%02d",(tm.tm_mon + 1));
+		snprintf(cid.day, sizeof(cid.day),     "%02d", tm.tm_mday);
+		snprintf(cid.hour, sizeof(cid.hour),   "%02d", tm.tm_hour);
+		snprintf(cid.min, sizeof(cid.min),     "%02d", tm.tm_min);
+	}
 	/* the standard format of ast->callerid is:  "name" <number>, but not always complete */
-	if (!ast->connected.id.name.valid
-		|| ast_strlen_zero(ast->connected.id.name.str)) {
+	if (ast_strlen_zero(ast->cid.cid_name))
 		strcpy(cid.name, DEFAULT_CALLER_ID);
-	} else {
-		ast_copy_string(cid.name, ast->connected.id.name.str, sizeof(cid.name));
-	}
+	else
+		ast_copy_string(cid.name, ast->cid.cid_name, sizeof(cid.name));
 
-	if (ast->connected.id.number.valid && ast->connected.id.number.str) {
-		ast_copy_string(cid.number, ast->connected.id.number.str, sizeof(cid.number));
-	}
+	if (ast->cid.cid_num) 
+		ast_copy_string(cid.number, ast->cid.cid_num, sizeof(cid.number));
 
 	p = ast->tech_pvt;
 
@@ -371,8 +370,8 @@ static int phone_hangup(struct ast_channel *ast)
 		ioctl(p->fd, PHONE_BUSY);
 		p->cpt = 1;
 	}
-	ast_format_clear(&p->lastformat);
-	ast_format_clear(&p->lastinput);
+	p->lastformat = -1;
+	p->lastinput = -1;
 	p->ministate = 0;
 	p->obuflen = 0;
 	p->dialtone = 0;
@@ -392,38 +391,38 @@ static int phone_setup(struct ast_channel *ast)
 	p = ast->tech_pvt;
 	ioctl(p->fd, PHONE_CPT_STOP);
 	/* Nothing to answering really, just start recording */
-	if (ast->rawreadformat.id == AST_FORMAT_G729A) {
+	if (ast->rawreadformat == AST_FORMAT_G729A) {
 		/* Prefer g729 */
 		ioctl(p->fd, PHONE_REC_STOP);
-		if (p->lastinput.id != AST_FORMAT_G729A) {
-			ast_format_set(&p->lastinput, AST_FORMAT_G729A, 0);
+		if (p->lastinput != AST_FORMAT_G729A) {
+			p->lastinput = AST_FORMAT_G729A;
 			if (ioctl(p->fd, PHONE_REC_CODEC, G729)) {
 				ast_log(LOG_WARNING, "Failed to set codec to g729\n");
 				return -1;
 			}
 		}
-        } else if (ast->rawreadformat.id == AST_FORMAT_G723_1) {
+        } else if (ast->rawreadformat == AST_FORMAT_G723_1) {
 		ioctl(p->fd, PHONE_REC_STOP);
-		if (p->lastinput.id != AST_FORMAT_G723_1) {
-			ast_format_set(&p->lastinput, AST_FORMAT_G723_1, 0);
+		if (p->lastinput != AST_FORMAT_G723_1) {
+			p->lastinput = AST_FORMAT_G723_1;
 			if (ioctl(p->fd, PHONE_REC_CODEC, G723_63)) {
 				ast_log(LOG_WARNING, "Failed to set codec to g723.1\n");
 				return -1;
 			}
 		}
-	} else if (ast->rawreadformat.id == AST_FORMAT_SLINEAR) {
+	} else if (ast->rawreadformat == AST_FORMAT_SLINEAR) {
 		ioctl(p->fd, PHONE_REC_STOP);
-		if (p->lastinput.id != AST_FORMAT_SLINEAR) {
-			ast_format_set(&p->lastinput, AST_FORMAT_SLINEAR, 0);
+		if (p->lastinput != AST_FORMAT_SLINEAR) {
+			p->lastinput = AST_FORMAT_SLINEAR;
 			if (ioctl(p->fd, PHONE_REC_CODEC, LINEAR16)) {
 				ast_log(LOG_WARNING, "Failed to set codec to signed linear 16\n");
 				return -1;
 			}
 		}
-	} else if (ast->rawreadformat.id == AST_FORMAT_ULAW) {
+	} else if (ast->rawreadformat == AST_FORMAT_ULAW) {
 		ioctl(p->fd, PHONE_REC_STOP);
-		if (p->lastinput.id != AST_FORMAT_ULAW) {
-			ast_format_set(&p->lastinput, AST_FORMAT_ULAW, 0);
+		if (p->lastinput != AST_FORMAT_ULAW) {
+			p->lastinput = AST_FORMAT_ULAW;
 			if (ioctl(p->fd, PHONE_REC_CODEC, ULAW)) {
 				ast_log(LOG_WARNING, "Failed to set codec to uLaw\n");
 				return -1;
@@ -431,16 +430,16 @@ static int phone_setup(struct ast_channel *ast)
 		}
 	} else if (p->mode == MODE_FXS) {
 		ioctl(p->fd, PHONE_REC_STOP);
-		if (ast_format_cmp(&p->lastinput, &ast->rawreadformat) == AST_FORMAT_CMP_NOT_EQUAL) {
-			ast_format_copy(&p->lastinput, &ast->rawreadformat);
-			if (ioctl(p->fd, PHONE_REC_CODEC, &ast->rawreadformat)) {
-				ast_log(LOG_WARNING, "Failed to set codec to %s\n", 
-					ast_getformatname(&ast->rawreadformat));
+		if (p->lastinput != ast->rawreadformat) {
+			p->lastinput = ast->rawreadformat;
+			if (ioctl(p->fd, PHONE_REC_CODEC, ast->rawreadformat)) {
+				ast_log(LOG_WARNING, "Failed to set codec to %d\n", 
+					ast->rawreadformat);
 				return -1;
 			}
 		}
 	} else {
-		ast_log(LOG_WARNING, "Can't do format %s\n", ast_getformatname(&ast->rawreadformat));
+		ast_log(LOG_WARNING, "Can't do format %s\n", ast_getformatname(ast->rawreadformat));
 		return -1;
 	}
 	if (ioctl(p->fd, PHONE_REC_START)) {
@@ -507,7 +506,7 @@ static struct ast_frame  *phone_exception(struct ast_channel *ast)
 	
 		/* We've got a digit -- Just handle this nicely and easily */
 		digit =  ioctl(p->fd, PHONE_GET_DTMF_ASCII);
-		p->fr.subclass.integer = digit;
+		p->fr.subclass = digit;
 		p->fr.frametype = AST_FRAME_DTMF;
 		return &p->fr;
 	}
@@ -522,7 +521,7 @@ static struct ast_frame  *phone_exception(struct ast_channel *ast)
 			if (ast->_state == AST_STATE_RINGING) {
 				/* They've picked up the phone */
 				p->fr.frametype = AST_FRAME_CONTROL;
-				p->fr.subclass.integer = AST_CONTROL_ANSWER;
+				p->fr.subclass = AST_CONTROL_ANSWER;
 				phone_setup(ast);
 				ast_setstate(ast, AST_STATE_UP);
 				return &p->fr;
@@ -541,7 +540,7 @@ static struct ast_frame  *phone_exception(struct ast_channel *ast)
 #endif
 	/* Strange -- nothing there.. */
 	p->fr.frametype = AST_FRAME_NULL;
-	p->fr.subclass.integer = 0;
+	p->fr.subclass = 0;
 	return &p->fr;
 }
 
@@ -591,13 +590,14 @@ static struct ast_frame  *phone_read(struct ast_channel *ast)
 	}
 	p->fr.samples = 240;
 	p->fr.datalen = res;
-	p->fr.frametype = AST_FORMAT_GET_TYPE(p->lastinput.id) == AST_FORMAT_TYPE_AUDIO ?
-		AST_FRAME_VOICE : AST_FORMAT_GET_TYPE(p->lastinput.id) == AST_FORMAT_TYPE_IMAGE ?
-		AST_FRAME_IMAGE : AST_FRAME_VIDEO;
-	ast_format_copy(&p->fr.subclass.format, &p->lastinput);
+	p->fr.frametype = p->lastinput <= AST_FORMAT_AUDIO_MASK ?
+                          AST_FRAME_VOICE : 
+			  p->lastinput <= AST_FORMAT_PNG ? AST_FRAME_IMAGE 
+			  : AST_FRAME_VIDEO;
+	p->fr.subclass = p->lastinput;
 	p->fr.offset = AST_FRIENDLY_OFFSET;
 	/* Byteswap from little-endian to native-endian */
-	if (p->fr.subclass.format.id == AST_FORMAT_SLINEAR)
+	if (p->fr.subclass == AST_FORMAT_SLINEAR)
 		ast_frame_byteswap_le(&p->fr);
 	return &p->fr;
 }
@@ -659,12 +659,10 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 			ast_log(LOG_WARNING, "Don't know what to do with  frame type '%d'\n", frame->frametype);
 		return 0;
 	}
-	if (!(frame->subclass.format.id == AST_FORMAT_G723_1 ||
-		frame->subclass.format.id == AST_FORMAT_SLINEAR ||
-		frame->subclass.format.id == AST_FORMAT_ULAW ||
-		frame->subclass.format.id == AST_FORMAT_G729A) &&
+	if (!(frame->subclass &
+		(AST_FORMAT_G723_1 | AST_FORMAT_SLINEAR | AST_FORMAT_ULAW | AST_FORMAT_G729A)) && 
 	    p->mode != MODE_FXS) {
-		ast_log(LOG_WARNING, "Cannot handle frames in %s format\n", ast_getformatname(&frame->subclass.format));
+		ast_log(LOG_WARNING, "Cannot handle frames in %d format\n", frame->subclass);
 		return -1;
 	}
 #if 0
@@ -679,8 +677,8 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 		return 0;
 	}
 #endif	
-	if (frame->subclass.format.id == AST_FORMAT_G729A) {
-		if (p->lastformat.id != AST_FORMAT_G729A) {
+	if (frame->subclass == AST_FORMAT_G729A) {
+		if (p->lastformat != AST_FORMAT_G729A) {
 			ioctl(p->fd, PHONE_PLAY_STOP);
 			ioctl(p->fd, PHONE_REC_STOP);
 			if (ioctl(p->fd, PHONE_PLAY_CODEC, G729)) {
@@ -691,8 +689,8 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 				ast_log(LOG_WARNING, "Unable to set G729 mode\n");
 				return -1;
 			}
-			ast_format_set(&p->lastformat, AST_FORMAT_G729A, 0);
-			ast_format_set(&p->lastinput, AST_FORMAT_G729A, 0);
+			p->lastformat = AST_FORMAT_G729A;
+			p->lastinput = AST_FORMAT_G729A;
 			/* Reset output buffer */
 			p->obuflen = 0;
 			codecset = 1;
@@ -702,8 +700,8 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 			return -1;
 		}
 		maxfr = 80;
-        } else if (frame->subclass.format.id == AST_FORMAT_G723_1) {
-		if (p->lastformat.id != AST_FORMAT_G723_1) {
+        } else if (frame->subclass == AST_FORMAT_G723_1) {
+		if (p->lastformat != AST_FORMAT_G723_1) {
 			ioctl(p->fd, PHONE_PLAY_STOP);
 			ioctl(p->fd, PHONE_REC_STOP);
 			if (ioctl(p->fd, PHONE_PLAY_CODEC, G723_63)) {
@@ -714,8 +712,8 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 				ast_log(LOG_WARNING, "Unable to set G723.1 mode\n");
 				return -1;
 			}
-			ast_format_set(&p->lastformat, AST_FORMAT_G723_1, 0);
-			ast_format_set(&p->lastinput, AST_FORMAT_G723_1, 0);
+			p->lastformat = AST_FORMAT_G723_1;
+			p->lastinput = AST_FORMAT_G723_1;
 			/* Reset output buffer */
 			p->obuflen = 0;
 			codecset = 1;
@@ -725,8 +723,8 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 			return -1;
 		}
 		maxfr = 24;
-	} else if (frame->subclass.format.id == AST_FORMAT_SLINEAR) {
-		if (p->lastformat.id != AST_FORMAT_SLINEAR) {
+	} else if (frame->subclass == AST_FORMAT_SLINEAR) {
+		if (p->lastformat != AST_FORMAT_SLINEAR) {
 			ioctl(p->fd, PHONE_PLAY_STOP);
 			ioctl(p->fd, PHONE_REC_STOP);
 			if (ioctl(p->fd, PHONE_PLAY_CODEC, LINEAR16)) {
@@ -737,15 +735,15 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 				ast_log(LOG_WARNING, "Unable to set 16-bit linear mode\n");
 				return -1;
 			}
-			ast_format_set(&p->lastformat, AST_FORMAT_SLINEAR, 0);
-			ast_format_set(&p->lastinput, AST_FORMAT_SLINEAR, 0);
+			p->lastformat = AST_FORMAT_SLINEAR;
+			p->lastinput = AST_FORMAT_SLINEAR;
 			codecset = 1;
 			/* Reset output buffer */
 			p->obuflen = 0;
 		}
 		maxfr = 480;
-	} else if (frame->subclass.format.id == AST_FORMAT_ULAW) {
-		if (p->lastformat.id != AST_FORMAT_ULAW) {
+	} else if (frame->subclass == AST_FORMAT_ULAW) {
+		if (p->lastformat != AST_FORMAT_ULAW) {
 			ioctl(p->fd, PHONE_PLAY_STOP);
 			ioctl(p->fd, PHONE_REC_STOP);
 			if (ioctl(p->fd, PHONE_PLAY_CODEC, ULAW)) {
@@ -756,29 +754,29 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 				ast_log(LOG_WARNING, "Unable to set uLaw mode\n");
 				return -1;
 			}
-			ast_format_set(&p->lastformat, AST_FORMAT_ULAW, 0);
-			ast_format_set(&p->lastinput, AST_FORMAT_ULAW, 0);
+			p->lastformat = AST_FORMAT_ULAW;
+			p->lastinput = AST_FORMAT_ULAW;
 			codecset = 1;
 			/* Reset output buffer */
 			p->obuflen = 0;
 		}
 		maxfr = 240;
 	} else {
-		if (ast_format_cmp(&p->lastformat, &frame->subclass.format) != AST_FORMAT_CMP_EQUAL) {
+		if (p->lastformat != frame->subclass) {
 			ioctl(p->fd, PHONE_PLAY_STOP);
 			ioctl(p->fd, PHONE_REC_STOP);
-			if (ioctl(p->fd, PHONE_PLAY_CODEC, (int) frame->subclass.format.id)) {
-				ast_log(LOG_WARNING, "Unable to set %s mode\n",
-					ast_getformatname(&frame->subclass.format));
+			if (ioctl(p->fd, PHONE_PLAY_CODEC, frame->subclass)) {
+				ast_log(LOG_WARNING, "Unable to set %d mode\n",
+					frame->subclass);
 				return -1;
 			}
-			if (ioctl(p->fd, PHONE_REC_CODEC, (int) frame->subclass.format.id)) {
-				ast_log(LOG_WARNING, "Unable to set %s mode\n",
-					ast_getformatname(&frame->subclass.format));
+			if (ioctl(p->fd, PHONE_REC_CODEC, frame->subclass)) {
+				ast_log(LOG_WARNING, "Unable to set %d mode\n",
+					frame->subclass);
 				return -1;
 			}
-			ast_format_copy(&p->lastformat, &frame->subclass.format);
-			ast_format_copy(&p->lastinput, &frame->subclass.format);
+			p->lastformat = frame->subclass;
+			p->lastinput = frame->subclass;
 			codecset = 1;
 			/* Reset output buffer */
 			p->obuflen = 0;
@@ -818,7 +816,7 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 		} else {
 			int swap = 0;
 #if __BYTE_ORDER == __BIG_ENDIAN
-			if (frame->subclass.format.id == AST_FORMAT_SLINEAR)
+			if (frame->subclass == AST_FORMAT_SLINEAR)
 				swap = 1; /* Swap big-endian samples to little-endian as we copy */
 #endif
 			res = phone_write_buf(p, pos, expected, maxfr, swap);
@@ -845,30 +843,33 @@ static int phone_write(struct ast_channel *ast, struct ast_frame *frame)
 	return 0;
 }
 
-static struct ast_channel *phone_new(struct phone_pvt *i, int state, char *cntx, const char *linkedid)
+static struct ast_channel *phone_new(struct phone_pvt *i, int state, char *cntx)
 {
 	struct ast_channel *tmp;
 	struct phone_codec_data queried_codec;
-	struct ast_format tmpfmt;
-	tmp = ast_channel_alloc(1, state, i->cid_num, i->cid_name, "", i->ext, i->context, linkedid, 0, "Phone/%s", i->dev + 5);
+	tmp = ast_channel_alloc(1, state, i->cid_num, i->cid_name, "", i->ext, i->context, 0, "Phone/%s", i->dev + 5);
 	if (tmp) {
 		tmp->tech = cur_tech;
 		ast_channel_set_fd(tmp, 0, i->fd);
 		/* XXX Switching formats silently causes kernel panics XXX */
 		if (i->mode == MODE_FXS &&
 		    ioctl(i->fd, PHONE_QUERY_CODEC, &queried_codec) == 0) {
-			if (queried_codec.type == LINEAR16) {
-				ast_format_cap_add(tmp->nativeformats, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-				ast_format_copy(&tmp->rawreadformat, &tmpfmt);
-				ast_format_copy(&tmp->rawwriteformat, &tmpfmt);
-			} else {
-				ast_format_cap_remove(prefcap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
+			if (queried_codec.type == LINEAR16)
+				tmp->nativeformats =
+				tmp->rawreadformat =
+				tmp->rawwriteformat =
+				AST_FORMAT_SLINEAR;
+			else {
+				tmp->nativeformats =
+				tmp->rawreadformat =
+				tmp->rawwriteformat =
+				prefformat & ~AST_FORMAT_SLINEAR;
 			}
-		} else {
-			ast_format_cap_copy(tmp->nativeformats, prefcap);
-			ast_best_codec(tmp->nativeformats, &tmpfmt);
-			ast_format_copy(&tmp->rawreadformat, &tmpfmt);
-			ast_format_copy(&tmp->rawwriteformat, &tmpfmt);
+		}
+		else {
+			tmp->nativeformats = prefformat;
+			tmp->rawreadformat = prefformat;
+			tmp->rawwriteformat = prefformat;
 		}
 		/* no need to call ast_setstate: the channel_alloc already did its job */
 		if (state == AST_STATE_RING)
@@ -884,10 +885,7 @@ static struct ast_channel *phone_new(struct phone_pvt *i, int state, char *cntx,
 
 		/* Don't use ast_set_callerid() here because it will
 		 * generate a NewCallerID event before the NewChannel event */
-		if (!ast_strlen_zero(i->cid_num)) {
-			tmp->caller.ani.number.valid = 1;
-			tmp->caller.ani.number.str = ast_strdup(i->cid_num);
-		}
+		tmp->cid.cid_ani = ast_strdup(i->cid_num);
 
 		i->owner = tmp;
 		ast_module_ref(ast_module_info->self);
@@ -942,14 +940,14 @@ static void phone_check_exception(struct phone_pvt *i)
 			     !phonee.bits.dtmf_ready) &&
 			    ast_exists_extension(NULL, i->context, i->ext, 1, i->cid_num)) {
 				/* It's a valid extension in its context, get moving! */
-				phone_new(i, AST_STATE_RING, i->context, NULL);
+				phone_new(i, AST_STATE_RING, i->context);
 				/* No need to restart monitor, we are the monitor */
 			} else if (!ast_canmatch_extension(NULL, i->context, i->ext, 1, i->cid_num)) {
 				/* There is nothing in the specified extension that can match anymore.
 				   Try the default */
 				if (ast_exists_extension(NULL, "default", i->ext, 1, i->cid_num)) {
 					/* Check the default, too... */
-					phone_new(i, AST_STATE_RING, "default", NULL);
+					phone_new(i, AST_STATE_RING, "default");
 					/* XXX This should probably be justified better XXX */
 				}  else if (!ast_canmatch_extension(NULL, "default", i->ext, 1, i->cid_num)) {
 					/* It's not a valid extension, give a busy signal */
@@ -967,7 +965,7 @@ static void phone_check_exception(struct phone_pvt *i)
 		offhook = ioctl(i->fd, PHONE_HOOKSTATE);
 		if (offhook) {
 			if (i->mode == MODE_IMMEDIATE) {
-				phone_new(i, AST_STATE_RING, i->context, NULL);
+				phone_new(i, AST_STATE_RING, i->context);
 			} else if (i->mode == MODE_DIALTONE) {
 				ast_module_ref(ast_module_info->self);
 				/* Reset the extension */
@@ -977,7 +975,7 @@ static void phone_check_exception(struct phone_pvt *i)
 				ioctl(i->fd, PHONE_PLAY_STOP);
 				ioctl(i->fd, PHONE_PLAY_CODEC, ULAW);
 				ioctl(i->fd, PHONE_PLAY_START);
-				ast_format_clear(&i->lastformat);
+				i->lastformat = -1;
 			} else if (i->mode == MODE_SIGMA) {
 				ast_module_ref(ast_module_info->self);
 				/* Reset the extension */
@@ -998,12 +996,12 @@ static void phone_check_exception(struct phone_pvt *i)
 			ioctl(i->fd, PHONE_PLAY_STOP);
 			ioctl(i->fd, PHONE_REC_STOP);
 			i->dialtone = 0;
-			ast_format_clear(&i->lastformat);
+			i->lastformat = -1;
 		}
 	}
 	if (phonee.bits.pstn_ring) {
 		ast_verbose("Unit is ringing\n");
-		phone_new(i, AST_STATE_RING, i->context, NULL);
+		phone_new(i, AST_STATE_RING, i->context);
 	}
 	if (phonee.bits.caller_id)
 		ast_verbose("We have caller ID\n");
@@ -1210,8 +1208,8 @@ static struct phone_pvt *mkif(const char *iface, int mode, int txgain, int rxgai
 		flags = fcntl(tmp->fd, F_GETFL);
 		fcntl(tmp->fd, F_SETFL, flags | O_NONBLOCK);
 		tmp->owner = NULL;
-		ast_format_clear(&tmp->lastformat);
-		ast_format_clear(&tmp->lastinput);
+		tmp->lastformat = -1;
+		tmp->lastinput = -1;
 		tmp->ministate = 0;
 		memset(tmp->ext, 0, sizeof(tmp->ext));
 		ast_copy_string(tmp->language, language, sizeof(tmp->language));
@@ -1231,8 +1229,9 @@ static struct phone_pvt *mkif(const char *iface, int mode, int txgain, int rxgai
 	return tmp;
 }
 
-static struct ast_channel *phone_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *phone_request(const char *type, int format, void *data, int *cause)
 {
+	int oldformat;
 	struct phone_pvt *p;
 	struct ast_channel *tmp = NULL;
 	char *name = data;
@@ -1244,12 +1243,13 @@ static struct ast_channel *phone_request(const char *type, struct ast_format_cap
 	}
 	p = iflist;
 	while(p) {
-		if (p->mode == MODE_FXS || (ast_format_cap_has_joint(cap, phone_tech.capabilities))) {
-			size_t length = strlen(p->dev + 5);
+		if (p->mode == MODE_FXS ||
+		    format & (AST_FORMAT_G729A | AST_FORMAT_G723_1 | AST_FORMAT_SLINEAR | AST_FORMAT_ULAW)) {
+		    size_t length = strlen(p->dev + 5);
     		if (strncmp(name, p->dev + 5, length) == 0 &&
     		    !isalnum(name[length])) {
     		    if (!p->owner) {
-                     tmp = phone_new(p, AST_STATE_DOWN, p->context, requestor ? requestor->linkedid : NULL);
+                     tmp = phone_new(p, AST_STATE_DOWN, p->context);
                      break;
                 } else
                      *cause = AST_CAUSE_BUSY;
@@ -1260,9 +1260,10 @@ static struct ast_channel *phone_request(const char *type, struct ast_format_cap
 	ast_mutex_unlock(&iflock);
 	restart_monitor();
 	if (tmp == NULL) {
-		if (!(ast_format_cap_has_joint(cap, phone_tech.capabilities))) {
-			char buf[256];
-			ast_log(LOG_NOTICE, "Asked to get a channel of unsupported format '%s'\n", ast_getformatname_multiple(buf, sizeof(buf), cap));
+		oldformat = format;
+		format &= (AST_FORMAT_G729A | AST_FORMAT_G723_1 | AST_FORMAT_SLINEAR | AST_FORMAT_ULAW);
+		if (!format) {
+			ast_log(LOG_NOTICE, "Asked to get a channel of unsupported format '%d'\n", oldformat);
 			return NULL;
 		}
 	}
@@ -1344,10 +1345,7 @@ static int __unload_module(void)
 		ast_log(LOG_WARNING, "Unable to lock the monitor\n");
 		return -1;
 	}
-
-	phone_tech.capabilities = ast_format_cap_destroy(phone_tech.capabilities);
-	phone_tech_fxs.capabilities = ast_format_cap_destroy(phone_tech_fxs.capabilities);
-	prefcap = ast_format_cap_destroy(prefcap);
+		
 	return 0;
 }
 
@@ -1364,23 +1362,6 @@ static int load_module(void)
 	int mode = MODE_IMMEDIATE;
 	int txgain = DEFAULT_GAIN, rxgain = DEFAULT_GAIN; /* default gain 1.0 */
 	struct ast_flags config_flags = { 0 };
-	struct ast_format tmpfmt;
-
-	if (!(phone_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_add(phone_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_G723_1, 0));
-	ast_format_cap_add(phone_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-	ast_format_cap_add(phone_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_ULAW, 0));
-	ast_format_cap_add(phone_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_G729A, 0));
-
-	if (!(prefcap = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_copy(prefcap, phone_tech.capabilities);
-	if (!(phone_tech_fxs.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
 
 	if ((cfg = ast_config_load(config, config_flags)) == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_ERROR, "Config file %s is in an invalid format.  Aborting.\n", config);
@@ -1428,7 +1409,7 @@ static int load_module(void)
 				mode = MODE_IMMEDIATE;
 			else if (!strncasecmp(v->value, "fxs", 3)) {
 				mode = MODE_FXS;
-				ast_format_cap_remove_bytype(prefcap, AST_FORMAT_TYPE_AUDIO); /* All non-voice */
+				prefformat = 0x01ff0000; /* All non-voice */
 			}
 			else if (!strncasecmp(v->value, "fx", 2))
 				mode = MODE_FXO;
@@ -1437,20 +1418,16 @@ static int load_module(void)
 		} else if (!strcasecmp(v->name, "context")) {
 			ast_copy_string(context, v->value, sizeof(context));
 		} else if (!strcasecmp(v->name, "format")) {
-			struct ast_format tmpfmt;
 			if (!strcasecmp(v->value, "g729")) {
-				ast_format_cap_set(prefcap, ast_format_set(&tmpfmt, AST_FORMAT_G729A, 0));
-			} else if (!strcasecmp(v->value, "g723.1")) {
-				ast_format_cap_set(prefcap, ast_format_set(&tmpfmt, AST_FORMAT_G723_1, 0));
+				prefformat = AST_FORMAT_G729A;
+                        } else if (!strcasecmp(v->value, "g723.1")) {
+				prefformat = AST_FORMAT_G723_1;
 			} else if (!strcasecmp(v->value, "slinear")) {
-				ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0);
-				if (mode == MODE_FXS) {
-					ast_format_cap_add(prefcap, &tmpfmt);
-				} else {
-					ast_format_cap_set(prefcap, &tmpfmt);
-				}
+				if (mode == MODE_FXS)
+				    prefformat |= AST_FORMAT_SLINEAR;
+				else prefformat = AST_FORMAT_SLINEAR;
 			} else if (!strcasecmp(v->value, "ulaw")) {
-				ast_format_cap_set(prefcap, ast_format_set(&tmpfmt, AST_FORMAT_ULAW, 0));
+				prefformat = AST_FORMAT_ULAW;
 			} else
 				ast_log(LOG_WARNING, "Unknown format '%s'\n", v->value);
 		} else if (!strcasecmp(v->name, "echocancel")) {
@@ -1474,7 +1451,7 @@ static int load_module(void)
 	ast_mutex_unlock(&iflock);
 
 	if (mode == MODE_FXS) {
-		ast_format_cap_copy(phone_tech_fxs.capabilities, prefcap);
+		phone_tech_fxs.capabilities = prefformat;
 		cur_tech = &phone_tech_fxs;
 	} else
 		cur_tech = (struct ast_channel_tech *) &phone_tech;

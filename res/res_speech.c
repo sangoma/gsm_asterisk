@@ -23,13 +23,9 @@
  * \author Joshua Colp <jcolp@digium.com>
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 247845 $");
 
 #include "asterisk/channel.h"
 #include "asterisk/module.h"
@@ -44,7 +40,7 @@ static AST_RWLIST_HEAD_STATIC(engines, ast_speech_engine);
 static struct ast_speech_engine *default_engine = NULL;
 
 /*! \brief Find a speech recognition engine of specified name, if NULL then use the default one */
-static struct ast_speech_engine *find_engine(const char *engine_name)
+static struct ast_speech_engine *find_engine(char *engine_name)
 {
 	struct ast_speech_engine *engine = NULL;
 
@@ -64,25 +60,25 @@ static struct ast_speech_engine *find_engine(const char *engine_name)
 }
 
 /*! \brief Activate a loaded (either local or global) grammar */
-int ast_speech_grammar_activate(struct ast_speech *speech, const char *grammar_name)
+int ast_speech_grammar_activate(struct ast_speech *speech, char *grammar_name)
 {
 	return (speech->engine->activate ? speech->engine->activate(speech, grammar_name) : -1);
 }
 
 /*! \brief Deactivate a loaded grammar on a speech structure */
-int ast_speech_grammar_deactivate(struct ast_speech *speech, const char *grammar_name)
+int ast_speech_grammar_deactivate(struct ast_speech *speech, char *grammar_name)
 {
 	return (speech->engine->deactivate ? speech->engine->deactivate(speech, grammar_name) : -1);
 }
 
 /*! \brief Load a local grammar on a speech structure */
-int ast_speech_grammar_load(struct ast_speech *speech, const char *grammar_name, const char *grammar)
+int ast_speech_grammar_load(struct ast_speech *speech, char *grammar_name, char *grammar)
 {
 	return (speech->engine->load ? speech->engine->load(speech, grammar_name, grammar) : -1);
 }
 
 /*! \brief Unload a local grammar from a speech structure */
-int ast_speech_grammar_unload(struct ast_speech *speech, const char *grammar_name)
+int ast_speech_grammar_unload(struct ast_speech *speech, char *grammar_name)
 {
 	return (speech->engine->unload ? speech->engine->unload(speech, grammar_name) : -1);
 }
@@ -167,32 +163,29 @@ int ast_speech_dtmf(struct ast_speech *speech, const char *dtmf)
 }
 
 /*! \brief Change an engine specific attribute */
-int ast_speech_change(struct ast_speech *speech, const char *name, const char *value)
+int ast_speech_change(struct ast_speech *speech, char *name, const char *value)
 {
 	return (speech->engine->change ? speech->engine->change(speech, name, value) : -1);
 }
 
 /*! \brief Create a new speech structure using the engine specified */
-struct ast_speech *ast_speech_new(const char *engine_name, const struct ast_format_cap *cap)
+struct ast_speech *ast_speech_new(char *engine_name, int formats)
 {
 	struct ast_speech_engine *engine = NULL;
 	struct ast_speech *new_speech = NULL;
-	struct ast_format_cap *joint = NULL;
-	struct ast_format best;
-
-	ast_format_set(&best, AST_FORMAT_SLINEAR, 0);
+	int format = AST_FORMAT_SLINEAR;
 
 	/* Try to find the speech recognition engine that was requested */
 	if (!(engine = find_engine(engine_name)))
 		return NULL;
 
 	/* Before even allocating the memory below do some codec negotiation, we choose the best codec possible and fall back to signed linear if possible */
-	if ((joint = ast_format_cap_joint(engine->formats, cap))) {
-		ast_best_codec(joint, &best);
-		joint = ast_format_cap_destroy(joint);
-	} else if (!ast_format_cap_iscompatible(engine->formats, &best)) {
+	if ((format = (engine->formats & formats)))
+		format = ast_best_codec(format);
+	else if ((engine->formats & AST_FORMAT_SLINEAR))
+		format = AST_FORMAT_SLINEAR;
+	else
 		return NULL;
-	}
 
 	/* Allocate our own speech structure, and try to allocate a structure from the engine too */
 	if (!(new_speech = ast_calloc(1, sizeof(*new_speech))))
@@ -208,13 +201,13 @@ struct ast_speech *ast_speech_new(const char *engine_name, const struct ast_form
 	new_speech->engine = engine;
 
 	/* Can't forget the format audio is going to be in */
-	ast_format_copy(&new_speech->format, &best);
+	new_speech->format = format;
 
 	/* We are not ready to accept audio yet */
 	ast_speech_change_state(new_speech, AST_SPEECH_STATE_NOT_READY);
 
 	/* Pass ourselves to the engine so they can set us up some more and if they error out then do not create a structure */
-	if (engine->create(new_speech, &best)) {
+	if (engine->create(new_speech, format)) {
 		ast_mutex_destroy(&new_speech->lock);
 		ast_free(new_speech);
 		new_speech = NULL;
@@ -306,7 +299,7 @@ int ast_speech_register(struct ast_speech_engine *engine)
 }
 
 /*! \brief Unregister a speech recognition engine */
-int ast_speech_unregister(const char *engine_name)
+int ast_speech_unregister(char *engine_name)
 {
 	struct ast_speech_engine *engine = NULL;
 	int res = -1;
@@ -346,8 +339,7 @@ static int load_module(void)
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_GLOBAL_SYMBOLS | AST_MODFLAG_LOAD_ORDER, "Generic Speech Recognition API",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_GLOBAL_SYMBOLS, "Generic Speech Recognition API",
 		.load = load_module,
 		.unload = unload_module,
-		.load_pri = AST_MODPRI_APP_DEPEND,
 		);

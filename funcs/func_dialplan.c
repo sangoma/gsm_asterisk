@@ -24,13 +24,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335015 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -51,29 +47,11 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335015 $")
 			<para>This function returns <literal>1</literal> if the target exits. Otherwise, it returns <literal>0</literal>.</para>
 		</description>
 	</function>
-	<function name="VALID_EXTEN" language="en_US">
-		<synopsis>
-			Determine whether an extension exists or not.
-		</synopsis>
-		<syntax>
-			<parameter name="context">
-				<para>Defaults to the current context</para>
-			</parameter>
-			<parameter name="extension" required="true" />
-			<parameter name="priority">
-				<para>Priority defaults to <literal>1</literal>.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Returns a true value if the indicated <replaceable>context</replaceable>,
-			<replaceable>extension</replaceable>, and <replaceable>priority</replaceable> exist.</para>
-			<warning><para>This function has been deprecated in favor of the <literal>DIALPLAN_EXISTS()</literal> function</para></warning>
-		</description>
-	</function>
+
  ***/
 
-static int isexten_function_read(struct ast_channel *chan, const char *cmd, char *data,
-	char *buf, size_t len)
+static int isexten_function_read(struct ast_channel *chan, const char *cmd, char *data, 
+	char *buf, size_t len) 
 {
 	char *parse;
 	AST_DECLARE_APP_ARGS(args,
@@ -97,20 +75,20 @@ static int isexten_function_read(struct ast_channel *chan, const char *cmd, char
 		if (sscanf(args.priority, "%30d", &priority_num) == 1 && priority_num > 0) {
 			int res;
 			res = ast_exists_extension(chan, args.context, args.exten, priority_num, 
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+				chan->cid.cid_num);
 			if (res)
 				strcpy(buf, "1");
 		} else {
 			int res;
-			res = ast_findlabel_extension(chan, args.context, args.exten, args.priority,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+			res = ast_findlabel_extension(chan, args.context, args.exten, 
+				args.priority, chan->cid.cid_num);
 			if (res > 0)
 				strcpy(buf, "1");
 		}
 	} else if (!ast_strlen_zero(args.exten)) {
 		int res;
 		res = ast_exists_extension(chan, args.context, args.exten, 1, 
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+			chan->cid.cid_num);
 		if (res)
 			strcpy(buf, "1");
 	} else if (!ast_strlen_zero(args.context)) {
@@ -120,69 +98,23 @@ static int isexten_function_read(struct ast_channel *chan, const char *cmd, char
 		ast_log(LOG_ERROR, "Invalid arguments provided to DIALPLAN_EXISTS\n");
 		return -1;
 	}
-
-	return 0;
-}
-
-static int acf_isexten_exec(struct ast_channel *chan, const char *cmd, char *parse, char *buffer, size_t buflen)
-{
-	int priority_int;
-	AST_DECLARE_APP_ARGS(args,
-		AST_APP_ARG(context);
-		AST_APP_ARG(extension);
-		AST_APP_ARG(priority);
-	);
-
-	AST_STANDARD_APP_ARGS(args, parse);
-
-	if (ast_strlen_zero(args.context)) {
-		args.context = chan->context;
-	}
-
-	if (ast_strlen_zero(args.extension)) {
-		ast_log(LOG_WARNING, "Syntax: VALID_EXTEN([<context>],<extension>[,<priority>]) - missing argument <extension>!\n");
-		return -1;
-	}
-
-	if (ast_strlen_zero(args.priority)) {
-		priority_int = 1;
-	} else {
-		priority_int = atoi(args.priority);
-	}
-
-	if (ast_exists_extension(chan, args.context, args.extension, priority_int,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
-	    ast_copy_string(buffer, "1", buflen);
-	} else {
-	    ast_copy_string(buffer, "0", buflen);
-	}
-
+	
 	return 0;
 }
 
 static struct ast_custom_function isexten_function = {
 	.name = "DIALPLAN_EXISTS",
 	.read = isexten_function_read,
-	.read_max = 2,
-};
-
-static struct ast_custom_function acf_isexten = {
-	.name = "VALID_EXTEN",
-	.read = acf_isexten_exec,
 };
 
 static int unload_module(void)
 {
-	int res = ast_custom_function_unregister(&isexten_function);
-	res |= ast_custom_function_unregister(&acf_isexten);
-	return res;
+	return ast_custom_function_unregister(&isexten_function);
 }
 
 static int load_module(void)
 {
-	int res = ast_custom_function_register(&isexten_function);
-	res |= ast_custom_function_register(&acf_isexten);
-	return res;
+	return ast_custom_function_register(&isexten_function);
 }
 
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Dialplan Context/Extension/Priority Checking Functions");

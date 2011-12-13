@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 330109 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 269347 $")
 
 #include "asterisk/_private.h"
 #include <sys/time.h>
@@ -43,7 +43,7 @@ static char prepdata[80] = "";
 static char enddata[80] = "";
 static char quitdata[80] = "";
 
-static const char * const termpath[] = {
+static const char *termpath[] = {
 	"/usr/share/terminfo",
 	"/usr/local/share/misc/terminfo",
 	"/usr/lib/terminfo",
@@ -143,8 +143,6 @@ int ast_term_init(void)
 		} else if (!strcmp(term, "xterm")) {
 			vt100compat = 1;
 		} else if (!strcmp(term, "xterm-color")) {
-			vt100compat = 1;
-		} else if (!strcmp(term, "xterm-256color")) {
 			vt100compat = 1;
 		} else if (!strncmp(term, "Eterm", 5)) {
 			/* Both entries which start with Eterm support color */
@@ -280,10 +278,9 @@ char *term_color_code(char *outbuf, int fgcolor, int bgcolor, int maxout)
 	return outbuf;
 }
 
-char *term_strip(char *outbuf, const char *inbuf, int maxout)
+char *term_strip(char *outbuf, char *inbuf, int maxout)
 {
-	char *outbuf_ptr = outbuf;
-	const char *inbuf_ptr = inbuf;
+	char *outbuf_ptr = outbuf, *inbuf_ptr = inbuf;
 
 	while (outbuf_ptr < outbuf + maxout) {
 		switch (*inbuf_ptr) {

@@ -33,13 +33,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 331201 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -82,7 +78,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 331201 $")
 				<para>The number of the result that you want to retrieve.</para>
 				<para>Results start at <literal>1</literal>. If this argument is specified
 				as <literal>getnum</literal>, then it will return the total number of results 
-				that are available or -1 on error.</para>
+				that are available.</para>
 			</parameter>
 		</syntax>
 		<description>
@@ -105,7 +101,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 331201 $")
 					<option name="c">
 						<para>Returns an integer count of the number of NAPTRs of a certain RR type.</para>
 						<para>Combination of <literal>c</literal> and Method-type of <literal>ALL</literal> will
-						return a count of all NAPTRs for the record or -1 on error.</para>
+						return a count of all NAPTRs for the record.</para>
 					</option>
 					<option name="u">
 						<para>Returns the full URI and does not strip off the URI-scheme.</para>
@@ -131,7 +127,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 331201 $")
 			</parameter>
 		</syntax>
 		<description>
-			<para>For more information see <filename>doc/AST.pdf</filename>.</para>
+			<para>For more information see <filename>doc/asterisk.pdf</filename>.</para>
 		</description>
 	</function>
 	<function name="TXTCIDNAME" language="en_US">
@@ -165,6 +161,7 @@ static int function_enum(struct ast_channel *chan, const char *cmd, char *data,
 		AST_APP_ARG(record);
 		AST_APP_ARG(zone);
 	);
+	int res = 0;
 	char tech[80];
 	char dest[256] = "", tmp[2] = "", num[AST_MAX_EXTENSION] = "";
 	char *s, *p;
@@ -208,7 +205,7 @@ static int function_enum(struct ast_channel *chan, const char *cmd, char *data,
 		}
 
 	}
-	ast_get_enum(chan, num, dest, sizeof(dest), tech, sizeof(tech), args.zone, args.options, record, NULL);
+	res = ast_get_enum(chan, num, dest, sizeof(dest), tech, sizeof(tech), args.zone, args.options, record, NULL);
 
 	p = strchr(dest, ':');
 	if (p && strcasecmp(tech, "ALL") && !strchr(args.options, 'u')) {
@@ -219,7 +216,7 @@ static int function_enum(struct ast_channel *chan, const char *cmd, char *data,
 	return 0;
 }
 
-static unsigned int enum_datastore_id;
+unsigned int enum_datastore_id;
 
 struct enum_result_datastore {
 	struct enum_context *context;
@@ -246,7 +243,7 @@ static void erds_destroy_cb(void *data)
 	erds_destroy(erds);
 }
 
-static const struct ast_datastore_info enum_result_datastore_info = {
+const struct ast_datastore_info enum_result_datastore_info = {
 	.type = "ENUMQUERY",
 	.destroy = erds_destroy_cb,
 }; 
@@ -363,7 +360,7 @@ static int enum_result_read(struct ast_channel *chan, const char *cmd, char *dat
 	erds = datastore->data;
 
 	if (!strcasecmp(args.resultnum, "getnum")) {
-		snprintf(buf, len, "%d", erds->context->naptr_rrs_count);
+		snprintf(buf, len, "%u", erds->context->naptr_rrs_count);
 		res = 0;
 		goto finish;
 	}
@@ -417,6 +414,7 @@ static struct ast_custom_function enum_function = {
 static int function_txtcidname(struct ast_channel *chan, const char *cmd,
 			       char *data, char *buf, size_t len)
 {
+	int res;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(number);
 		AST_APP_ARG(zone);
@@ -440,7 +438,7 @@ static int function_txtcidname(struct ast_channel *chan, const char *cmd,
 		args.zone = "e164.arpa";
 	}
 
-	ast_get_txt(chan, args.number, buf, len, args.zone);
+	res = ast_get_txt(chan, args.number, buf, len, args.zone);
 
 	return 0;
 }

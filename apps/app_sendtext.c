@@ -26,14 +26,10 @@
  *
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 305889 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -74,25 +70,26 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 	</application>
  ***/
 
-static const char * const app = "SendText";
+static const char *app = "SendText";
 
-static int sendtext_exec(struct ast_channel *chan, const char *data)
+static int sendtext_exec(struct ast_channel *chan, void *data)
 {
+	int res = 0;
 	char *status = "UNSUPPORTED";
-	struct ast_str *str;
+	char *parse = NULL;
+	AST_DECLARE_APP_ARGS(args,
+		AST_APP_ARG(text);
+	);
 
 	/* NOT ast_strlen_zero, because some protocols (e.g. SIP) MUST be able to
 	 * send a zero-length message. */
 	if (!data) {
 		ast_log(LOG_WARNING, "SendText requires an argument (text)\n");
 		return -1;
-	}
-
-	if (!(str = ast_str_alloca(strlen(data) + 1))) {
-		return -1;
-	}
-
-	ast_str_get_encoded_str(&str, -1, data);
+	} else
+		parse = ast_strdupa(data);
+	
+	AST_STANDARD_APP_ARGS(args, parse);
 
 	ast_channel_lock(chan);
 	if (!chan->tech->send_text) {
@@ -102,9 +99,9 @@ static int sendtext_exec(struct ast_channel *chan, const char *data)
 		return 0;
 	}
 	status = "FAILURE";
-	if (!ast_sendtext(chan, ast_str_buffer(str))) {
+	res = ast_sendtext(chan, args.text);
+	if (!res)
 		status = "SUCCESS";
-	}
 	ast_channel_unlock(chan);
 	pbx_builtin_setvar_helper(chan, "SENDTEXTSTATUS", status);
 	return 0;

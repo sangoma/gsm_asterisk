@@ -175,14 +175,6 @@ char *ast_module_helper(const char *line, const char *word, int pos, int state, 
 
 struct ast_module;
 
-/*!
- * \brief Get the name of a module.
- * \param mod A pointer to the module.
- * \return the name of the module
- * \retval NULL if mod or mod->info is NULL
- */
-const char *ast_module_name(const struct ast_module *mod);
-
 /* User count routines keep track of which channels are using a given module
    resource.  They can help make removing modules safer, particularly if
    they're in use at the time they have been requested to be removed */
@@ -199,20 +191,6 @@ enum ast_module_flags {
 	AST_MODFLAG_DEFAULT = 0,
 	AST_MODFLAG_GLOBAL_SYMBOLS = (1 << 0),
 	AST_MODFLAG_LOAD_ORDER = (1 << 1),
-};
-
-enum ast_module_load_priority {
-	AST_MODPRI_REALTIME_DEPEND =    10,  /*!< Dependency for a realtime driver */
-	AST_MODPRI_REALTIME_DEPEND2 =   20,  /*!< Second level dependency for a realtime driver (func_curl needs res_curl, but is needed by res_config_curl) */
-	AST_MODPRI_REALTIME_DRIVER =    30,  /*!< A realtime driver, which provides configuration services for other modules */
-	AST_MODPRI_CHANNEL_DEPEND =     50,  /*!< Channel driver dependency (may depend upon realtime, e.g. MOH) */
-	AST_MODPRI_CHANNEL_DRIVER =     60,  /*!< Channel drivers (provide devicestate) */
-	AST_MODPRI_APP_DEPEND =         70,  /*!< Dependency for an application */
-	AST_MODPRI_DEVSTATE_PROVIDER =  80,  /*!< Applications and other modules that _provide_ devicestate (e.g. meetme) */
-	AST_MODPRI_DEVSTATE_PLUGIN =    90,  /*!< Plugin for a module that provides devstate (e.g. res_calendar_*) */
-	AST_MODPRI_CDR_DRIVER =        100,  /*!< CDR or CEL backend */
-	AST_MODPRI_DEFAULT =           128,  /*!< Modules not otherwise defined (such as most apps) will load here */
-	AST_MODPRI_DEVSTATE_CONSUMER = 150,  /*!< Certain modules, which consume devstate, need to load after all others (e.g. app_queue) */
 };
 
 struct ast_module_info {
@@ -250,11 +228,6 @@ struct ast_module_info {
 	 *  this value will never be read and the module will be given the lowest possible priority
 	 *  on load. */
 	unsigned char load_pri;
-
-	/*! Modules which should be loaded first, in comma-separated string format.
-	 * These are only required for loading, when the optional_api header file
-	 * detects that the compiler does not support the optional API featureset. */
-	const char *nonoptreq;
 };
 
 void ast_module_register(const struct ast_module_info *);
@@ -272,7 +245,7 @@ struct ast_module *ast_module_ref(struct ast_module *);
 void ast_module_unref(struct ast_module *);
 
 #if defined(__cplusplus) || defined(c_plusplus)
-#define AST_MODULE_INFO(keystr, flags_to_set, desc, load_func, unload_func, reload_func, load_pri)	\
+#define AST_MODULE_INFO(keystr, flags_to_set, desc, load_func, unload_func, reload_func)	\
 	static struct ast_module_info __mod_info = {	\
 		NULL,					\
 		load_func,				\
@@ -285,7 +258,6 @@ void ast_module_unref(struct ast_module *);
 		keystr,					\
 		flags_to_set,				\
 		AST_BUILDOPT_SUM,			\
-		load_pri,           \
 	};						\
 	static void  __attribute__((constructor)) __reg_module(void) \
 	{ \
@@ -298,11 +270,10 @@ void ast_module_unref(struct ast_module *);
 	static const __attribute__((unused)) struct ast_module_info *ast_module_info = &__mod_info
 
 #define AST_MODULE_INFO_STANDARD(keystr, desc)		\
-	AST_MODULE_INFO(keystr, AST_MODFLAG_LOAD_ORDER, desc,	\
+	AST_MODULE_INFO(keystr, AST_MODFLAG_DEFAULT, desc,	\
 			load_module,			\
 			unload_module,		\
-			NULL,			\
-			AST_MODPRI_DEFAULT \
+			NULL			\
 		       )
 #else /* plain C */
 
@@ -393,10 +364,9 @@ static void __restore_globals(void)
 	static const struct ast_module_info *ast_module_info = &__mod_info
 
 #define AST_MODULE_INFO_STANDARD(keystr, desc)		\
-	AST_MODULE_INFO(keystr, AST_MODFLAG_LOAD_ORDER, desc,	\
+	AST_MODULE_INFO(keystr, AST_MODFLAG_DEFAULT, desc,	\
 			.load = load_module,			\
 			.unload = unload_module,		\
-			.load_pri = AST_MODPRI_DEFAULT, \
 		       )
 #endif	/* plain C */
 
@@ -454,7 +424,7 @@ static void __restore_globals(void)
  * \retval 0 success
  * \retval -1 failure.
  */
-int ast_register_application2(const char *app, int (*execute)(struct ast_channel *, const char *),
+int ast_register_application2(const char *app, int (*execute)(struct ast_channel *, void *),
 				     const char *synopsis, const char *description, void *mod);
 
 /*! 

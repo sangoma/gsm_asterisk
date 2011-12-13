@@ -6,19 +6,7 @@
 #
 # 03.29.2005 - Initial Version
 #
-# $Id: rc.slackware.asterisk 239270 2010-01-11 23:53:32Z tilghman $
-
-### BEGIN INIT INFO
-# Provides:		asterisk
-# Required-Start:    $network $syslog $named $local_fs $remote_fs
-# Required-Stop:     $network $syslog $named $local_fs $remote_fs
-# Should-Start:      dahdi misdn lcr wanrouter mysql postgresql
-# Should-Stop:       dahdi misdn lcr wanrouter mysql postgresql
-# Default-Start:	2 3 4 5
-# Default-Stop:		0 1 6
-# Short-Description:	Asterisk PBX
-# Description:		the Asterisk Open Source PBX
-### END INIT INFO
+# $Id: rc.slackware.asterisk 119302 2008-05-30 16:47:24Z mvanbaak $
 
 asterisk_start() {
    if [ -x /usr/sbin/asterisk ]; then

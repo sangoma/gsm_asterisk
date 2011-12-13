@@ -35,10 +35,6 @@
  *
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk/autoconfig.h"
 
 #ifdef __Darwin__
@@ -46,7 +42,7 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <sys/stat.h>
-#elif defined(__linux__) || defined(__FreeBSD__) || defined(__GLIBC__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 #include <sys/soundcard.h>
 #endif
 #include <stdio.h>
@@ -708,7 +704,6 @@ int main(int argc, char *argv[])
 		fclose(astf);
 		exit(1);
 	}
-#ifdef HAVE_WORKING_FORK
 	if (needfork) {
 #ifndef HAVE_SBIN_LAUNCHD
 		if (daemon(0,0) < 0) {
@@ -744,7 +739,6 @@ int main(int argc, char *argv[])
 		exit(1);
 #endif /* !defined(HAVE_SBIN_LAUNCHD */
 	}
-#endif
 	for(;;) {
 		if (wait_event()) {
 			fclose(astf);

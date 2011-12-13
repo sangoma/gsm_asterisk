@@ -34,13 +34,9 @@
  *		   Not fully tested, under development
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 289425 $")
 
 #include <dirent.h>
 #include <ctype.h>
@@ -127,7 +123,7 @@ static char *app = "SMS";
  * To pick the two carriers (1300Hz for '1' and 2100 Hz for '0') used by
  * the modulation, we should take one every 13 and 21 samples respectively.
  */
-static const signed short wave[] = {
+static signed short wave[] = {
 	0, 392, 782, 1167, 1545, 1913, 2270, 2612, 2939, 3247, 3536, 3802, 4045, 4263, 4455, 4619, 4755, 4862, 4938, 4985,
 	5000, 4985, 4938, 4862, 4755, 4619, 4455, 4263, 4045, 3802, 3536, 3247, 2939, 2612, 2270, 1913, 1545, 1167, 782, 392,
 	0, -392, -782, -1167,
@@ -819,7 +815,7 @@ static void sms_readfile(sms_t * h, char *fn)
 	char line[1000];
 	FILE *s;
 	char dcsset = 0;                        /* if DSC set */
-	ast_log(LOG_NOTICE, "Sending %s\n", fn);
+	ast_log(LOG_EVENT, "Sending %s\n", fn);
 	h->rx = h->udl = *h->oa = *h->da = h->pid = h->srr = h->udhi = h->rp = h->vp = h->udhl = 0;
 	h->mr = -1;
 	h->dcs = 0xF1;                          /* normal messages class 1 */
@@ -1084,7 +1080,7 @@ static void sms_writefile(sms_t * h)
 	if (rename(fn, fn2)) {
 		unlink(fn);
 	} else {
-		ast_log(LOG_NOTICE, "Received to %s\n", fn2);
+		ast_log(LOG_EVENT, "Received to %s\n", fn2);
 	}
 }
 
@@ -1607,7 +1603,7 @@ static int sms_generate(struct ast_channel *chan, void *data, int len, int sampl
 	buf = alloca(len);
 
 	f.frametype = AST_FRAME_VOICE;
-	ast_format_set(&f.subclass.format, __OUT_FMT, 0);
+	f.subclass = __OUT_FMT;
 	f.datalen = samples * sizeof(*buf);
 	f.offset = AST_FRIENDLY_OFFSET;
 	f.mallocd = 0;
@@ -1836,19 +1832,19 @@ static void sms_process(sms_t * h, int samples, signed short *data)
  *	- AST_APP_OPTIONS() to drive the parsing routine
  *	- in the function, AST_DECLARE_APP_ARGS(...) for the arguments.
  */
-enum sms_flags {
+enum {
 	OPTION_BE_SMSC	= (1 << 0),             /* act as sms center */
 	OPTION_ANSWER	= (1 << 1),             /* answer on incoming calls */
 	OPTION_TWO	= (1 << 2),                 /* Use Protocol Two */
 	OPTION_PAUSE	= (1 << 3),             /* pause before sending data, in ms */
 	OPTION_SRR	= (1 << 4),                 /* set srr */
 	OPTION_DCS	= (1 << 5),                 /* set dcs */
-};
+} sms_flags;
 
-enum sms_opt_args {
+enum {
 	OPTION_ARG_PAUSE = 0,
 	OPTION_ARG_ARRAY_SIZE
-};
+} sms_opt_args;
 
 AST_APP_OPTIONS(sms_options, {
 	AST_APP_OPTION('s', OPTION_BE_SMSC),
@@ -1859,7 +1855,7 @@ AST_APP_OPTIONS(sms_options, {
 	AST_APP_OPTION_ARG('p', OPTION_PAUSE, OPTION_ARG_PAUSE),
 	} );
 
-static int sms_exec(struct ast_channel *chan, const char *data)
+static int sms_exec(struct ast_channel *chan, void *data)
 {
 	int res = -1;
 	sms_t h = { 0 };
@@ -1894,9 +1890,8 @@ static int sms_exec(struct ast_channel *chan, const char *data)
 	h.ipc0 = h.ipc1 = 20;                   /* phase for cosine */
 	h.dcs = 0xF1;                           /* default */
 
-	ast_copy_string(h.cli,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, ""),
-		sizeof(h.cli));
+	if (chan->cid.cid_num)
+		ast_copy_string(h.cli, chan->cid.cid_num, sizeof(h.cli));
 
 	if (ast_strlen_zero(sms_args.queue)) {
 		ast_log(LOG_ERROR, "Requires queue name\n");
@@ -2005,9 +2000,9 @@ static int sms_exec(struct ast_channel *chan, const char *data)
 		sms_messagetx(&h);
 	}
 
-	res = ast_set_write_format_by_id(chan, __OUT_FMT);
+	res = ast_set_write_format(chan, __OUT_FMT);
 	if (res >= 0) {
-		res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
+		res = ast_set_read_format(chan, AST_FORMAT_SLINEAR);
 	}
 	if (res < 0) {
 		ast_log(LOG_ERROR, "Unable to set to linear mode, giving up\n");

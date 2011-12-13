@@ -16,21 +16,17 @@
  * at the top of the source tree.
  */
 
-/*!
+/*! 
  * \file
  * \author Russell Bryant <russell@digium.com>
  *
  * \brief Originate calls via the CLI
- *
+ * 
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 163828 $");
 
 #include "asterisk/channel.h"
 #include "asterisk/pbx.h"
@@ -56,26 +52,19 @@ static char *orig_app(int fd, const char *chan, const char *app, const char *app
 	char *chantech;
 	char *chandata;
 	int reason = 0;
-	struct ast_format_cap *cap;
-	struct ast_format tmpfmt;
-
+	
 	if (ast_strlen_zero(app))
 		return CLI_SHOWUSAGE;
 
 	chandata = ast_strdupa(chan);
-
+	
 	chantech = strsep(&chandata, "/");
 	if (!chandata) {
 		ast_cli(fd, "*** No data provided after channel type! ***\n");
 		return CLI_SHOWUSAGE;
 	}
 
-	if (!(cap = ast_format_cap_alloc_nolock())) {
-		return CLI_FAILURE;
-	}
-	ast_format_cap_add(cap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-	ast_pbx_outgoing_app(chantech, cap, chandata, TIMEOUT * 1000, app, appdata, &reason, 0, NULL, NULL, NULL, NULL, NULL);
-	cap = ast_format_cap_destroy(cap);
+	ast_pbx_outgoing_app(chantech, AST_FORMAT_SLINEAR, chandata, TIMEOUT * 1000, app, appdata, &reason, 0, NULL, NULL, NULL, NULL, NULL);
 
 	return CLI_SUCCESS;
 }
@@ -95,11 +84,9 @@ static char *orig_exten(int fd, const char *chan, const char *data)
 	char *exten = NULL;
 	char *context = NULL;
 	int reason = 0;
-	struct ast_format_cap *cap;
-	struct ast_format tmpfmt;
 
 	chandata = ast_strdupa(chan);
-
+	
 	chantech = strsep(&chandata, "/");
 	if (!chandata) {
 		ast_cli(fd, "*** No data provided after channel type! ***\n");
@@ -115,12 +102,8 @@ static char *orig_exten(int fd, const char *chan, const char *data)
 		exten = "s";
 	if (ast_strlen_zero(context))
 		context = "default";
-	if (!(cap = ast_format_cap_alloc_nolock())) {
-		return CLI_FAILURE;
-	}
-	ast_format_cap_add(cap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-	ast_pbx_outgoing_exten(chantech, cap, chandata, TIMEOUT * 1000, context, exten, 1, &reason, 0, NULL, NULL, NULL, NULL, NULL);
-	cap = ast_format_cap_destroy(cap);
+	
+	ast_pbx_outgoing_exten(chantech, AST_FORMAT_SLINEAR, chandata, TIMEOUT * 1000, context, exten, 1, &reason, 0, NULL, NULL, NULL, NULL, NULL);
 
 	return CLI_SUCCESS;
 }
@@ -131,15 +114,16 @@ static char *orig_exten(int fd, const char *chan, const char *data)
  * \param cmd operation to execute
  * \param a structure that contains either application or extension arguments
  * \retval CLI_SUCCESS on success.
- * \retval CLI_SHOWUSAGE on failure.*/
+ * \retval CLI_SHOWUSAGE on failure.
+*/
 static char *handle_orig(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	static const char * const choices[] = { "application", "extension", NULL };
-	char *res = NULL;
+	static char *choices[] = { "application", "extension", NULL };
+	char *res;
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "channel originate";
-		e->usage =
+		e->usage = 
 			"  There are two ways to use this command. A call can be originated between a\n"
 			"channel and a specific application, or between a channel and an extension in\n"
 			"the dialplan. This is similar to call files or the manager originate action.\n"
@@ -157,16 +141,14 @@ static char *handle_orig(struct ast_cli_entry *e, int cmd, struct ast_cli_args *
 			"used. If no extension is given, the 's' extension will be used.\n";
 		return NULL;
 	case CLI_GENERATE:
+		if (a->pos != 3)
+			return NULL;
+
 		/* ugly, can be removed when CLI entries have ast_module pointers */
 		ast_module_ref(ast_module_info->self);
-		if (a->pos == 3) {
-			res = ast_cli_complete(a->word, choices, a->n);
-		} else if (a->pos == 4) {
-			if (!strcasecmp("application", a->argv[3])) {
-				res = ast_complete_applications(a->line, a->word, a->n);
-			}
-		}
+		res = ast_cli_complete(a->word, choices, a->n);
 		ast_module_unref(ast_module_info->self);
+
 		return res;
 	}
 
@@ -177,7 +159,7 @@ static char *handle_orig(struct ast_cli_entry *e, int cmd, struct ast_cli_args *
 	ast_module_ref(ast_module_info->self);
 
 	if (!strcasecmp("application", a->argv[3])) {
-		res = orig_app(a->fd, a->argv[2], a->argv[4], a->argv[5]);
+		res = orig_app(a->fd, a->argv[2], a->argv[4], a->argv[5]);	
 	} else if (!strcasecmp("extension", a->argv[3])) {
 		res = orig_exten(a->fd, a->argv[2], a->argv[4]);
 	} else {
@@ -219,14 +201,15 @@ static char *handle_redirect(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 	name = a->argv[2];
 	dest = a->argv[3];
 
-	if (!(chan = ast_channel_get_by_name(name))) {
+	chan = ast_get_channel_by_name_locked(name);
+	if (!chan) {
 		ast_cli(a->fd, "Channel '%s' not found\n", name);
 		return CLI_FAILURE;
 	}
 
 	res = ast_async_parseable_goto(chan, dest);
 
-	chan = ast_channel_unref(chan);
+	ast_channel_unlock(chan);
 
 	if (!res) {
 		ast_cli(a->fd, "Channel '%s' successfully redirected to %s\n", name, dest);

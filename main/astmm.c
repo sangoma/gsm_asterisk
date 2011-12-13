@@ -27,7 +27,7 @@
 
 #ifdef __AST_DEBUG_MALLOC
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 196272 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 161218 $")
 
 #include "asterisk/paths.h"	/* use ast_config_AST_LOG_DIR */
 #include <stddef.h>
@@ -324,7 +324,7 @@ int __ast_vasprintf(char **strp, const char *fmt, va_list ap, const char *file, 
 
 static char *handle_memory_show(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	const char *fn = NULL;
+	char *fn = NULL;
 	struct ast_region *reg;
 	unsigned int x;
 	unsigned int len = 0;
@@ -386,7 +386,7 @@ static char *handle_memory_show(struct ast_cli_entry *e, int cmd, struct ast_cli
 
 static char *handle_memory_show_summary(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	const char *fn = NULL;
+	char *fn = NULL;
 	int x;
 	struct ast_region *reg;
 	unsigned int len = 0;

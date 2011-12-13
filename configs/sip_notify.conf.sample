@@ -1,14 +1,3 @@
-; rfc3842
-; put empty "Content=>" at the end to have CRLF after last body line
-
-[clear-mwi]
-Event=>message-summary
-Content-type=>application/simple-message-summary
-Content=>Messages-Waiting: no
-Content=>Message-Account: sip:asterisk@127.0.0.1
-Content=>Voice-Message: 0/0 (0/0)
-Content=>
-
 ; Aastra
 
 [aastra-check-cfg]
@@ -44,9 +33,11 @@ Event=>report
 Event=>check-sync\;reboot=false
 
 [snom-reboot]
-Event=>check-sync\;reboot=true
+Event=>reboot
 
-; Cisco
+;;
+;; The following NOTIFY messages are not confirmed to work.
+;;
 
 [cisco-check-cfg]
 Event=>check-sync

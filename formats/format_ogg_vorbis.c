@@ -28,12 +28,11 @@
 /*** MODULEINFO
 	<depend>vorbis</depend>
 	<depend>ogg</depend>
-	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
@@ -292,9 +291,9 @@ static int ogg_vorbis_write(struct ast_filestream *fs, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_SLINEAR) {
-		ast_log(LOG_WARNING, "Asked to write non-SLINEAR frame (%s)!\n",
-			ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_SLINEAR) {
+		ast_log(LOG_WARNING, "Asked to write non-SLINEAR frame (%d)!\n",
+				f->subclass);
 		return -1;
 	}
 	if (!f->datalen)
@@ -439,7 +438,7 @@ static struct ast_frame *ogg_vorbis_read(struct ast_filestream *fs,
 	short *buf;	/* SLIN data buffer */
 
 	fs->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&fs->fr.subclass.format, AST_FORMAT_SLINEAR, 0);
+	fs->fr.subclass = AST_FORMAT_SLINEAR;
 	fs->fr.mallocd = 0;
 	AST_FRAME_SET_BUFFER(&fs->fr, fs->buf, AST_FRIENDLY_OFFSET, BUF_SIZE);
 	buf = (short *)(fs->fr.data.ptr);	/* SLIN data buffer */
@@ -529,9 +528,10 @@ static off_t ogg_vorbis_tell(struct ast_filestream *s)
 	return -1;
 }
 
-static struct ast_format_def vorbis_f = {
+static const struct ast_format vorbis_f = {
 	.name = "ogg_vorbis",
 	.exts = "ogg",
+	.format = AST_FORMAT_SLINEAR,
 	.open = ogg_vorbis_open,
 	.rewrite = ogg_vorbis_rewrite,
 	.write = ogg_vorbis_write,
@@ -546,19 +546,18 @@ static struct ast_format_def vorbis_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&vorbis_f.format, AST_FORMAT_SLINEAR, 0);
-	if (ast_format_def_register(&vorbis_f))
+	if (ast_format_register(&vorbis_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(vorbis_f.name);
+	return ast_format_unregister(vorbis_f.name);
 }
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "OGG/Vorbis audio",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

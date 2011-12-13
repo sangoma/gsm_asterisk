@@ -24,8 +24,8 @@
  */
 
 /*** MAKEOPTS
-<category name="MENUSELECT_CFLAGS" displayname="Compiler Flags" positive_output="yes">
-	<member name="DEBUG_OPAQUE" displayname="Change ast_str internals to detect improper usage" touch_on_change="include/asterisk/strings.h">
+<category name="MENUSELECT_CFLAGS" displayname="Compiler Flags" positive_output="yes" remove_on_change=".lastclean">
+	<member name="DEBUG_OPAQUE" displayname="Change ast_str internals to detect improper usage">
 		<defaultenabled>yes</defaultenabled>
 	</member>
 </category>
@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 263904 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 263906 $")
 
 #include "asterisk/strings.h"
 #include "asterisk/pbx.h"
@@ -107,9 +107,20 @@ int __ast_str_helper(struct ast_str **buf, ssize_t max_len,
 		break;
 	} while (1);
 	/* update space used, keep in mind the truncation */
-	(*buf)->__AST_STR_USED = (res + offset > (*buf)->__AST_STR_LEN) ? (*buf)->__AST_STR_LEN - 1: res + offset;
+	(*buf)->__AST_STR_USED = (res + offset > (*buf)->__AST_STR_LEN) ? (*buf)->__AST_STR_LEN - 1 : res + offset;
 
 	return res;
+}
+
+void ast_str_substitute_variables(struct ast_str **buf, size_t maxlen, struct ast_channel *chan, const char *template)
+{
+	int first = 1;
+	do {
+		ast_str_make_space(buf, maxlen ? maxlen :
+			(first ? strlen(template) * 2 : (*buf)->__AST_STR_LEN * 2));
+		pbx_substitute_variables_helper_full(chan, NULL, template, (*buf)->__AST_STR_STR, (*buf)->__AST_STR_LEN - 1, &((*buf)->__AST_STR_USED));
+		first = 0;
+	} while (maxlen == 0 && (*buf)->__AST_STR_LEN - 5 < (*buf)->__AST_STR_USED);
 }
 
 char *__ast_str_helper2(struct ast_str **buf, ssize_t maxlen, const char *src, size_t maxsrc, int append, int escapecommas)

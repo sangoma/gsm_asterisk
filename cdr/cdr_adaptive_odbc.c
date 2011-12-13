@@ -16,8 +16,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief Adaptive ODBC CDR backend
  *
  * \author Tilghman Lesher <cdr_adaptive_odbc__v1@the-tilghman.com>
@@ -26,12 +26,11 @@
 
 /*** MODULEINFO
 	<depend>res_odbc</depend>
-	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 283318 $")
 
 #include <sys/types.h>
 #include <time.h>
@@ -50,7 +49,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 #define	CONFIG	"cdr_adaptive_odbc.conf"
 
-static const char name[] = "Adaptive ODBC";
+static char *name = "Adaptive ODBC";
 /* Optimization to reduce number of memory allocations */
 static int maxsize = 512, maxsize2 = 512;
 
@@ -66,7 +65,6 @@ struct columns {
 	SQLSMALLINT nullable;
 	SQLINTEGER octetlen;
 	AST_LIST_ENTRY(columns) list;
-	unsigned int negatefiltervalue:1;
 };
 
 struct tables {
@@ -165,16 +163,9 @@ static int load_config(void)
 		/* Check for filters first */
 		for (var = ast_variable_browse(cfg, catg); var; var = var->next) {
 			if (strncmp(var->name, "filter", 6) == 0) {
-				int negate = 0;
 				char *cdrvar = ast_strdupa(var->name + 6);
 				cdrvar = ast_strip(cdrvar);
-				if (cdrvar[strlen(cdrvar) - 1] == '!') {
-					negate = 1;
-					cdrvar[strlen(cdrvar) - 1] = '\0';
-					ast_trim_blanks(cdrvar);
-				}
-
-				ast_verb(3, "Found filter %s'%s' for cdr variable %s in %s@%s\n", negate ? "!" : "", var->value, cdrvar, tableptr->table, tableptr->connection);
+				ast_verb(3, "Found filter %s for cdr variable %s in %s@%s\n", var->value, cdrvar, tableptr->table, tableptr->connection);
 
 				entry = ast_calloc(sizeof(char), sizeof(*entry) + strlen(cdrvar) + 1 + strlen(var->value) + 1);
 				if (!entry) {
@@ -189,7 +180,6 @@ static int load_config(void)
 				entry->filtervalue = (char *)entry + sizeof(*entry) + strlen(cdrvar) + 1;
 				strcpy(entry->cdrname, cdrvar);
 				strcpy(entry->filtervalue, var->value);
-				entry->negatefiltervalue = negate;
 
 				AST_LIST_INSERT_TAIL(&(tableptr->columns), entry, list);
 			}
@@ -291,6 +281,7 @@ static int free_config(void)
 static SQLHSTMT generic_prepare(struct odbc_obj *obj, void *data)
 {
 	int res, i;
+	char *sql = data;
 	SQLHSTMT stmt;
 	SQLINTEGER nativeerror = 0, numfields = 0;
 	SQLSMALLINT diagbytes = 0;
@@ -302,9 +293,9 @@ static SQLHSTMT generic_prepare(struct odbc_obj *obj, void *data)
 		return NULL;
 	}
 
-	res = SQLPrepare(stmt, (unsigned char *) data, SQL_NTS);
+	res = SQLPrepare(stmt, (unsigned char *)sql, SQL_NTS);
 	if ((res != SQL_SUCCESS) && (res != SQL_SUCCESS_WITH_INFO)) {
-		ast_log(LOG_WARNING, "SQL Prepare failed![%s]\n", (char *) data);
+		ast_log(LOG_WARNING, "SQL Prepare failed![%s]\n", sql);
 		SQLGetDiagField(SQL_HANDLE_STMT, stmt, 1, SQL_DIAG_NUMBER, &numfields, SQL_IS_INTEGER, &diagbytes);
 		for (i = 0; i < numfields; i++) {
 			SQLGetDiagRec(SQL_HANDLE_STMT, stmt, i + 1, state, &nativeerror, diagnostic, sizeof(diagnostic), &diagbytes);
@@ -413,11 +404,10 @@ static int odbc_log(struct ast_cdr *cdr)
 				 * is very specifically NOT ast_strlen_zero(), because the filter
 				 * could legitimately specify that the field is blank, which is
 				 * different from the field being unspecified (NULL). */
-				if ((entry->filtervalue && !entry->negatefiltervalue && strcasecmp(colptr, entry->filtervalue) != 0) ||
-					(entry->filtervalue && entry->negatefiltervalue && strcasecmp(colptr, entry->filtervalue) == 0)) {
+				if (entry->filtervalue && strcasecmp(colptr, entry->filtervalue) != 0) {
 					ast_verb(4, "CDR column '%s' with value '%s' does not match filter of"
-						" %s'%s'.  Cancelling this CDR.\n",
-						entry->cdrname, colptr, entry->negatefiltervalue ? "!" : "", entry->filtervalue);
+						" '%s'.  Cancelling this CDR.\n",
+						entry->cdrname, colptr, entry->filtervalue);
 					goto early_release;
 				}
 
@@ -621,23 +611,6 @@ static int odbc_log(struct ast_cdr *cdr)
 						continue;
 					} else {
 						double number = 0.0;
-
-						if (!strcasecmp(entry->cdrname, "billsec")) {
-							if (!ast_tvzero(cdr->answer)) {
-								snprintf(colbuf, sizeof(colbuf), "%lf",
-											(double) (ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0));
-							} else {
-								ast_copy_string(colbuf, "0", sizeof(colbuf));
-							}
-						} else if (!strcasecmp(entry->cdrname, "duration")) {
-							snprintf(colbuf, sizeof(colbuf), "%lf",
-										(double) (ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0));
-
-							if (!ast_strlen_zero(colbuf)) {
-								colptr = colbuf;
-							}
-						}
-
 						if (sscanf(colptr, "%30lf", &number) != 1) {
 							ast_log(LOG_WARNING, "CDR variable %s is not an numeric type.\n", entry->name);
 							continue;
@@ -655,23 +628,6 @@ static int odbc_log(struct ast_cdr *cdr)
 						continue;
 					} else {
 						double number = 0.0;
-
-						if (!strcasecmp(entry->cdrname, "billsec")) {
-							if (!ast_tvzero(cdr->answer)) {
-								snprintf(colbuf, sizeof(colbuf), "%lf",
-											(double) (ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0));
-							} else {
-								ast_copy_string(colbuf, "0", sizeof(colbuf));
-							}
-						} else if (!strcasecmp(entry->cdrname, "duration")) {
-							snprintf(colbuf, sizeof(colbuf), "%lf",
-										(double) (ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0));
-
-							if (!ast_strlen_zero(colbuf)) {
-								colptr = colbuf;
-							}
-						}
-
 						if (sscanf(colptr, "%30lf", &number) != 1) {
 							ast_log(LOG_WARNING, "CDR variable %s is not an numeric type.\n", entry->name);
 							continue;
@@ -727,6 +683,7 @@ early_release:
 static int unload_module(void)
 {
 	ast_cdr_unregister(name);
+	usleep(1);
 	if (AST_RWLIST_WRLOCK(&odbc_tables)) {
 		ast_cdr_register(name, ast_module_info->description, odbc_log);
 		ast_log(LOG_ERROR, "Unable to lock column list.  Unload failed.\n");
@@ -764,10 +721,9 @@ static int reload(void)
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Adaptive ODBC CDR backend",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Adaptive ODBC CDR backend",
 	.load = load_module,
 	.unload = unload_module,
 	.reload = reload,
-	.load_pri = AST_MODPRI_CDR_DRIVER,
 );
 

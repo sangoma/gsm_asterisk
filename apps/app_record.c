@@ -24,14 +24,10 @@
  *
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 251683 $")
 
 #include "asterisk/file.h"
 #include "asterisk/pbx.h"
@@ -81,10 +77,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 					</option>
 					<option name="k">
 					        <para>Keep recorded file upon hangup.</para>
-					</option>
-					<option name="y">
-					        <para>Terminate recording if *any* DTMF digit is received.</para>
-					</option>
+					</option>	
 				</optionlist>
 			</parameter>
 		</syntax>
@@ -124,7 +117,6 @@ enum {
 	OPTION_IGNORE_TERMINATE = (1 << 5),
 	OPTION_KEEP = (1 << 6),
 	FLAG_HAS_PERCENT = (1 << 7),
-	OPTION_ANY_TERMINATE = (1 << 8),
 };
 
 AST_APP_OPTIONS(app_opts,{
@@ -134,11 +126,10 @@ AST_APP_OPTIONS(app_opts,{
 	AST_APP_OPTION('q', OPTION_QUIET),
 	AST_APP_OPTION('s', OPTION_SKIP),
 	AST_APP_OPTION('t', OPTION_STAR_TERMINATE),
-	AST_APP_OPTION('y', OPTION_ANY_TERMINATE),
 	AST_APP_OPTION('x', OPTION_IGNORE_TERMINATE),
 });
 
-static int record_exec(struct ast_channel *chan, const char *data)
+static int record_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	int count = 0;
@@ -158,7 +149,7 @@ static int record_exec(struct ast_channel *chan, const char *data)
 	int maxduration = 0;		/* max duration of recording in milliseconds */
 	int gottimeout = 0;		/* did we timeout for maxduration exceeded? */
 	int terminator = '#';
-	struct ast_format rfmt;
+	int rfmt = 0;
 	int ioflags;
 	int waitres;
 	struct ast_silence_generator *silgen = NULL;
@@ -169,8 +160,7 @@ static int record_exec(struct ast_channel *chan, const char *data)
 		AST_APP_ARG(maxduration);
 		AST_APP_ARG(options);
 	);
-
-	ast_format_clear(&rfmt);
+	
 	/* The next few lines of code parse out the filename and header from the input string */
 	if (ast_strlen_zero(data)) { /* no data implies no filename or anything is present */
 		ast_log(LOG_WARNING, "Record requires an argument (filename)\n");
@@ -291,8 +281,8 @@ static int record_exec(struct ast_channel *chan, const char *data)
 	/* The end of beep code.  Now the recording starts */
 
 	if (silence > 0) {
-		ast_format_copy(&rfmt, &chan->readformat);
-		res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
+		rfmt = chan->readformat;
+		res = ast_set_read_format(chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear mode, giving up\n");
 			pbx_builtin_setvar_helper(chan, "RECORD_STATUS", "ERROR");
@@ -382,8 +372,7 @@ static int record_exec(struct ast_channel *chan, const char *data)
 				break;
 			}
 		} else if ((f->frametype == AST_FRAME_DTMF) &&
-			   ((f->subclass.integer == terminator) ||
-			    (ast_test_flag(&flags, OPTION_ANY_TERMINATE)))) {
+		    (f->subclass == terminator)) {
 			ast_frfree(f);
 			pbx_builtin_setvar_helper(chan, "RECORD_STATUS", "DTMF");
 			break;
@@ -413,8 +402,8 @@ static int record_exec(struct ast_channel *chan, const char *data)
 		ast_channel_stop_silence_generator(chan, silgen);
 
 out:
-	if ((silence > 0) && rfmt.id) {
-		res = ast_set_read_format(chan, &rfmt);
+	if ((silence > 0) && rfmt) {
+		res = ast_set_read_format(chan, rfmt);
 		if (res)
 			ast_log(LOG_WARNING, "Unable to restore read format on '%s'\n", chan->name);
 		if (sildet)

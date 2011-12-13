@@ -24,13 +24,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 301176 $")
 
 #include "asterisk/module.h"
 #include "asterisk/app.h"
@@ -76,7 +72,7 @@ static char *app_log = "Log";
  ***/
 
 
-static int verbose_exec(struct ast_channel *chan, const char *data)
+static int verbose_exec(struct ast_channel *chan, void *data)
 {
 	int vsize;
 	char *parse;
@@ -122,7 +118,7 @@ static int verbose_exec(struct ast_channel *chan, const char *data)
 	return 0;
 }
 
-static int log_exec(struct ast_channel *chan, const char *data)
+static int log_exec(struct ast_channel *chan, void *data)
 {
 	char *parse;
 	int lnum = -1;
@@ -150,6 +146,8 @@ static int log_exec(struct ast_channel *chan, const char *data)
 		lnum = __LOG_VERBOSE;
 	} else if (!strcasecmp(args.level, "DTMF")) {
 		lnum = __LOG_DTMF;
+	} else if (!strcasecmp(args.level, "EVENT")) {
+		lnum = __LOG_EVENT;
 	} else {
 		ast_log(LOG_ERROR, "Unknown log level: '%s'\n", args.level);
 	}

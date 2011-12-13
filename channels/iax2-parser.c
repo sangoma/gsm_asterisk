@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306010 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 243945 $")
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -214,21 +214,6 @@ static void dump_samprate(char *output, int maxlen, void *value, int len)
 
 }
 
-static void dump_versioned_codec(char *output, int maxlen, void *value, int len)
-{
-	char *version = (char *) value;
-	if (version[0] == 0) {
-		if (len == (int) (sizeof(iax2_format) + sizeof(char))) {
-			iax2_format codec = ntohll(get_unaligned_uint64(value + 1));
-			ast_copy_string(output, iax2_getformatname(codec), maxlen);
-		} else {
-			ast_copy_string(output, "Invalid length!", maxlen);
-		}
-	} else {
-		ast_copy_string(output, "Unknown version!", maxlen);
-	}
-}
-
 static void dump_prov_ies(char *output, int maxlen, unsigned char *iedata, int len);
 static void dump_prov(char *output, int maxlen, void *value, int len)
 {
@@ -248,9 +233,7 @@ static struct iax2_ie {
 	{ IAX_IE_USERNAME, "USERNAME", dump_string },
 	{ IAX_IE_PASSWORD, "PASSWORD", dump_string },
 	{ IAX_IE_CAPABILITY, "CAPABILITY", dump_int },
-	{ IAX_IE_CAPABILITY2, "CAPABILITY2", dump_versioned_codec },
 	{ IAX_IE_FORMAT, "FORMAT", dump_int },
-	{ IAX_IE_FORMAT2, "FORMAT2", dump_versioned_codec },
 	{ IAX_IE_LANGUAGE, "LANGUAGE", dump_string },
 	{ IAX_IE_VERSION, "VERSION", dump_short },
 	{ IAX_IE_ADSICPE, "ADSICPE", dump_short },
@@ -294,10 +277,9 @@ static struct iax2_ie {
 	{ IAX_IE_RR_OOO, "RR_OUTOFORDER", dump_int },
 	{ IAX_IE_VARIABLE, "VARIABLE", dump_string },
 	{ IAX_IE_OSPTOKEN, "OSPTOKEN" },
-	{ IAX_IE_CALLTOKEN, "CALLTOKEN" },
 };
 
-static const struct iax2_ie prov_ies[] = {
+static struct iax2_ie prov_ies[] = {
 	{ PROV_IE_USEDHCP, "USEDHCP" },
 	{ PROV_IE_IPADDR, "IPADDR", dump_ipaddr },
 	{ PROV_IE_SUBNET, "SUBNET", dump_ipaddr },
@@ -597,9 +579,6 @@ void iax_showframe(struct iax_frame *f, struct ast_iax2_full_hdr *fhi, int rx, s
 		"VIDUPDT",
 		"T38    ",
 		"SRCUPDT",
-		"TXFER  ",
-		"CNLINE ",
-		"REDIR  ",
 	};
 	struct ast_iax2_full_hdr *fh;
 	char retries[20];
@@ -696,16 +675,6 @@ int iax_ie_append_addr(struct iax_ie_data *ied, unsigned char ie, const struct s
 	return iax_ie_append_raw(ied, ie, sin, (int)sizeof(struct sockaddr_in));
 }
 
-int iax_ie_append_versioned_uint64(struct iax_ie_data *ied, unsigned char ie, unsigned char version, uint64_t value)
-{
-	struct _local {
-		unsigned char version;
-		uint64_t value;
-	} __attribute__((packed)) newval = { version, };
-	put_unaligned_uint64(&newval.value, htonll(value));
-	return iax_ie_append_raw(ied, ie, &newval, (int) sizeof(newval));
-}
-
 int iax_ie_append_int(struct iax_ie_data *ied, unsigned char ie, unsigned int value) 
 {
 	unsigned int newval;
@@ -796,43 +765,15 @@ int iax_parse_ies(struct iax_ies *ies, unsigned char *data, int datalen)
 			if (len != (int)sizeof(unsigned int)) {
 				snprintf(tmp, (int)sizeof(tmp), "Expecting capability to be %d bytes long but was %d\n", (int)sizeof(unsigned int), len);
 				errorf(tmp);
-			} else if (ies->capability == 0) { /* Don't overwrite capability2, if specified */
+			} else
 				ies->capability = ntohl(get_unaligned_uint32(data + 2));
-			}
-			break;
-		case IAX_IE_CAPABILITY2:
-			{
-				int version = data[2];
-				if (version == 0) {
-					if (len != (int)sizeof(char) + sizeof(iax2_format)) {
-						snprintf(tmp, (int)sizeof(tmp), "Expecting capability to be %d bytes long but was %d\n", (int) (sizeof(iax2_format) + sizeof(char)), len);
-						errorf(tmp);
-					} else {
-						ies->capability = (iax2_format) ntohll(get_unaligned_uint64(data + 3));
-					}
-				} /* else unknown version */
-			}
 			break;
 		case IAX_IE_FORMAT:
 			if (len != (int)sizeof(unsigned int)) {
 				snprintf(tmp, (int)sizeof(tmp), "Expecting format to be %d bytes long but was %d\n", (int)sizeof(unsigned int), len);
 				errorf(tmp);
-			} else if (ies->format == 0) { /* Don't overwrite format2, if specified */
+			} else
 				ies->format = ntohl(get_unaligned_uint32(data + 2));
-			}
-			break;
-		case IAX_IE_FORMAT2:
-			{
-				int version = data[2];
-				if (version == 0) {
-					if (len != (int)sizeof(char) + sizeof(iax2_format)) {
-						snprintf(tmp, (int)sizeof(tmp), "Expecting format to be %d bytes long but was %d\n", (int) (sizeof(iax2_format) + sizeof(char)), len);
-						errorf(tmp);
-					} else {
-						ies->format = (iax2_format) ntohll(get_unaligned_uint64(data + 3));
-					}
-				} /* else unknown version */
-			}
 			break;
 		case IAX_IE_LANGUAGE:
 			ies->language = (char *)data + 2;
@@ -1138,7 +1079,7 @@ int iax_parse_ies(struct iax_ies *ies, unsigned char *data, int datalen)
 void iax_frame_wrap(struct iax_frame *fr, struct ast_frame *f)
 {
 	fr->af.frametype = f->frametype;
-	ast_format_copy(&fr->af.subclass.format, &f->subclass.format);
+	fr->af.subclass = f->subclass;
 	fr->af.mallocd = 0;				/* Our frame is static relative to the container */
 	fr->af.datalen = f->datalen;
 	fr->af.samples = f->samples;
@@ -1157,7 +1098,7 @@ void iax_frame_wrap(struct iax_frame *fr, struct ast_frame *f)
 		}
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 		/* We need to byte-swap slinear samples from network byte order */
-		if ((fr->af.frametype == AST_FRAME_VOICE) && (fr->af.subclass.format.id == AST_FORMAT_SLINEAR)) {
+		if ((fr->af.frametype == AST_FRAME_VOICE) && (fr->af.subclass == AST_FORMAT_SLINEAR)) {
 			/* 2 bytes / sample for SLINEAR */
 			ast_swapcopy_samples(fr->af.data.ptr, f->data.ptr, copy_len / 2);
 		} else

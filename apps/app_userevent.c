@@ -21,13 +21,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 253346 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -60,7 +56,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 static char *app = "UserEvent";
 
-static int userevent_exec(struct ast_channel *chan, const char *data)
+static int userevent_exec(struct ast_channel *chan, void *data)
 {
 	char *parse;
 	int x;
@@ -89,12 +85,7 @@ static int userevent_exec(struct ast_channel *chan, const char *data)
 		ast_str_append(&body, 0, "%s\r\n", args.extra[x]);
 	}
 
-	manager_event(EVENT_FLAG_USER, "UserEvent",
-			"UserEvent: %s\r\n"
-			"Uniqueid: %s\r\n"
-			"%s",
-			args.eventname, chan->uniqueid, ast_str_buffer(body));
-
+	manager_event(EVENT_FLAG_USER, "UserEvent", "UserEvent: %s\r\n%s", args.eventname, ast_str_buffer(body));
 	ast_free(body);
 
 	return 0;

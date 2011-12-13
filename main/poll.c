@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------*\
-  $Id: poll.c 285269 2010-09-07 19:09:08Z tilghman $
+  $Id: poll.c 285267 2010-09-07 19:07:17Z tilghman $
 
   NAME
 
@@ -84,10 +84,6 @@
 #include "asterisk/poll-compat.h"                            /* this package */
 
 unsigned int ast_FD_SETSIZE = FD_SETSIZE;
-
-#ifndef MAX
-#define MAX(a,b)	a > b ? a : b
-#endif
 
 /*---------------------------------------------------------------------------*\
 				 Private Functions

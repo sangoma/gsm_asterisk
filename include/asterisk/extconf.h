@@ -111,7 +111,7 @@ struct ast_exten {
 	char stuff[0];
 };
 /* from pbx.h */
-typedef int (*ast_state_cb_type)(const char *context, const char *exten, enum ast_extension_states state, void *data);
+typedef int (*ast_state_cb_type)(char *context, char* id, enum ast_extension_states state, void *data);
 struct ast_timing {
 	int hastime;				/*!< If time construct exists */
 	unsigned int monthmask;			/*!< Mask for month */
@@ -141,7 +141,7 @@ struct ast_sw {
 	char stuff[0];
 };
 
-/*! \brief Ignore patterns in dial plan */
+*! \brief Ignore patterns in dial plan */
 struct ast_ignorepat {
 	const char *registrar;
 	struct ast_ignorepat *next;
@@ -185,7 +185,7 @@ int localized_pbx_load_module(void);
  * \version 1.6.1 renamed function from localized_context_create to localized_context_find_or_create
  */
 struct ast_context *localized_context_find_or_create(struct ast_context **extcontexts, void *tab, const char *name, const char *registrar);
-int localized_pbx_builtin_setvar(struct ast_channel *chan, const void *data);
+int localized_pbx_builtin_setvar(struct ast_channel *chan, void *data);
 int localized_context_add_ignorepat2(struct ast_context *con, const char *value, const char *registrar);
 int localized_context_add_switch2(struct ast_context *con, const char *value,
 								 const char *data, int eval, const char *registrar);

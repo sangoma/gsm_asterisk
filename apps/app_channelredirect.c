@@ -23,13 +23,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 172063 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -64,9 +60,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 		</description>
 	</application>
  ***/
-static const char app[] = "ChannelRedirect";
+static char *app = "ChannelRedirect";
 
-static int asyncgoto_exec(struct ast_channel *chan, const char *data)
+static int asyncgoto_exec(struct ast_channel *chan, void *data)
 {
 	int res = -1;
 	char *info;
@@ -90,7 +86,8 @@ static int asyncgoto_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	if (!(chan2 = ast_channel_get_by_name(args.channel))) {
+	chan2 = ast_get_channel_by_name_locked(args.channel);
+	if (!chan2) {
 		ast_log(LOG_WARNING, "No such channel: %s\n", args.channel);
 		pbx_builtin_setvar_helper(chan, "CHANNELREDIRECT_STATUS", "NOCHANNEL");
 		return 0;
@@ -99,12 +96,9 @@ static int asyncgoto_exec(struct ast_channel *chan, const char *data)
 	if (chan2->pbx) {
 		ast_set_flag(chan2, AST_FLAG_BRIDGE_HANGUP_DONT); /* don't let the after-bridge code run the h-exten */
 	}
-
 	res = ast_async_parseable_goto(chan2, args.label);
-
-	chan2 = ast_channel_unref(chan2);
-
 	pbx_builtin_setvar_helper(chan, "CHANNELREDIRECT_STATUS", "SUCCESS");
+	ast_channel_unlock(chan2);
 
 	return res;
 }

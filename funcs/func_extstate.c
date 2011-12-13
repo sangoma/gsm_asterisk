@@ -26,13 +26,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 153365 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -126,7 +122,6 @@ static int extstate_read(struct ast_channel *chan, const char *cmd, char *data,
 static struct ast_custom_function extstate_function = {
 	.name = "EXTENSION_STATE",
 	.read = extstate_read,
-	.read_max = 12,
 };
 
 static int unload_module(void)

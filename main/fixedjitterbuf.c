@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 273641 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 89333 $")
 
 #include <assert.h>
 
@@ -105,7 +105,7 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf)
 	/* First copy our config */
 	memcpy(&jb->conf, conf, sizeof(struct fixed_jb_conf));
 
-	/* we don't need the passed config anymore - continue working with the saved one */
+	/* we dont need the passed config anymore - continue working with the saved one */
 	conf = &jb->conf;
 	
 	/* validate the configuration */

@@ -24,8 +24,6 @@
 #ifndef _ASTERISK_SLINFACTORY_H
 #define _ASTERISK_SLINFACTORY_H
 
-#include "asterisk/format.h"
-
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
 #endif
@@ -39,8 +37,8 @@ struct ast_slinfactory {
 	short *offset;                           /*!< Offset into the hold where audio begins */
 	size_t holdlen;                          /*!< Number of samples currently in the hold */
 	unsigned int size;                       /*!< Number of samples currently in the factory */
-	struct ast_format format;                /*!< Current format the translation path is converting from */
-	struct ast_format output_format;         /*!< The output format desired */
+	unsigned int format;                     /*!< Current format the translation path is converting from */
+	unsigned int output_format;		 /*!< The output format desired */
 };
 
 /*!
@@ -56,11 +54,11 @@ void ast_slinfactory_init(struct ast_slinfactory *sf);
  * \brief Initialize a slinfactory
  *
  * \param sf The slinfactory to initialize
- * \param slin_out the slinear output format desired.
+ * \param sample_rate The output sample rate desired
  *
  * \return 0 on success, non-zero on failure
  */
-int ast_slinfactory_init_with_format(struct ast_slinfactory *sf, const struct ast_format *slin_out);
+int ast_slinfactory_init_rate(struct ast_slinfactory *sf, unsigned int sample_rate);
 
 /*!
  * \brief Destroy the contents of a slinfactory

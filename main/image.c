@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306010 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 105840 $")
 
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -81,7 +81,7 @@ static int file_exists(char *filename)
 	return 0;
 }
 
-static void make_filename(char *buf, int len, const char *filename, const char *preflang, char *ext)
+static void make_filename(char *buf, int len, char *filename, const char *preflang, char *ext)
 {
 	if (filename[0] == '/') {
 		if (!ast_strlen_zero(preflang))
@@ -96,7 +96,7 @@ static void make_filename(char *buf, int len, const char *filename, const char *
 	}
 }
 
-struct ast_frame *ast_read_image(const char *filename, const char *preflang, struct ast_format *format)
+struct ast_frame *ast_read_image(char *filename, const char *preflang, int format)
 {
 	struct ast_imager *i;
 	char buf[256];
@@ -109,8 +109,7 @@ struct ast_frame *ast_read_image(const char *filename, const char *preflang, str
 	
 	AST_RWLIST_RDLOCK(&imagers);
 	AST_RWLIST_TRAVERSE(&imagers, i, list) {
-		/* if NULL image format, just pick the first one, otherwise match it. */
-		if (!format || (ast_format_cmp(&i->format, format) == AST_FORMAT_CMP_EQUAL)) {
+		if (i->format & format) {
 			char *stringp=NULL;
 			ast_copy_string(tmp, i->exts, sizeof(tmp));
 			stringp = tmp;
@@ -153,12 +152,12 @@ struct ast_frame *ast_read_image(const char *filename, const char *preflang, str
 	return f;
 }
 
-int ast_send_image(struct ast_channel *chan, const char *filename)
+int ast_send_image(struct ast_channel *chan, char *filename)
 {
 	struct ast_frame *f;
 	int res = -1;
 	if (chan->tech->send_image) {
-		f = ast_read_image(filename, chan->language, NULL);
+		f = ast_read_image(filename, chan->language, -1);
 		if (f) {
 			res = chan->tech->send_image(chan, f);
 			ast_frfree(f);
@@ -190,7 +189,7 @@ static char *handle_core_show_image_formats(struct ast_cli_entry *e, int cmd, st
 	ast_cli(a->fd, FORMAT, "----", "----------", "-----------", "------");
 	AST_RWLIST_RDLOCK(&imagers);
 	AST_RWLIST_TRAVERSE(&imagers, i, list) {
-		ast_cli(a->fd, FORMAT2, i->name, i->exts, i->desc, ast_getformatname(&i->format));
+		ast_cli(a->fd, FORMAT2, i->name, i->exts, i->desc, ast_getformatname(i->format));
 		count_fmt++;
 	}
 	AST_RWLIST_UNLOCK(&imagers);
@@ -198,7 +197,7 @@ static char *handle_core_show_image_formats(struct ast_cli_entry *e, int cmd, st
 	return CLI_SUCCESS;
 }
 
-static struct ast_cli_entry cli_image[] = {
+struct ast_cli_entry cli_image[] = {
 	AST_CLI_DEFINE(handle_core_show_image_formats, "Displays image formats")
 };
 

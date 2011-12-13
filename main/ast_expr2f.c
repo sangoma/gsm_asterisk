@@ -520,7 +520,7 @@ static yyconst flex_int16_t yy_chk[159] =
 #include <stdio.h>
 
 #if !defined(STANDALONE)
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 309809 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 309251 $")
 #else
 #ifndef __USE_ISOC99
 #define __USE_ISOC99 1
@@ -559,7 +559,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 309809 $")
 #include "asterisk/channel.h"
 #endif
 
-/* Conditionally redefine the macro from flex 2.5.35, in case someone uses flex <2.5.35 to regenerate this file. */
+/* Redefine the macro from flex 2.5.35, in case someone uses flex <2.5.35 to regenerate this file. */
 #ifndef ECHO
 #define ECHO do { if (fwrite( yytext, yyleng, 1, yyout )) {} } while (0)
 #endif
@@ -2405,13 +2405,17 @@ void ast_yyfree(void *ptr, yyscan_t yyscanner)
 
 int ast_expr(char *expr, char *buf, int length, struct ast_channel *chan)
 {
-	struct parse_io io = { .string = expr, .chan = chan };
+	struct parse_io io;
 	int return_value = 0;
-
+	
+	memset(&io, 0, sizeof(io));
+	io.string = expr;  /* to pass to the error routine */
+	io.chan = chan;
+	
 	ast_yylex_init(&io.scanner);
-
+	
 	ast_yy_scan_string(expr, io.scanner);
-
+	
 	ast_yyparse ((void *) &io);
 
 	ast_yylex_destroy(io.scanner);
@@ -2444,32 +2448,6 @@ int ast_expr(char *expr, char *buf, int length, struct ast_channel *chan)
 	return return_value;
 }
 
-#ifndef STANDALONE
-int ast_str_expr(struct ast_str **str, ssize_t maxlen, struct ast_channel *chan, char *expr)
-{
-	struct parse_io io = { .string = expr, .chan = chan };
-
-	ast_yylex_init(&io.scanner);
-	ast_yy_scan_string(expr, io.scanner);
-	ast_yyparse ((void *) &io);
-	ast_yylex_destroy(io.scanner);
-
-	if (!io.val) {
-		ast_str_set(str, maxlen, "0");
-	} else {
-		if (io.val->type == AST_EXPR_number) {
-			int res_length;
-			ast_str_set(str, maxlen, FP___PRINTF, io.val->u.i);
-		} else if (io.val->u.s) {
-			ast_str_set(str, maxlen, "%s", io.val->u.s);
-			free(io.val->u.s);
-		}
-		free(io.val);
-	}
-	return ast_str_strlen(*str);
-}
-#endif
-
 
 char extra_error_message[4095];
 int extra_error_message_supplied = 0;
@@ -2488,7 +2466,7 @@ void  ast_expr_clear_extra_error_info(void)
        extra_error_message[0] = 0;
 }
 
-static const char * const expr2_token_equivs1[] = 
+static char *expr2_token_equivs1[] = 
 {
 	"TOKEN",
 	"TOK_COND",
@@ -2514,7 +2492,7 @@ static const char * const expr2_token_equivs1[] =
 	"TOK_LP"
 };
 
-static const char * const expr2_token_equivs2[] = 
+static char *expr2_token_equivs2[] = 
 {
 	"<token>",
 	"?",
@@ -2546,8 +2524,7 @@ static char *expr2_token_subst(const char *mess)
 	/* calc a length, malloc, fill, and return; yyerror had better free it! */
 	int len=0,i;
 	const char *p;
-	char *res, *s;
-	const char *t;
+	char *res, *s,*t;
 	int expr2_token_equivs_entries = sizeof(expr2_token_equivs1)/sizeof(char*);
 
 	for (p=mess; *p; p++) {
@@ -2617,7 +2594,7 @@ int ast_yyerror (const char *s,  yyltype *loc, struct parse_io *parseio )
 			(extra_error_message_supplied?extra_error_message:""), s2, parseio->string,spacebuf2);
 #endif
 #ifndef STANDALONE
-	ast_log(LOG_WARNING,"If you have questions, please refer to https://wiki.asterisk.org/wiki/display/AST/Channel+Variables\n");
+	ast_log(LOG_WARNING,"If you have questions, please refer to doc/tex/channelvariables.tex.\n");
 #endif
 	free(s2);
 	return(0);

@@ -29,7 +29,6 @@ extern "C" {
 
 #include "asterisk/cli.h"
 #include "asterisk/xmldoc.h"
-#include "asterisk/optional_api.h"
 
 typedef struct agi_state {
 	int fd;		        /*!< FD for general output */
@@ -40,22 +39,22 @@ typedef struct agi_state {
 } AGI;
 
 typedef struct agi_command {
-	const char * const cmda[AST_MAX_CMD_LEN];		/*!< Null terminated list of the words of the command */
+	char *cmda[AST_MAX_CMD_LEN];		/*!< Null terminated list of the words of the command */
 	/*! Handler for the command (channel, AGI state, # of arguments, argument list). 
 	    Returns RESULT_SHOWUSAGE for improper arguments */
-	int (* const handler)(struct ast_channel *chan, AGI *agi, int argc, const char * const argv[]);
+	int (*handler)(struct ast_channel *chan, AGI *agi, int argc, char *argv[]);
 	/*! Summary of the command (< 60 characters) */
-	const char * const summary;
+	char *summary;
 	/*! Detailed usage information */
-	const char * const usage;
+	char *usage;
 	/*! Does this application run dead */
-	const int dead;
+	int dead;
 	/*! AGI command syntax description */
-	const char * const syntax;
+	char *syntax;
 	/*! See also content */
-	const char * const seealso;
+	char *seealso;
 	/*! Where the documentation come from. */
-	const enum ast_doc_src docsrc;
+	enum ast_doc_src docsrc;
 	/*! Pointer to module that registered the agi command */
 	struct ast_module *mod;
 	/*! Linked list pointer */
@@ -69,13 +68,10 @@ typedef struct agi_command {
  *
  * \param mod Pointer to the module_info structure for the module that is registering the command
  * \param cmd Pointer to the descriptor for the command
- * \retval 1 on success
- * \retval 0 the command is already registered
- * \retval AST_OPTIONAL_API_UNAVAILABLE the module is not loaded.
+ * \return 1 on success, 0 if the command is already registered
+ *
  */
-AST_OPTIONAL_API(int, ast_agi_register,
-		 (struct ast_module *mod, agi_command *cmd),
-		 { return AST_OPTIONAL_API_UNAVAILABLE; });
+int ast_agi_register(struct ast_module *mod, agi_command *cmd) attribute_weak;
 
 /*!
  * \brief
@@ -87,9 +83,7 @@ AST_OPTIONAL_API(int, ast_agi_register,
  * \return 1 on success, 0 if the command was not already registered
  *
  */
-AST_OPTIONAL_API(int, ast_agi_unregister,
-		 (struct ast_module *mod, agi_command *cmd),
-		 { return AST_OPTIONAL_API_UNAVAILABLE; });
+int ast_agi_unregister(struct ast_module *mod, agi_command *cmd) attribute_weak;
 
 /*!
  * \brief
@@ -100,15 +94,13 @@ AST_OPTIONAL_API(int, ast_agi_unregister,
  * \param mod Pointer to the module_info structure for the module that is registering the commands
  * \param cmd Pointer to the first entry in the array of command descriptors
  * \param len Length of the array (use the ARRAY_LEN macro to determine this easily)
- * \return 0 on success, -1 on failure, AST_OPTIONAL_API_UNAVAILABLE if res_agi is not loaded
+ * \return 0 on success, -1 on failure
  *
  * \note If any command fails to register, all commands previously registered during the operation
  * will be unregistered. In other words, this function registers all the provided commands, or none
  * of them.
  */
-AST_OPTIONAL_API(int, ast_agi_register_multiple,
-		 (struct ast_module *mod, struct agi_command *cmd, unsigned int len),
-		 { return AST_OPTIONAL_API_UNAVAILABLE; });
+int ast_agi_register_multiple(struct ast_module *mod, struct agi_command *cmd, unsigned int len) attribute_weak;
 
 /*!
  * \brief
@@ -119,14 +111,12 @@ AST_OPTIONAL_API(int, ast_agi_register_multiple,
  * \param mod Pointer to the module_info structure for the module that is unregistering the commands
  * \param cmd Pointer to the first entry in the array of command descriptors
  * \param len Length of the array (use the ARRAY_LEN macro to determine this easily)
- * \return 0 on success, -1 on failure, AST_OPTIONAL_API_UNAVAILABLE if res_agi is not loaded
+ * \return 0 on success, -1 on failure
  *
  * \note If any command fails to unregister, this function will continue to unregister the
  * remaining commands in the array; it will not reregister the already-unregistered commands.
  */
-AST_OPTIONAL_API(int, ast_agi_unregister_multiple,
-		 (struct ast_module *mod, struct agi_command *cmd, unsigned int len),
-		 { return AST_OPTIONAL_API_UNAVAILABLE; });
+int ast_agi_unregister_multiple(struct ast_module *mod, struct agi_command *cmd, unsigned int len) attribute_weak;
 
 /*!
  * \brief
@@ -136,12 +126,10 @@ AST_OPTIONAL_API(int, ast_agi_unregister_multiple,
  * \param fd The file descriptor for the AGI session (from struct agi_state)
  * \param chan Pointer to an associated Asterisk channel, if any
  * \param fmt printf-style format string
- * \return 0 for success, -1 for failure, AST_OPTIONAL_API_UNAVAILABLE if res_agi is not loaded
+ * \return 0 for success, -1 for failure
  *
  */
-AST_OPTIONAL_API_ATTR(int, format(printf, 3, 4), ast_agi_send,
-		      (int fd, struct ast_channel *chan, char *fmt, ...),
-		      { return AST_OPTIONAL_API_UNAVAILABLE; });
+int ast_agi_send(int fd, struct ast_channel *chan, char *fmt, ...) attribute_weak __attribute__((format(printf, 3, 4)));
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

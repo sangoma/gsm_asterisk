@@ -66,11 +66,6 @@ static force_inline int attribute_pure ast_strlen_zero(const char *s)
 }
 #endif
 
-#ifdef SENSE_OF_HUMOR
-#define ast_strlen_real(a)	(a) ? strlen(a) : 0
-#define ast_strlen_imaginary(a)	ast_random()
-#endif
-
 /*! \brief returns the equivalent of logic or for strings:
  * first one if not empty, otherwise second one.
  */
@@ -286,7 +281,7 @@ int attribute_pure ast_false(const char *val);
  * string.  It will also place a space in the result buffer in between each
  * string from 'w'.
 */
-void ast_join(char *s, size_t len, const char * const w[]);
+void ast_join(char *s, size_t len, char * const w[]);
 
 /*
   \brief Parse a time (integer) string.
@@ -464,7 +459,7 @@ void ast_str_trim_blanks(struct ast_str *buf),
  * \param buf A pointer to the ast_str structure.
  */
 AST_INLINE_API(
-size_t attribute_pure ast_str_strlen(const struct ast_str *buf),
+size_t attribute_pure ast_str_strlen(struct ast_str *buf),
 {
 	return buf->__AST_STR_USED;
 }
@@ -475,7 +470,7 @@ size_t attribute_pure ast_str_strlen(const struct ast_str *buf),
  * \retval Current maximum length of the buffer.
  */
 AST_INLINE_API(
-size_t attribute_pure ast_str_size(const struct ast_str *buf),
+size_t attribute_pure ast_str_size(struct ast_str *buf),
 {
 	return buf->__AST_STR_LEN;
 }
@@ -486,13 +481,9 @@ size_t attribute_pure ast_str_size(const struct ast_str *buf),
  * \retval A pointer to the enclosed string.
  */
 AST_INLINE_API(
-char * attribute_pure ast_str_buffer(const struct ast_str *buf),
+char * attribute_pure ast_str_buffer(struct ast_str *buf),
 {
-	/* for now, cast away the const qualifier on the pointer
-	 * being returned; eventually, it should become truly const
-	 * and only be modified via accessor functions
-	 */
-	return (char *) buf->__AST_STR_STR;
+	return buf->__AST_STR_STR;
 }
 )
 
@@ -868,25 +859,6 @@ int __attribute__((format(printf, 3, 4))) ast_str_append(
 	va_end(ap);
 
 	return res;
-}
-)
-
-/*!
- * \brief Check if a string is only digits
- *
- * \retval 1 The string contains only digits
- * \retval 0 The string contains non-digit characters
- */
-AST_INLINE_API(
-int ast_check_digits(const char *arg),
-{
-	while (*arg) {
-		if (*arg < '0' || *arg > '9') {
-			return 0;
-		}
-		arg++;
-	}
-	return 1;
 }
 )
 

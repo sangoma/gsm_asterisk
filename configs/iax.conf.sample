@@ -16,7 +16,7 @@
 				; bindaddr if followed by colon and port
 				;  (e.g. bindaddr=192.168.0.1:4569)
 ;bindaddr=192.168.0.1		; more than once to bind to multiple
-;                               ; addresses, but the first will be the
+;                               ; addresses, but the first will be the 
 ;                               ; default
 ;
 ; Set iaxcompat to yes if you plan to use layered switches or
@@ -36,7 +36,7 @@
 ;
 ; For increased security against brute force password attacks
 ; enable "delayreject" which will delay the sending of authentication
-; reject for REGREQ or AUTHREP if there is a password.
+; reject for REGREQ or AUTHREP if there is a password.  
 ;
 ;delayreject=yes
 ;
@@ -60,7 +60,7 @@
 ;
 ;accountcode=lss0101
 ;
-; You may specify a global default language for users.
+; You may specify a global default language for users. 
 ; Can be specified also on a per-user basis
 ; If omitted, will fallback to english
 ;
@@ -111,7 +111,7 @@ disallow=lpc10			; Icky sound quality...  Mr. Roboto.
 ;
 ; forcejitterbuffer=yes|no: in the ideal world, when we bridge VoIP channels
 ; we don't want to do jitterbuffering on the switch, since the endpoints
-; can each handle this.  However, some endpoints may have poor jitterbuffers
+; can each handle this.  However, some endpoints may have poor jitterbuffers 
 ; themselves, so this option will force * to always jitterbuffer, even in this
 ; case.
 ;
@@ -158,7 +158,7 @@ forcejitterbuffer=no
 ; encryption = yes
 ;
 ; Force encryption insures no connection is established unless both sides support
-; encryption.  By turning this option on, encryption is automatically turned on as well.
+; encryption.  By turning this option on, encryption is automatically turned on as well.  
 ;
 ; forceencryption = yes
 
@@ -228,7 +228,7 @@ forcejitterbuffer=no
 ; Sample Registration for iaxtel
 ;
 ; Visit http://www.iaxtel.com to register with iaxtel.  Replace "user"
-; and "pass" with your username and password for iaxtel.  Incoming
+; and "pass" with your username and password for iaxtel.  Incoming 
 ; calls arrive at the "s" extension of "default" context.
 ;
 ;register => user:pass@iaxtel.com
@@ -244,22 +244,13 @@ forcejitterbuffer=no
 ;
 ;register => FWDNumber:passwd@iax.fwdnet.net
 ;
-; Through the use of the res_stun_monitor module, Asterisk has the ability to detect when the
-; perceived external network address has changed.  When the stun_monitor is installed and
-; configured, chan_iax will renew all outbound registrations when the monitor detects any sort
-; of network change has occurred. By default this option is enabled, but only takes effect once
-; res_stun_monitor is configured.  If res_stun_monitor is enabled and you wish to not
-; generate all outbound registrations on a network change, use the option below to disable
-; this feature.
 ;
-; subscribe_network_change_event = yes ; on by default
-;
-; You can enable authentication debugging to increase the amount of
+; You can disable authentication debugging to reduce the amount of 
 ; debugging traffic.
 ;
-;authdebug = yes
+;authdebug=no
 ;
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of these parameters.
 ;tos=ef
 ;cos=5
 ;
@@ -282,7 +273,7 @@ forcejitterbuffer=no
 autokill=yes
 ;
 ; codecpriority controls the codec negotiation of an inbound IAX call.
-; This option is inherited to all user entities.  It can also be defined
+; This option is inherited to all user entities.  It can also be defined 
 ; in each user entity separately which will override the setting in general.
 ;
 ; The valid values are:
@@ -313,9 +304,6 @@ autokill=yes
 			; just like friends added from the config file only on a
 			; as-needed basis? (yes|no)
 
-;rtsavesysname=yes    ; Save systemname in realtime database at registration
-                      ; Default = no
-
 ;rtupdate=yes		; Send registry updates to database using realtime? (yes|no)
 			; If set to yes, when a IAX2 peer registers successfully,
 			; the ip address, the origination port, the registration period,
@@ -336,7 +324,6 @@ autokill=yes
 ;parkinglot=edvina		; Default parkinglot for IAX peers and users
 				; This can also be configured per device
 				; Parkinglots are defined in features.conf
-
 
 ;
 ; The following two options are used to disable call token validation for the
@@ -453,7 +440,7 @@ inkeys=freeworlddialup
 ; across the net.  "md5" uses a challenge/response md5 sum arrangement, but
 ; still requires both ends have plain text access to the secret.  "rsa" allows
 ; unidirectional secret knowledge through public/private keys.  If "rsa"
-; authentication is used, "inkeys" is a list of acceptable public keys on the
+; authentication is used, "inkeys" is a list of acceptable public keys on the 
 ; local system that can be used to authenticate the remote peer, separated by
 ; the ":" character.  "outkey" is a single, private key to use to authenticate
 ; to the other side.  Public keys are named /var/lib/asterisk/keys/<name>.pub
@@ -478,7 +465,7 @@ inkeys=freeworlddialup
                                                 ; an attended transfer.
 ;dbsecret=mysecrets/place	; Secrets can be stored in astdb, too
 ;transfer=no		; Disable IAX native transfer
-;transfer=mediaonly	; When doing IAX native transfers, transfer
+;transfer=mediaonly	; When doing IAX native transfers, transfer 
 			; only media stream
 ;jitterbuffer=yes	; Override global setting an enable jitter buffer
 ;			; for this user
@@ -491,10 +478,10 @@ inkeys=freeworlddialup
 ;language=en		; Use english as default language
 ;encryption=yes ; Enable IAX2 encryption.  The default is no.
 ;keyrotate=off ; This is a compatibility option for older versions of
-;              ; IAX2 that do not support key rotation with encryption.
-;              ; This option will disable the IAX_COMMAND_RTENC message.
+;              ; IAX2 that do not support key rotation with encryption. 
+;              ; This option will disable the IAX_COMMAND_RTENC message. 
 ;              ; default is on.
-;              ;
+;              ; 
 ;
 ; Peers may also be specified, with a secret and
 ; a remote hostname.
@@ -504,7 +491,6 @@ type=peer
 username=asterisk
 secret=supersecret
 host=216.207.245.47
-description=Demo System At Digium	; Description of this peer, as listed by 'iax2 show peers'
 ;sendani=no
 ;host=asterisk.linux-support.net
 ;port=5036
@@ -521,10 +507,10 @@ description=Demo System At Digium	; Description of this peer, as listed by 'iax2
 ;
 ;encryption=yes ; Enable IAX2 encryption.  The default is no.
 ;keyrotate=off ; This is a compatibility option for older versions of
-;              ; IAX2 that do not support key rotation with encryption.
-;              ; This option will disable the IAX_COMMAND_RTENC message.
+;              ; IAX2 that do not support key rotation with encryption. 
+;              ; This option will disable the IAX_COMMAND_RTENC message. 
 ;              ; default is on.
-;              ;
+;              ; 
 ; Peers can remotely register as well, so that they can be mobile.  Default
 ; IP's can also optionally be given but are not required.  Caller*ID can be
 ; suggested to the other side as well if it is for example a phone instead of
@@ -545,7 +531,6 @@ description=Demo System At Digium	; Description of this peer, as listed by 'iax2
 ;[biggateway]
 ;type=peer
 ;host=192.168.0.1
-;description=Gateway to PSTN
 ;context=*
 ;secret=myscret
 ;trunk=yes			; Use IAX2 trunking with this host

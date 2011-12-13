@@ -25,10 +25,6 @@
  * \ingroup bridges
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
 ASTERISK_FILE_VERSION(__FILE__, "$Revision$")
@@ -79,7 +75,7 @@ static struct ast_channel *dial_transfer(const struct ast_channel *caller, const
 	snprintf(destination, sizeof(destination), "%s@%s", exten, context);
 
 	/* Now we request that chan_local prepare to call the destination */
-	if (!(chan = ast_request("Local", caller->nativeformats, caller, destination, &cause))) {
+	if (!(chan = ast_request("Local", caller->nativeformats, destination, &cause))) {
 		return NULL;
 	}
 
@@ -202,12 +198,12 @@ static int feature_attended_transfer(struct ast_bridge *bridge, struct ast_bridg
 	ast_bridge_features_enable(&caller_features, AST_BRIDGE_BUILTIN_HANGUP,
 				   (attended_transfer && !ast_strlen_zero(attended_transfer->complete) ? attended_transfer->complete : "*1"), NULL);
 	ast_bridge_features_hook(&caller_features, (attended_transfer && !ast_strlen_zero(attended_transfer->threeway) ? attended_transfer->threeway : "*2"),
-				 attended_threeway_transfer, NULL, NULL);
+				 attended_threeway_transfer, NULL);
 	ast_bridge_features_hook(&caller_features, (attended_transfer && !ast_strlen_zero(attended_transfer->abort) ? attended_transfer->abort : "*3"),
-				 attended_abort_transfer, NULL, NULL);
+				 attended_abort_transfer, NULL);
 
 	/* But for the caller we want to join the bridge in a blocking fashion so we don't spin around in this function doing nothing while waiting */
-	attended_bridge_result = ast_bridge_join(attended_bridge, bridge_channel->chan, NULL, &caller_features, NULL);
+	attended_bridge_result = ast_bridge_join(attended_bridge, bridge_channel->chan, NULL, &caller_features);
 
 	/* Since the above returned the caller features structure is of no more use */
 	ast_bridge_features_cleanup(&caller_features);

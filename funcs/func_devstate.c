@@ -30,13 +30,9 @@
  *       when I couldn't sleep.  :)
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 193336 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -259,8 +255,8 @@ static char *handle_cli_devstate_change(struct ast_cli_entry *e, int cmd, struct
 		return NULL;
 	case CLI_GENERATE:
 	{
-		static const char * const cmds[] = { "UNKNOWN", "NOT_INUSE", "INUSE", "BUSY",
-						     "UNAVAILABLE", "RINGING", "RINGINUSE", "ONHOLD", NULL };
+		static char * const cmds[] = { "UNKNOWN", "NOT_INUSE", "INUSE", "BUSY",
+			"UNAVAILABLE", "RINGING", "RINGINUSE", "ONHOLD", NULL };
 
 		if (a->pos == e->args + 1)
 			return ast_cli_complete(a->word, cmds, a->n);
@@ -353,8 +349,4 @@ static int load_module(void)
 	return res;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Gets or sets a device state in the dialplan",
-	.load = load_module,
-	.unload = unload_module,
-	.load_pri = AST_MODPRI_DEVSTATE_PROVIDER,
-);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Gets or sets a device state in the dialplan");

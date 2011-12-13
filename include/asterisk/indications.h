@@ -27,8 +27,6 @@
 #define _ASTERISK_INDICATIONS_H
 
 #include "asterisk/astobj2.h"
-#include "asterisk/utils.h"
-#include "asterisk/data.h"
 
 /*!
  * \brief Description of a tone
@@ -62,8 +60,6 @@ struct ast_tone_zone_sound {
 	};
 };
 
-#define MAX_TONEZONE_COUNTRY 16
-
 /*!
  * \brief A set of tones for a given locale
  *
@@ -74,7 +70,7 @@ struct ast_tone_zone_sound {
  */
 struct ast_tone_zone {
 	/*! \brief Country code that this set of tones is for */
-	char country[MAX_TONEZONE_COUNTRY];
+	char country[5];
 	/*! 
 	 * \brief Text description of the given country.
 	 *
@@ -240,13 +236,5 @@ static inline struct ast_tone_zone_sound *ast_tone_zone_sound_ref(struct ast_ton
 	ao2_ref(ts, +1);
 	return ts;
 }
-
-/*!
- * \brief Add a tone_zone structure to the data tree specified.
- *
- * \retval <0 on error.
- * \retval 0 on success.
- */
-int ast_tone_zone_data_add_structure(struct ast_data *tree, struct ast_tone_zone *zone);
 
 #endif /* _ASTERISK_INDICATIONS_H */

@@ -24,21 +24,20 @@ keepalive=120
 
 ; If regcontext is specified, Asterisk will dynamically create and destroy a
 ; NoOp priority 1 extension for a given line which registers or unregisters with
-; us and have a "regexten=" configuration item.
-; Multiple contexts may be specified by separating them with '&'. The
+; us and have a "regexten=" configuration item.  
+; Multiple contexts may be specified by separating them with '&'. The 
 ; actual extension is the 'regexten' parameter of the registering line or its
 ; name if 'regexten' is not provided.  If more than one context is provided,
 ; the context must be specified within regexten by appending the desired
-; context after '@'.  More than one regexten may be supplied if they are
+; context after '@'.  More than one regexten may be supplied if they are 
 ; separated by '&'.  Patterns may be used in regexten.
 ;
 ;regcontext=skinnyregistrations
 
-;allow=all		; see https://wiki.asterisk.org/wiki/display/AST/RTP+Packetization
-			; for framing options
+;allow=all		; see doc/rtp-packetization for framing options
 ;disallow=
 
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of these parameters.
 ;tos=cs3		; Sets TOS for signaling packets.
 ;tos_audio=ef		; Sets TOS for RTP audio packets.
 ;tos_video=af41		; Sets TOS for RTP video packets.
@@ -103,7 +102,7 @@ keepalive=120
 ;vmexten=8500			; Device level voicemailmain pilot number
 ;regexten=100
 ;context=inbound
-;linelabel="Support Line"	; Displays next to the line
+;linelabel="Support Line"	; Displays next to the line 
 				; button on 7940's and 7960s
 ;[110]
 ;callerid="John Chambers" <408-526-4000>

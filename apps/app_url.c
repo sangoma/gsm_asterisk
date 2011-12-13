@@ -24,14 +24,10 @@
  * 
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339778 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 154542 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -86,22 +82,22 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339778 $")
 
 static char *app = "SendURL";
 
-enum option_flags {
+enum {
 	OPTION_WAIT = (1 << 0),
-};
+} option_flags;
 
 AST_APP_OPTIONS(app_opts,{
 	AST_APP_OPTION('w', OPTION_WAIT),
 });
 
-static int sendurl_exec(struct ast_channel *chan, const char *data)
+static int sendurl_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	char *tmp;
 	struct ast_frame *f;
 	char *status = "FAILURE";
 	char *opts[0];
-	struct ast_flags flags = { 0 };
+	struct ast_flags flags;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(url);
 		AST_APP_ARG(options);
@@ -143,7 +139,7 @@ static int sendurl_exec(struct ast_channel *chan, const char *data)
 				break;
 			}
 			if (f->frametype == AST_FRAME_HTML) {
-				switch (f->subclass.integer) {
+				switch(f->subclass) {
 				case AST_HTML_LDCOMPLETE:
 					res = 0;
 					ast_frfree(f);
@@ -158,7 +154,7 @@ static int sendurl_exec(struct ast_channel *chan, const char *data)
 					goto out;
 					break;
 				default:
-					ast_log(LOG_WARNING, "Don't know what to do with HTML subclass %d\n", f->subclass.integer);
+					ast_log(LOG_WARNING, "Don't know what to do with HTML subclass %d\n", f->subclass);
 				};
 			}
 			ast_frfree(f);

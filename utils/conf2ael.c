@@ -24,11 +24,10 @@
 
 /*** MODULEINFO
 	<depend>res_ael_share</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 298957 $")
 
 #include "asterisk/paths.h"	/* CONFIG_DIR */
 #include <locale.h>
@@ -570,7 +569,7 @@ int main(int argc, char **argv)
 
 /* ==================================== for linking internal stuff to external stuff */
 
-int pbx_builtin_setvar(struct ast_channel *chan, const char *data)
+int pbx_builtin_setvar(struct ast_channel *chan, void *data)
 {
 	return localized_pbx_builtin_setvar(chan, data);
 }

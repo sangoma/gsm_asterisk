@@ -26,13 +26,10 @@
  * \author Claude Klimos (claude.klimos@aheeva.com)
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 277188 $")
 
 #include "asterisk/module.h"
 #include "asterisk/lock.h"
@@ -127,7 +124,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
  ***/
 
-static const char app[] = "AMD";
+static char *app = "AMD";
 
 #define STATE_IN_WORD       1
 #define STATE_IN_SILENCE    2
@@ -146,13 +143,12 @@ static int dfltMaximumWordLength    = 5000; /* Setting this to a large default s
 /* Set to the lowest ms value provided in amd.conf or application parameters */
 static int dfltMaxWaitTimeForFrame  = 50;
 
-static void isAnsweringMachine(struct ast_channel *chan, const char *data)
+static void isAnsweringMachine(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_frame *f = NULL;
 	struct ast_dsp *silenceDetector = NULL;
-	int dspsilence = 0, framelength = 0;
-	struct ast_format readFormat;
+	int dspsilence = 0, readFormat, framelength = 0;
 	int inInitialSilence = 1;
 	int inGreeting = 0;
 	int voiceDuration = 0;
@@ -160,6 +156,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 	int iTotalTime = 0;
 	int iWordsCount = 0;
 	int currentState = STATE_IN_WORD;
+	int previousState = STATE_IN_SILENCE;
 	int consecutiveVoiceDuration = 0;
 	char amdCause[256] = "", amdStatus[256] = "";
 	char *parse = ast_strdupa(data);
@@ -191,11 +188,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 		AST_APP_ARG(argMaximumWordLength);
 	);
 
-	ast_format_clear(&readFormat);
-	ast_verb(3, "AMD: %s %s %s (Fmt: %s)\n", chan->name,
-		S_COR(chan->caller.ani.number.valid, chan->caller.ani.number.str, "(N/A)"),
-		S_COR(chan->redirecting.from.number.valid, chan->redirecting.from.number.str, "(N/A)"),
-		ast_getformatname(&chan->readformat));
+	ast_verb(3, "AMD: %s %s %s (Fmt: %d)\n", chan->name ,chan->cid.cid_ani, chan->cid.cid_rdnis, chan->readformat);
 
 	/* Lets parse the arguments. */
 	if (!ast_strlen_zero(parse)) {
@@ -244,8 +237,8 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 				minimumWordLength, betweenWordsSilence, maximumNumberOfWords, silenceThreshold, maximumWordLength);
 
 	/* Set read format to signed linear so we get signed linear frames in */
-	ast_format_copy(&readFormat, &chan->readformat);
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR) < 0 ) {
+	readFormat = chan->readformat;
+	if (ast_set_read_format(chan, AST_FORMAT_SLINEAR) < 0 ) {
 		ast_log(LOG_WARNING, "AMD: Channel [%s]. Unable to set to linear mode, giving up\n", chan->name );
 		pbx_builtin_setvar_helper(chan , "AMDSTATUS", "");
 		pbx_builtin_setvar_helper(chan , "AMDCAUSE", "");
@@ -305,6 +298,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 				
 				if (silenceDuration >= betweenWordsSilence) {
 					if (currentState != STATE_IN_SILENCE ) {
+						previousState = currentState;
 						ast_verb(3, "AMD: Channel [%s]. Changed state to STATE_IN_SILENCE\n", chan->name);
 					}
 					/* Find words less than word duration */
@@ -344,6 +338,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 				if (consecutiveVoiceDuration >= minimumWordLength && currentState == STATE_IN_SILENCE) {
 					iWordsCount++;
 					ast_verb(3, "AMD: Channel [%s]. Word detected. iWordsCount:%d\n", chan->name, iWordsCount);
+					previousState = currentState;
 					currentState = STATE_IN_WORD;
 				}
 				if (consecutiveVoiceDuration >= maximumWordLength){
@@ -401,7 +396,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 	pbx_builtin_setvar_helper(chan , "AMDCAUSE" , amdCause);
 
 	/* Restore channel read format */
-	if (readFormat.id && ast_set_read_format(chan, &readFormat))
+	if (readFormat && ast_set_read_format(chan, readFormat))
 		ast_log(LOG_WARNING, "AMD: Unable to restore read format on '%s'\n", chan->name);
 
 	/* Free the DSP used to detect silence */
@@ -411,7 +406,7 @@ static void isAnsweringMachine(struct ast_channel *chan, const char *data)
 }
 
 
-static int amd_exec(struct ast_channel *chan, const char *data)
+static int amd_exec(struct ast_channel *chan, void *data)
 {
 	isAnsweringMachine(chan, data);
 

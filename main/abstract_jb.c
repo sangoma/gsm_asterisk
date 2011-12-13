@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 314509 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 297311 $")
 
 #include "asterisk/frame.h"
 #include "asterisk/channel.h"
@@ -49,6 +49,43 @@ enum {
 	JB_CREATED =              (1 << 2)
 };
 
+/* Hooks for the abstract jb implementation */
+
+/*! \brief Create */
+typedef void * (*jb_create_impl)(struct ast_jb_conf *general_config, long resynch_threshold);
+/*! \brief Destroy */
+typedef void (*jb_destroy_impl)(void *jb);
+/*! \brief Put first frame */
+typedef int (*jb_put_first_impl)(void *jb, struct ast_frame *fin, long now);
+/*! \brief Put frame */
+typedef int (*jb_put_impl)(void *jb, struct ast_frame *fin, long now);
+/*! \brief Get frame for now */
+typedef int (*jb_get_impl)(void *jb, struct ast_frame **fout, long now, long interpl);
+/*! \brief Get next */
+typedef long (*jb_next_impl)(void *jb);
+/*! \brief Remove first frame */
+typedef int (*jb_remove_impl)(void *jb, struct ast_frame **fout);
+/*! \brief Force resynch */
+typedef void (*jb_force_resynch_impl)(void *jb);
+/*! \brief Empty and reset jb */
+typedef void (*jb_empty_and_reset_impl)(void *jb);
+
+/*!
+ * \brief Jitterbuffer implementation private struct.
+ */
+struct ast_jb_impl
+{
+	char name[AST_JB_IMPL_NAME_SIZE];
+	jb_create_impl create;
+	jb_destroy_impl destroy;
+	jb_put_first_impl put_first;
+	jb_put_impl put;
+	jb_get_impl get;
+	jb_next_impl next;
+	jb_remove_impl remove;
+	jb_force_resynch_impl force_resync;
+	jb_empty_and_reset_impl empty_and_reset;
+};
 
 /* Implementation functions */
 /* fixed */
@@ -73,10 +110,10 @@ static void jb_force_resynch_adaptive(void *jb);
 static void jb_empty_and_reset_adaptive(void *jb);
 
 /* Available jb implementations */
-static const struct ast_jb_impl avail_impl[] = {
+static struct ast_jb_impl avail_impl[] =
+{
 	{
 		.name = "fixed",
-		.type = AST_JB_FIXED,
 		.create = jb_create_fixed,
 		.destroy = jb_destroy_fixed,
 		.put_first = jb_put_first_fixed,
@@ -89,7 +126,6 @@ static const struct ast_jb_impl avail_impl[] = {
 	},
 	{
 		.name = "adaptive",
-		.type = AST_JB_ADAPTIVE,
 		.create = jb_create_adaptive,
 		.destroy = jb_destroy_adaptive,
 		.put_first = jb_put_first_adaptive,
@@ -104,14 +140,23 @@ static const struct ast_jb_impl avail_impl[] = {
 
 static int default_impl = 0;
 
+
+/*! Abstract return codes */
+enum {
+	JB_IMPL_OK,
+	JB_IMPL_DROP,
+	JB_IMPL_INTERP,
+	JB_IMPL_NOFRAME
+};
+
 /* Translations between impl and abstract return codes */
-static const int fixed_to_abstract_code[] =
-	{AST_JB_IMPL_OK, AST_JB_IMPL_DROP, AST_JB_IMPL_INTERP, AST_JB_IMPL_NOFRAME};
-static const int adaptive_to_abstract_code[] =
-	{AST_JB_IMPL_OK, AST_JB_IMPL_NOFRAME, AST_JB_IMPL_NOFRAME, AST_JB_IMPL_INTERP, AST_JB_IMPL_DROP, AST_JB_IMPL_OK};
+static int fixed_to_abstract_code[] =
+	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME};
+static int adaptive_to_abstract_code[] =
+	{JB_IMPL_OK, JB_IMPL_NOFRAME, JB_IMPL_NOFRAME, JB_IMPL_INTERP, JB_IMPL_DROP, JB_IMPL_OK};
 
 /* JB_GET actions (used only for the frames log) */
-static const char * const jb_get_actions[] = {"Delivered", "Dropped", "Interpolated", "No"};
+static char *jb_get_actions[] = {"Delivered", "Dropped", "Interpolated", "No"};
 
 /*! \brief Macros for the frame log files */
 #define jb_framelog(...) do { \
@@ -136,7 +181,7 @@ static void jb_choose_impl(struct ast_channel *chan)
 {
 	struct ast_jb *jb = &chan->jb;
 	struct ast_jb_conf *jbconf = &jb->conf;
-	const struct ast_jb_impl *test_impl;
+	struct ast_jb_impl *test_impl;
 	int i, avail_impl_count = ARRAY_LEN(avail_impl);
 
 	jb->impl = &avail_impl[default_impl];
@@ -258,7 +303,7 @@ int ast_jb_get_when_to_wakeup(struct ast_channel *c0, struct ast_channel *c1, in
 int ast_jb_put(struct ast_channel *chan, struct ast_frame *f)
 {
 	struct ast_jb *jb = &chan->jb;
-	const struct ast_jb_impl *jbimpl = jb->impl;
+	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *frr;
 	long now = 0;
@@ -302,7 +347,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f)
 		return 0;
 	} else {
 		now = get_now(jb, NULL);
-		if (jbimpl->put(jbobj, frr, now) != AST_JB_IMPL_OK) {
+		if (jbimpl->put(jbobj, frr, now) != JB_IMPL_OK) {
 			jb_framelog("JB_PUT {now=%ld}: Dropped frame with ts=%ld and len=%ld\n", now, frr->ts, frr->len);
 			ast_frfree(frr);
 			/*return -1;*/
@@ -340,7 +385,7 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct ast_channel *c1)
 static void jb_get_and_deliver(struct ast_channel *chan)
 {
 	struct ast_jb *jb = &chan->jb;
-	const struct ast_jb_impl *jbimpl = jb->impl;
+	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *f, finterp = { .frametype = AST_FRAME_VOICE, };
 	long now;
@@ -354,24 +399,24 @@ static void jb_get_and_deliver(struct ast_channel *chan)
 	}
 
 	while (now >= jb->next) {
-		interpolation_len = ast_codec_interp_len(&jb->last_format);
+		interpolation_len = ast_codec_interp_len(jb->last_format);
 
 		res = jbimpl->get(jbobj, &f, now, interpolation_len);
 
 		switch (res) {
-		case AST_JB_IMPL_OK:
+		case JB_IMPL_OK:
 			/* deliver the frame */
 			ast_write(chan, f);
-		case AST_JB_IMPL_DROP:
+		case JB_IMPL_DROP:
 			jb_framelog("\tJB_GET {now=%ld}: %s frame with ts=%ld and len=%ld\n",
 				now, jb_get_actions[res], f->ts, f->len);
-			ast_format_copy(&jb->last_format, &f->subclass.format);
+			jb->last_format = f->subclass;
 			ast_frfree(f);
 			break;
-		case AST_JB_IMPL_INTERP:
+		case JB_IMPL_INTERP:
 			/* interpolate a frame */
 			f = &finterp;
-			ast_format_copy(&f->subclass.format, &jb->last_format);
+			f->subclass = jb->last_format;
 			f->samples  = interpolation_len * 8;
 			f->src  = "JB interpolation";
 			f->delivery = ast_tvadd(jb->timebase, ast_samp2tv(jb->next, 1000));
@@ -380,9 +425,9 @@ static void jb_get_and_deliver(struct ast_channel *chan)
 			ast_write(chan, f);
 			jb_framelog("\tJB_GET {now=%ld}: Interpolated frame with len=%d\n", now, interpolation_len);
 			break;
-		case AST_JB_IMPL_NOFRAME:
+		case JB_IMPL_NOFRAME:
 			ast_log(LOG_WARNING,
-				"AST_JB_IMPL_NOFRAME is returned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n",
+				"JB_IMPL_NOFRAME is returned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n",
 				jbimpl->name, now, jb->next, jbimpl->next(jbobj));
 			jb_framelog("\tJB_GET {now=%ld}: No frame for now!?\n", now);
 			return;
@@ -401,7 +446,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 {
 	struct ast_jb *jb = &chan->jb;
 	struct ast_jb_conf *jbconf = &jb->conf;
-	const struct ast_jb_impl *jbimpl = jb->impl;
+	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj;
 	struct ast_channel *bridged;
 	long now;
@@ -420,7 +465,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 
 	/* The result of putting the first frame should not differ from OK. However, its possible
 	   some implementations (i.e. adaptive's when resynch_threshold is specified) to drop it. */
-	if (res != AST_JB_IMPL_OK) {
+	if (res != JB_IMPL_OK) {
 		ast_log(LOG_WARNING, "Failed to put first frame in the jitterbuffer on channel '%s'\n", chan->name);
 		/*
 		jbimpl->destroy(jbobj);
@@ -432,7 +477,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 	jb->next = jbimpl->next(jbobj);
 
 	/* Init last format for a first time. */
-	ast_format_copy(&jb->last_format, &frr->subclass.format);
+	jb->last_format = frr->subclass;
 
 	/* Create a frame log file */
 	if (ast_test_flag(jbconf, AST_JB_LOG)) {
@@ -464,7 +509,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 			}
 		}
 
-		if (res == AST_JB_IMPL_OK) {
+		if (res == JB_IMPL_OK) {
 			jb_framelog("JB_PUT_FIRST {now=%ld}: Queued frame with ts=%ld and len=%ld\n",
 				now, frr->ts, frr->len);
 		} else {
@@ -476,7 +521,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 	ast_verb(3, "%s jitterbuffer created on channel %s\n", jbimpl->name, chan->name);
 
 	/* Free the frame if it has not been queued in the jb */
-	if (res != AST_JB_IMPL_OK) {
+	if (res != JB_IMPL_OK) {
 		ast_frfree(frr);
 	}
 
@@ -487,7 +532,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 void ast_jb_destroy(struct ast_channel *chan)
 {
 	struct ast_jb *jb = &chan->jb;
-	const struct ast_jb_impl *jbimpl = jb->impl;
+	struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *f;
 
@@ -498,7 +543,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 
 	if (ast_test_flag(jb, JB_CREATED)) {
 		/* Remove and free all frames still queued in jb */
-		while (jbimpl->remove(jbobj, &f) == AST_JB_IMPL_OK) {
+		while (jbimpl->remove(jbobj, &f) == JB_IMPL_OK) {
 			ast_frfree(f);
 		}
 
@@ -786,15 +831,4 @@ static void jb_empty_and_reset_adaptive(void *jb)
 	}
 
 	jb_reset(adaptivejb);
-}
-
-const struct ast_jb_impl *ast_jb_get_impl(enum ast_jb_type type)
-{
-	int i;
-	for (i = 0; i < ARRAY_LEN(avail_impl); i++) {
-		if (avail_impl[i].type == type) {
-			return &avail_impl[i];
-		}
-	}
-	return NULL;
 }

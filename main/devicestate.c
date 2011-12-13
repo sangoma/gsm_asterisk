@@ -115,7 +115,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 294502 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 294500 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/channel.h"
@@ -128,7 +128,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 294502 $")
 #include "asterisk/event.h"
 
 /*! \brief Device state strings for printing */
-static const char * const devstatestring[][2] = {
+static const char *devstatestring[][2] = {
 	{ /* 0 AST_DEVICE_UNKNOWN */     "Unknown",     "UNKNOWN"     }, /*!< Valid, but unknown state */
 	{ /* 1 AST_DEVICE_NOT_INUSE */   "Not in use",  "NOT_INUSE"   }, /*!< Not used */
 	{ /* 2 AST_DEVICE IN USE */      "In use",      "INUSE"       }, /*!< In use */
@@ -190,7 +190,7 @@ struct devstate_change {
 	char device[1];
 };
 
-static struct {
+struct {
 	pthread_t thread;
 	struct ast_event_sub *event_sub;
 	ast_cond_t cond;
@@ -268,15 +268,19 @@ enum ast_device_state ast_parse_device_state(const char *device)
 	char match[AST_CHANNEL_NAME];
 	enum ast_device_state res;
 
-	snprintf(match, sizeof(match), "%s-", device);
+	ast_copy_string(match, device, sizeof(match)-1);
+	strcat(match, "-");
+	chan = ast_get_channel_by_name_prefix_locked(match, strlen(match));
 
-	if (!(chan = ast_channel_get_by_name_prefix(match, strlen(match)))) {
+	if (!chan)
 		return AST_DEVICE_UNKNOWN;
-	}
 
-	res = (chan->_state == AST_STATE_RINGING) ? AST_DEVICE_RINGING : AST_DEVICE_INUSE;
+	if (chan->_state == AST_STATE_RINGING)
+		res = AST_DEVICE_RINGING;
+	else
+		res = AST_DEVICE_INUSE;
 	
-	chan = ast_channel_unref(chan);
+	ast_channel_unlock(chan);
 
 	return res;
 }
@@ -826,7 +830,7 @@ int ast_enable_distributed_devstate(void)
 	}
 
 	devstate_collector.event_sub = ast_event_subscribe(AST_EVENT_DEVICE_STATE_CHANGE,
-		devstate_change_collector_cb, "devicestate_engine_enable_distributed", NULL, AST_EVENT_IE_END);
+		devstate_change_collector_cb, NULL, AST_EVENT_IE_END);
 
 	if (!devstate_collector.event_sub) {
 		ast_log(LOG_ERROR, "Failed to create subscription for the device state change collector\n");

@@ -31,13 +31,9 @@
  * polling thread handle it.
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 268732 $")
 
 #include <termios.h>
 #include <sys/time.h>
@@ -60,100 +56,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 /* Message expiry time in milliseconds */
 #define SMDI_MSG_EXPIRY_TIME	30000 /* 30 seconds */
-
-/*** DOCUMENTATION
-
-	<function name="SMDI_MSG_RETRIEVE" language="en_US">
-		<synopsis>
-			Retrieve an SMDI message.
-		</synopsis>
-		<syntax>
-			<parameter name="smdi port" required="true" />
-			<parameter name="search key" required="true" />
-			<parameter name="timeout" />
-			<parameter name="options">
-				<enumlist>
-					<enum name="t">
-						<para>Instead of searching on the forwarding station, search on the message desk terminal.</para>
-					</enum>
-					<enum name="n">
-						<para>Instead of searching on the forwarding station, search on the message desk number.</para>
-					</enum>
-				</enumlist>
-			</parameter>
-		</syntax>
-		<description>
-			<para>This function is used to retrieve an incoming SMDI message. It returns
-			an ID which can be used with the SMDI_MSG() function to access details of
-			the message.  Note that this is a destructive function in the sense that
-			once an SMDI message is retrieved using this function, it is no longer in
-			the global SMDI message queue, and can not be accessed by any other Asterisk
-			channels.  The timeout for this function is optional, and the default is
-			3 seconds.  When providing a timeout, it should be in milliseconds.
-			</para>
-			<para>The default search is done on the forwarding station ID. However, if
-			you set one of the search key options in the options field, you can change
-			this behavior.
-			</para>
-		</description>
-		<see-also>
-			<ref type="function">SMDI_MSG</ref>
-		</see-also>
-	</function>
-	<function name="SMDI_MSG" language="en_US">
-		<synopsis>
-			Retrieve details about an SMDI message.
-		</synopsis>
-		<syntax>
-			<parameter name="message_id" required="true" />
-			<parameter name="component" required="true">
-				<para>Valid message components are:</para>
-				<enumlist>
-					<enum name="number">
-						<para>The message desk number</para>
-					</enum>
-					<enum name="terminal">
-						<para>The message desk terminal</para>
-					</enum>
-					<enum name="station">
-						<para>The forwarding station</para>
-					</enum>
-					<enum name="callerid">
-						<para>The callerID of the calling party that was forwarded</para>
-					</enum>
-					<enum name="type">
-						<para>The call type.  The value here is the exact character
-						that came in on the SMDI link.  Typically, example values
-						are:</para>
-						<para>Options:</para>
-						<enumlist>
-							<enum name="D">
-								<para>Direct Calls</para>
-							</enum>
-							<enum name="A">
-								<para>Forward All Calls</para>
-							</enum>
-							<enum name="B">
-								<para>Forward Busy Calls</para>
-							</enum>
-							<enum name="N">
-								<para>Forward No Answer Calls</para>
-							</enum>
-						</enumlist>
-					</enum>
-				</enumlist>
-			</parameter>
-		</syntax>
-		<description>
-			<para>This function is used to access details of an SMDI message that was
-			pulled from the incoming SMDI message queue using the SMDI_MSG_RETRIEVE()
-			function.</para>
-		</description>
-		<see-also>
-			<ref type="function">SMDI_MSG_RETRIEVE</ref>
-		</see-also>
-	</function>
- ***/
 
 static const char config_file[] = "smdi.conf";
 static int smdi_loaded;
@@ -185,7 +87,7 @@ struct ast_smdi_interface {
 };
 
 /*! \brief SMDI interface container. */
-static struct ast_smdi_interface_container {
+struct ast_smdi_interface_container {
 	ASTOBJ_CONTAINER_COMPONENTS(struct ast_smdi_interface);
 } smdi_ifaces;
 
@@ -256,7 +158,7 @@ static void ast_smdi_interface_destroy(struct ast_smdi_interface *iface)
 	ast_module_unref(ast_module_info->self);
 }
 
-void AST_OPTIONAL_API_NAME(ast_smdi_interface_unref)(struct ast_smdi_interface *iface)
+void ast_smdi_interface_unref(struct ast_smdi_interface *iface)
 {
 	ASTOBJ_UNREF(iface, ast_smdi_interface_destroy);
 }
@@ -293,16 +195,16 @@ static int smdi_toggle_mwi(struct ast_smdi_interface *iface, const char *mailbox
 {
 	FILE *file;
 	int i;
-
+	
 	if (!(file = fopen(iface->name, "w"))) {
 		ast_log(LOG_ERROR, "Error opening SMDI interface %s (%s) for writing\n", iface->name, strerror(errno));
 		return 1;
-	}
-
+	}	
+	
 	ASTOBJ_WRLOCK(iface);
-
+	
 	fprintf(file, "%s:MWI ", on ? "OP" : "RMV");
-
+	
 	for (i = 0; i < iface->msdstrip; i++)
 		fprintf(file, "0");
 
@@ -316,17 +218,17 @@ static int smdi_toggle_mwi(struct ast_smdi_interface *iface, const char *mailbox
 	return 0;
 }
 
-int AST_OPTIONAL_API_NAME(ast_smdi_mwi_set)(struct ast_smdi_interface *iface, const char *mailbox)
+int ast_smdi_mwi_set(struct ast_smdi_interface *iface, const char *mailbox)
 {
 	return smdi_toggle_mwi(iface, mailbox, 1);
 }
 
-int AST_OPTIONAL_API_NAME(ast_smdi_mwi_unset)(struct ast_smdi_interface *iface, const char *mailbox)
+int ast_smdi_mwi_unset(struct ast_smdi_interface *iface, const char *mailbox)
 {
 	return smdi_toggle_mwi(iface, mailbox, 0);
 }
 
-void AST_OPTIONAL_API_NAME(ast_smdi_md_message_putback)(struct ast_smdi_interface *iface, struct ast_smdi_md_message *md_msg)
+void ast_smdi_md_message_putback(struct ast_smdi_interface *iface, struct ast_smdi_md_message *md_msg)
 {
 	ast_mutex_lock(&iface->md_q_lock);
 	ASTOBJ_CONTAINER_LINK_START(&iface->md_q, md_msg);
@@ -334,7 +236,7 @@ void AST_OPTIONAL_API_NAME(ast_smdi_md_message_putback)(struct ast_smdi_interfac
 	ast_mutex_unlock(&iface->md_q_lock);
 }
 
-void AST_OPTIONAL_API_NAME(ast_smdi_mwi_message_putback)(struct ast_smdi_interface *iface, struct ast_smdi_mwi_message *mwi_msg)
+void ast_smdi_mwi_message_putback(struct ast_smdi_interface *iface, struct ast_smdi_mwi_message *mwi_msg)
 {
 	ast_mutex_lock(&iface->mwi_q_lock);
 	ASTOBJ_CONTAINER_LINK_START(&iface->mwi_q, mwi_msg);
@@ -595,36 +497,36 @@ static void *smdi_message_wait(struct ast_smdi_interface *iface, int timeout,
 	return NULL;
 }
 
-struct ast_smdi_md_message * AST_OPTIONAL_API_NAME(ast_smdi_md_message_pop)(struct ast_smdi_interface *iface)
+struct ast_smdi_md_message *ast_smdi_md_message_pop(struct ast_smdi_interface *iface)
 {
 	return smdi_msg_pop(iface, SMDI_MD);
 }
 
-struct ast_smdi_md_message * AST_OPTIONAL_API_NAME(ast_smdi_md_message_wait)(struct ast_smdi_interface *iface, int timeout)
+struct ast_smdi_md_message *ast_smdi_md_message_wait(struct ast_smdi_interface *iface, int timeout)
 {
 	struct ast_flags options = { 0 };
 	return smdi_message_wait(iface, timeout, SMDI_MD, NULL, options);
 }
 
-struct ast_smdi_mwi_message * AST_OPTIONAL_API_NAME(ast_smdi_mwi_message_pop)(struct ast_smdi_interface *iface)
+struct ast_smdi_mwi_message *ast_smdi_mwi_message_pop(struct ast_smdi_interface *iface)
 {
 	return smdi_msg_pop(iface, SMDI_MWI);
 }
 
-struct ast_smdi_mwi_message * AST_OPTIONAL_API_NAME(ast_smdi_mwi_message_wait)(struct ast_smdi_interface *iface, int timeout)
+struct ast_smdi_mwi_message *ast_smdi_mwi_message_wait(struct ast_smdi_interface *iface, int timeout)
 {
 	struct ast_flags options = { 0 };
 	return smdi_message_wait(iface, timeout, SMDI_MWI, NULL, options);
 }
 
-struct ast_smdi_mwi_message * AST_OPTIONAL_API_NAME(ast_smdi_mwi_message_wait_station)(struct ast_smdi_interface *iface, int timeout,
+struct ast_smdi_mwi_message *ast_smdi_mwi_message_wait_station(struct ast_smdi_interface *iface, int timeout,
 	const char *station)
 {
 	struct ast_flags options = { 0 };
 	return smdi_message_wait(iface, timeout, SMDI_MWI, station, options);
 }
 
-struct ast_smdi_interface * AST_OPTIONAL_API_NAME(ast_smdi_interface_find)(const char *iface_name)
+struct ast_smdi_interface *ast_smdi_interface_find(const char *iface_name)
 {
 	return (ASTOBJ_CONTAINER_FIND(&smdi_ifaces, iface_name));
 }
@@ -647,71 +549,71 @@ static void *smdi_read(void *iface_p)
 	char *cp = NULL;
 	int i;
 	int start = 0;
-
+		
 	/* read an smdi message */
 	while ((c = fgetc(iface->file))) {
 
 		/* check if this is the start of a message */
 		if (!start) {
 			if (c == 'M') {
-				ast_debug(1, "Read an 'M' to start an SMDI message\n");
+				ast_log(LOG_DEBUG, "Read an 'M' to start an SMDI message\n");
 				start = 1;
 			}
 			continue;
 		}
-
+		
 		if (c == 'D') { /* MD message */
 			start = 0;
 
-			ast_debug(1, "Read a 'D' ... it's an MD message.\n");
+			ast_log(LOG_DEBUG, "Read a 'D' ... it's an MD message.\n");
 
 			if (!(md_msg = ast_calloc(1, sizeof(*md_msg)))) {
 				ASTOBJ_UNREF(iface, ast_smdi_interface_destroy);
 				return NULL;
 			}
-
+			
 			ASTOBJ_INIT(md_msg);
 
 			/* read the message desk number */
 			for (i = 0; i < sizeof(md_msg->mesg_desk_num) - 1; i++) {
 				md_msg->mesg_desk_num[i] = fgetc(iface->file);
-				ast_debug(1, "Read a '%c'\n", md_msg->mesg_desk_num[i]);
+				ast_log(LOG_DEBUG, "Read a '%c'\n", md_msg->mesg_desk_num[i]);
 			}
 
 			md_msg->mesg_desk_num[sizeof(md_msg->mesg_desk_num) - 1] = '\0';
-
-			ast_debug(1, "The message desk number is '%s'\n", md_msg->mesg_desk_num);
+			
+			ast_log(LOG_DEBUG, "The message desk number is '%s'\n", md_msg->mesg_desk_num);
 
 			/* read the message desk terminal number */
 			for (i = 0; i < sizeof(md_msg->mesg_desk_term) - 1; i++) {
 				md_msg->mesg_desk_term[i] = fgetc(iface->file);
-				ast_debug(1, "Read a '%c'\n", md_msg->mesg_desk_term[i]);
+				ast_log(LOG_DEBUG, "Read a '%c'\n", md_msg->mesg_desk_term[i]);
 			}
 
 			md_msg->mesg_desk_term[sizeof(md_msg->mesg_desk_term) - 1] = '\0';
 
-			ast_debug(1, "The message desk terminal is '%s'\n", md_msg->mesg_desk_term);
+			ast_log(LOG_DEBUG, "The message desk terminal is '%s'\n", md_msg->mesg_desk_term);
 
 			/* read the message type */
 			md_msg->type = fgetc(iface->file);
-
-			ast_debug(1, "Message type is '%c'\n", md_msg->type);
+		 
+			ast_log(LOG_DEBUG, "Message type is '%c'\n", md_msg->type);
 
 			/* read the forwarding station number (may be blank) */
 			cp = &md_msg->fwd_st[0];
 			for (i = 0; i < sizeof(md_msg->fwd_st) - 1; i++) {
 				if ((c = fgetc(iface->file)) == ' ') {
 					*cp = '\0';
-					ast_debug(1, "Read a space, done looking for the forwarding station\n");
+					ast_log(LOG_DEBUG, "Read a space, done looking for the forwarding station\n");
 					break;
 				}
 
 				/* store c in md_msg->fwd_st */
 				if (i >= iface->msdstrip) {
-					ast_debug(1, "Read a '%c' and stored it in the forwarding station buffer\n", c);
+					ast_log(LOG_DEBUG, "Read a '%c' and stored it in the forwarding station buffer\n", c);
 					*cp++ = c;
 				} else {
-					ast_debug(1, "Read a '%c', but didn't store it in the fwd station buffer, because of the msdstrip setting (%d < %d)\n", c, i, iface->msdstrip);
+					ast_log(LOG_DEBUG, "Read a '%c', but didn't store it in the fwd station buffer, because of the msdstrip setting (%d < %d)\n", c, i, iface->msdstrip);
 				}
 			}
 
@@ -719,7 +621,7 @@ static void *smdi_read(void *iface_p)
 			md_msg->fwd_st[sizeof(md_msg->fwd_st) - 1] = '\0';
 			cp = NULL;
 
-			ast_debug(1, "The forwarding station is '%s'\n", md_msg->fwd_st);
+			ast_log(LOG_DEBUG, "The forwarding station is '%s'\n", md_msg->fwd_st);
 
 			/* Put the fwd_st in the name field so that we can use ASTOBJ_FIND to look
 			 * up a message on this field */
@@ -730,7 +632,7 @@ static void *smdi_read(void *iface_p)
 			for (i = 0; i < sizeof(md_msg->calling_st) - 1; i++) {
 				if (!isdigit((c = fgetc(iface->file)))) {
 					*cp = '\0';
-					ast_debug(1, "Read a '%c', but didn't store it in the calling station buffer because it's not a digit\n", c);
+					ast_log(LOG_DEBUG, "Read a '%c', but didn't store it in the calling station buffer because it's not a digit\n", c);
 					if (c == ' ') {
 						/* Don't break on a space.  We may read the space before the calling station
 						 * here if the forwarding station buffer filled up. */
@@ -742,10 +644,10 @@ static void *smdi_read(void *iface_p)
 
 				/* store c in md_msg->calling_st */
 				if (i >= iface->msdstrip) {
-					ast_debug(1, "Read a '%c' and stored it in the calling station buffer\n", c);
+					ast_log(LOG_DEBUG, "Read a '%c' and stored it in the calling station buffer\n", c);
 					*cp++ = c;
 				} else {
-					ast_debug(1, "Read a '%c', but didn't store it in the calling station buffer, because of the msdstrip setting (%d < %d)\n", c, i, iface->msdstrip);
+					ast_log(LOG_DEBUG, "Read a '%c', but didn't store it in the calling station buffer, because of the msdstrip setting (%d < %d)\n", c, i, iface->msdstrip);
 				}
 			}
 
@@ -753,19 +655,19 @@ static void *smdi_read(void *iface_p)
 			md_msg->calling_st[sizeof(md_msg->calling_st) - 1] = '\0';
 			cp = NULL;
 
-			ast_debug(1, "The calling station is '%s'\n", md_msg->calling_st);
+			ast_log(LOG_DEBUG, "The calling station is '%s'\n", md_msg->calling_st);
 
 			/* add the message to the message queue */
 			md_msg->timestamp = ast_tvnow();
 			ast_smdi_md_message_push(iface, md_msg);
-			ast_debug(1, "Received SMDI MD message on %s\n", iface->name);
-
+			ast_log(LOG_DEBUG, "Received SMDI MD message on %s\n", iface->name);
+			
 			ASTOBJ_UNREF(md_msg, ast_smdi_md_message_destroy);
 
 		} else if (c == 'W') { /* MWI message */
 			start = 0;
 
-			ast_debug(1, "Read a 'W', it's an MWI message. (No more debug coming for MWI messages)\n");
+			ast_log(LOG_DEBUG, "Read a 'W', it's an MWI message. (No more debug coming for MWI messages)\n");
 
 			if (!(mwi_msg = ast_calloc(1, sizeof(*mwi_msg)))) {
 				ASTOBJ_UNREF(iface,ast_smdi_interface_destroy);
@@ -793,7 +695,7 @@ static void *smdi_read(void *iface_p)
 			/* make sure the station number is null terminated, even if this will truncate it */
 			mwi_msg->fwd_st[sizeof(mwi_msg->fwd_st) - 1] = '\0';
 			cp = NULL;
-
+			
 			/* Put the fwd_st in the name field so that we can use ASTOBJ_FIND to look
 			 * up a message on this field */
 			ast_copy_string(mwi_msg->name, mwi_msg->fwd_st, sizeof(mwi_msg->name));
@@ -807,8 +709,8 @@ static void *smdi_read(void *iface_p)
 			/* add the message to the message queue */
 			mwi_msg->timestamp = ast_tvnow();
 			ast_smdi_mwi_message_push(iface, mwi_msg);
-			ast_debug(1, "Received SMDI MWI message on %s\n", iface->name);
-
+			ast_log(LOG_DEBUG, "Received SMDI MWI message on %s\n", iface->name);
+			
 			ASTOBJ_UNREF(mwi_msg, ast_smdi_mwi_message_destroy);
 		} else {
 			ast_log(LOG_ERROR, "Unknown SMDI message type received on %s (M%c).\n", iface->name, c);
@@ -821,12 +723,12 @@ static void *smdi_read(void *iface_p)
 	return NULL;
 }
 
-void AST_OPTIONAL_API_NAME(ast_smdi_md_message_destroy)(struct ast_smdi_md_message *msg)
+void ast_smdi_md_message_destroy(struct ast_smdi_md_message *msg)
 {
 	ast_free(msg);
 }
 
-void AST_OPTIONAL_API_NAME(ast_smdi_mwi_message_destroy)(struct ast_smdi_mwi_message *msg)
+void ast_smdi_mwi_message_destroy(struct ast_smdi_mwi_message *msg)
 {
 	ast_free(msg);
 }
@@ -853,8 +755,13 @@ static void append_mailbox_mapping(struct ast_variable *var, struct ast_smdi_int
 	struct mailbox_mapping *mm;
 	char *mailbox, *context;
 
-	if (!(mm = ast_calloc_with_stringfields(1, struct mailbox_mapping, 32)))
+	if (!(mm = ast_calloc(1, sizeof(*mm))))
 		return;
+	
+	if (ast_string_field_init(mm, 32)) {
+		free(mm);
+		return;
+	}
 
 	ast_string_field_set(mm, smdi, var->name);
 
@@ -1386,11 +1293,46 @@ return_error:
 
 static struct ast_custom_function smdi_msg_retrieve_function = {
 	.name = "SMDI_MSG_RETRIEVE",
+	.synopsis = "Retrieve an SMDI message.",
+	.syntax = "SMDI_MSG_RETRIEVE(<smdi port>,<search key>[,timeout[,options]])",
+	.desc = 
+	"   This function is used to retrieve an incoming SMDI message.  It returns\n"
+	"an ID which can be used with the SMDI_MSG() function to access details of\n"
+	"the message.  Note that this is a destructive function in the sense that\n"
+	"once an SMDI message is retrieved using this function, it is no longer in\n"
+	"the global SMDI message queue, and can not be accessed by any other Asterisk\n"
+	"channels.  The timeout for this function is optional, and the default is\n"
+	"3 seconds.  When providing a timeout, it should be in milliseconds.\n"
+	"   The default search is done on the forwarding station ID.  However, if\n"
+	"you set one of the search key options in the options field, you can change\n"
+	"this behavior.\n"
+	"   Options:\n"
+	"     t - Instead of searching on the forwarding station, search on the message\n"
+	"         desk terminal.\n"
+	"     n - Instead of searching on the forwarding station, search on the message\n"
+	"         desk number.\n"
+	"",
 	.read = smdi_msg_retrieve_read,
 };
 
 static struct ast_custom_function smdi_msg_function = {
 	.name = "SMDI_MSG",
+	.synopsis = "Retrieve details about an SMDI message.",
+	.syntax = "SMDI_MSG(<message_id>,<component>)",
+	.desc = 
+	"   This function is used to access details of an SMDI message that was\n"
+	"pulled from the incoming SMDI message queue using the SMDI_MSG_RETRIEVE()\n"
+	"function.\n"
+	"   Valid message components are:\n"
+	"      number   - The message desk number\n"
+	"      terminal - The message desk terminal\n"
+	"      station  - The forwarding station\n"
+	"      callerid - The callerID of the calling party that was forwarded\n"
+	"      type     - The call type.  The value here is the exact character\n"
+	"                 that came in on the SMDI link.  Typically, example values\n"
+	"                 are: D - Direct Calls, A - Forward All Calls,\n"
+	"                      B - Forward Busy Calls, N - Forward No Answer Calls\n"
+	"",
 	.read = smdi_msg_read,
 };
 
@@ -1475,9 +1417,8 @@ static int reload(void)
 		return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_GLOBAL_SYMBOLS | AST_MODFLAG_LOAD_ORDER, "Simplified Message Desk Interface (SMDI) Resource",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_GLOBAL_SYMBOLS, "Simplified Message Desk Interface (SMDI) Resource",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.load_pri = AST_MODPRI_CHANNEL_DEPEND,
 	       );

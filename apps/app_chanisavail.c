@@ -27,13 +27,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 229969 $")
 
 #include <sys/ioctl.h>
 
@@ -45,7 +41,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/app.h"
 #include "asterisk/devicestate.h"
 
-static const char app[] = "ChanIsAvail";
+static char *app = "ChanIsAvail";
 
 /*** DOCUMENTATION
 	<application name="ChanIsAvail" language="en_US">
@@ -89,17 +85,16 @@ static const char app[] = "ChanIsAvail";
 					<para>The canonical channel name that was used to create the channel</para>
 				</variable>
 				<variable name="AVAILSTATUS">
-					<para>The device state for the device</para>
+					<para>The status code for the available channel. This is used for both
+					device state and cause code. It is recommended that you use AVAILORIGCHAN
+					instead to see if a device is available or not.</para>
 				</variable>
-				<variable name="AVAILCAUSECODE">
-				        <para>The cause code returned when requesting the channel</para>
-				</variable>	
 			</variablelist>
 		</description>
 	</application>
  ***/
 
-static int chanavail_exec(struct ast_channel *chan, const char *data)
+static int chanavail_exec(struct ast_channel *chan, void *data)
 {
 	int inuse=-1, option_state=0, string_compare=0, option_all_avail=0;
 	int status;
@@ -107,7 +102,6 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 	struct ast_str *tmp_availchan = ast_str_alloca(2048);
 	struct ast_str *tmp_availorig = ast_str_alloca(2048);
 	struct ast_str *tmp_availstat = ast_str_alloca(2048);
-	struct ast_str *tmp_availcause = ast_str_alloca(2048);
 	struct ast_channel *tempchan;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(reqchans);
@@ -167,16 +161,14 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 				snprintf(trychan, sizeof(trychan), "%s/%s",cur,number);
 				status = inuse = ast_device_state(trychan);
 			}
-			snprintf(tmp, sizeof(tmp), "%d", status);
-			ast_str_append(&tmp_availstat, 0, "%s%s", ast_str_strlen(tmp_availstat) ? "&" : "", tmp);
-			if ((inuse <= 1) && (tempchan = ast_request(tech, chan->nativeformats, chan, number, &status))) {
+			if ((inuse <= 1) && (tempchan = ast_request(tech, chan->nativeformats, number, &status))) {
 					ast_str_append(&tmp_availchan, 0, "%s%s", ast_str_strlen(tmp_availchan) ? "&" : "", tempchan->name);
 					
 					snprintf(tmp, sizeof(tmp), "%s/%s", tech, number);
 					ast_str_append(&tmp_availorig, 0, "%s%s", ast_str_strlen(tmp_availorig) ? "&" : "", tmp);
 
 					snprintf(tmp, sizeof(tmp), "%d", status);
-					ast_str_append(&tmp_availcause, 0, "%s%s", ast_str_strlen(tmp_availcause) ? "&" : "", tmp);
+					ast_str_append(&tmp_availstat, 0, "%s%s", ast_str_strlen(tmp_availstat) ? "&" : "", tmp);
 
 					ast_hangup(tempchan);
 					tempchan = NULL;
@@ -184,6 +176,9 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 					if (!option_all_avail) {
 						break;
 					}
+			} else {
+				snprintf(tmp, sizeof(tmp), "%d", status);
+				ast_str_append(&tmp_availstat, 0, "%s%s", ast_str_strlen(tmp_availstat) ? "&" : "", tmp);
 			}
 			cur = rest;
 		} while (cur);
@@ -193,7 +188,6 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 	/* Store the originally used channel too */
 	pbx_builtin_setvar_helper(chan, "AVAILORIGCHAN", ast_str_buffer(tmp_availorig));
 	pbx_builtin_setvar_helper(chan, "AVAILSTATUS", ast_str_buffer(tmp_availstat));
-	pbx_builtin_setvar_helper(chan, "AVAILCAUSECODE", ast_str_buffer(tmp_availcause));
 
 	return 0;
 }

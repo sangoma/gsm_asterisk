@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 182847 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 182947 $")
 
 #include <termios.h>
 #include <sys/ioctl.h>

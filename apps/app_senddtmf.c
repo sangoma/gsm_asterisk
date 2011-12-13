@@ -24,14 +24,10 @@
  * 
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 184082 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -54,9 +50,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			<parameter name="duration_ms" required="false">
 				<para>Duration of each digit</para>
 			</parameter>
-                        <parameter name="channel" required="false">
-                                <para>Channel where digits will be played</para>
-                        </parameter>
 		</syntax>
 		<description>
 			<para>DTMF digits sent to a channel with half second pause</para>
@@ -66,37 +59,18 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			<ref type="application">Read</ref>
 		</see-also>
 	</application>
-	<manager name="PlayDTMF" language="en_US">
-		<synopsis>
-			Play DTMF signal on a specific channel.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Channel" required="true">
-				<para>Channel name to send digit to.</para>
-			</parameter>
-			<parameter name="Digit" required="true">
-				<para>The DTMF digit to play.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Plays a dtmf digit on the specified channel.</para>
-		</description>
-	</manager>
  ***/
 static char *app = "SendDTMF";
 
-static int senddtmf_exec(struct ast_channel *chan, const char *vdata)
+static int senddtmf_exec(struct ast_channel *chan, void *vdata)
 {
 	int res = 0;
 	char *data;
-	int dinterval = 0, duration = 0;
-	struct ast_channel *dchan;
+	int timeout = 0, duration = 0;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(digits);
-		AST_APP_ARG(dinterval);
+		AST_APP_ARG(timeout);
 		AST_APP_ARG(duration);
-		AST_APP_ARG(channel);
 	);
 
 	if (ast_strlen_zero(vdata)) {
@@ -104,55 +78,45 @@ static int senddtmf_exec(struct ast_channel *chan, const char *vdata)
 		return 0;
 	}
 
-	dchan = chan;
-
 	data = ast_strdupa(vdata);
 	AST_STANDARD_APP_ARGS(args, data);
 
-	if (!ast_strlen_zero(args.dinterval)) {
-		ast_app_parse_timelen(args.dinterval, &dinterval, TIMELEN_MILLISECONDS);
-	}
-	if (!ast_strlen_zero(args.duration)) {
-		ast_app_parse_timelen(args.duration, &duration, TIMELEN_MILLISECONDS);
-	}
-	if (!ast_strlen_zero(args.channel)) {
-		dchan = ast_channel_get_by_name(args.channel);
-	}
-	if (dchan != chan) {
-		ast_autoservice_start(chan);
-	}
-	res = ast_dtmf_stream(dchan, NULL, args.digits, dinterval <= 0 ? 250 : dinterval, duration);
-	if (dchan != chan) {
-		ast_autoservice_stop(chan);
-		ast_channel_unref(dchan);
-	}
+	if (!ast_strlen_zero(args.timeout))
+		timeout = atoi(args.timeout);
+	if (!ast_strlen_zero(args.duration))
+		duration = atoi(args.duration);
+	res = ast_dtmf_stream(chan, NULL, args.digits, timeout <= 0 ? 250 : timeout, duration);
 
 	return res;
 }
+
+static char mandescr_playdtmf[] =
+"Description: Plays a dtmf digit on the specified channel.\n"
+"Variables: (all are required)\n"
+"	Channel: Channel name to send digit to\n"
+"	Digit: The dtmf digit to play\n";
 
 static int manager_play_dtmf(struct mansession *s, const struct message *m)
 {
 	const char *channel = astman_get_header(m, "Channel");
 	const char *digit = astman_get_header(m, "Digit");
-	struct ast_channel *chan;
-
-	if (!(chan = ast_channel_get_by_name(channel))) {
-		astman_send_error(s, m, "Channel not found");
+	struct ast_channel *chan = ast_get_channel_by_name_locked(channel);
+	
+	if (!chan) {
+		astman_send_error(s, m, "Channel not specified");
 		return 0;
 	}
-
 	if (ast_strlen_zero(digit)) {
 		astman_send_error(s, m, "No digit specified");
-		chan = ast_channel_unref(chan);
+		ast_channel_unlock(chan);
 		return 0;
 	}
 
 	ast_senddigit(chan, *digit, 0);
 
-	chan = ast_channel_unref(chan);
-
+	ast_channel_unlock(chan);
 	astman_send_ack(s, m, "DTMF successfully queued");
-
+	
 	return 0;
 }
 
@@ -170,7 +134,7 @@ static int load_module(void)
 {
 	int res;
 
-	res = ast_manager_register_xml("PlayDTMF", EVENT_FLAG_CALL, manager_play_dtmf);
+	res = ast_manager_register2( "PlayDTMF", EVENT_FLAG_CALL, manager_play_dtmf, "Play DTMF signal on a specific channel.", mandescr_playdtmf );
 	res |= ast_register_application_xml(app, senddtmf_exec);
 
 	return res;

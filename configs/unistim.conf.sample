@@ -5,7 +5,7 @@
 [general]
 port=5000                    ; UDP port
 ;
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of these parameters.
 ;tos=cs3                ; Sets TOS for signaling packets.
 ;tos_audio=ef           ; Sets TOS for RTP audio packets.
 ;cos=3                  ; Sets 802.1p priority for signaling packets.
@@ -48,8 +48,6 @@ port=5000                    ; UDP port
 ;rtp_method=0                ; If you don't have sound, you can try 1, 2 or 3, default = 0
 ;status_method=0             ; If you don't see status text, try 1, default = 0
 ;titledefault=Asterisk       ; default = "TimeZone (your time zone)". 12 characters max
-;height=3                    ; default = 3, the number of display lines the device can show
-                             ; For example on a Nortel I2001 or I2002, set this to 1
 ;maintext0="you can insert"  ; default = "Welcome", 24 characters max
 ;maintext1="a custom text"   ; default = the name of the device, 24 characters max
 ;maintext2="(main page)"     ; default = the public IP of the phone, 24 characters max
@@ -71,7 +69,7 @@ port=5000                    ; UDP port
 ;bookmark=Hans C.@123        ; Use a softkey to dial 123. Name : 9 char max
 ;bookmark=Mailbox@011@54     ; 54 shows a mailbox icon. See #define FAV_ICON_ for other values (32 to 63)
 ;bookmark=Test@*@USTM/violet ; Display an icon if violet is connected (dynamic), only for unistim device
-;bookmark=4@Pager@54321@51   ; Display a pager icon and dial 54321 when softkey 4 is pressed
+;bookmark=4@Pager@54321@51   ; Display a pager icon and dial 54321 when softkey 4 is pressed 
 
 ;[violet]
 ;device=006038abcdef

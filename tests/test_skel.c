@@ -28,12 +28,11 @@
 
 /*** MODULEINFO
 	<depend>TEST_FRAMEWORK</depend>
-	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332178 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 272531 $")
 
 #include "asterisk/utils.h"
 #include "asterisk/module.h"
@@ -46,7 +45,7 @@ AST_TEST_DEFINE(sample_test)
 	switch (cmd) {
 	case TEST_INIT:
 		info->name = "sample_test";
-		info->category = "/main/sample/";
+		info->category = "main/sample/";
 		info->summary = "sample unit test";
 		info->description =
 			"This demonstrates what is required to implement "

@@ -23,13 +23,9 @@
  * \brief pthread timing interface
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 278479 $");
 
 #include <math.h>
 #include <sys/select.h>
@@ -525,5 +521,5 @@ static int unload_module(void)
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "pthread Timing Interface",
 		.load = load_module,
 		.unload = unload_module,
-		.load_pri = AST_MODPRI_CHANNEL_DEPEND,
+		.load_pri = 10,
 		);

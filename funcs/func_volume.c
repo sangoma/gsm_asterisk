@@ -26,13 +26,9 @@
  *
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 310585 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -91,7 +87,7 @@ static void destroy_callback(void *data)
 
 	/* Destroy the audiohook, and destroy ourselves */
 	ast_audiohook_destroy(&vi->audiohook);
-	ast_free(vi);
+	free(vi);
 
 	return;
 }
@@ -119,15 +115,16 @@ static int volume_callback(struct ast_audiohook *audiohook, struct ast_channel *
 	vi = datastore->data;
 
 	/* If this is DTMF then allow them to increase/decrease the gains */
+	
 	if (ast_test_flag(vi, VOLUMEFLAG_CHANGE)) {
 		if (frame->frametype == AST_FRAME_DTMF) {
 			/* Only use DTMF coming from the source... not going to it */
 			if (direction != AST_AUDIOHOOK_DIRECTION_READ)
 				return 0; 
-			if (frame->subclass.integer == '*') {
+			if (frame->subclass == '*') {
 				vi->tx_gain += 1;
 				vi->rx_gain += 1;
-			} else if (frame->subclass.integer == '#') {
+			} else if (frame->subclass == '#') {
 				vi->tx_gain -= 1;
 				vi->rx_gain -= 1;
 			}
@@ -171,7 +168,7 @@ static int volume_write(struct ast_channel *chan, const char *cmd, char *data, c
 			ast_datastore_free(datastore);
 			return 0;
 		}
-		ast_audiohook_init(&vi->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "Volume", AST_AUDIOHOOK_MANIPULATE_ALL_RATES);
+		ast_audiohook_init(&vi->audiohook, AST_AUDIOHOOK_TYPE_MANIPULATE, "Volume");
 		vi->audiohook.manipulate_callback = volume_callback;
 		ast_set_flag(&vi->audiohook, AST_AUDIOHOOK_WANTS_DTMF);
 		is_new = 1;

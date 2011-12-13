@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: rc.redhat.asterisk 337117 2011-09-20 22:29:24Z lmadsen $
+# $Id: rc.redhat.asterisk 268535 2010-06-06 05:31:11Z tilghman $
 #
 # asterisk    Starts, Stops and Reloads Asterisk.
 #
@@ -20,23 +20,19 @@
 # - Added support for -U and -G command line options
 # - Modified "reload" to call asterisk -rx 'reload' 
 
-### BEGIN INIT INFO
-# Provides:		asterisk
-# Required-Start:    $network $syslog $named $local_fs $remote_fs
-# Required-Stop:     $network $syslog $named $local_fs $remote_fs
-# Should-Start:      dahdi misdn lcr wanrouter mysql postgresql
-# Should-Stop:       dahdi misdn lcr wanrouter mysql postgresql
-# Default-Start:	2 3 4 5
-# Default-Stop:		0 1 6
-# Short-Description:	Asterisk PBX
-# Description:		the Asterisk Open Source PBX
-### END INIT INFO
-
 # Use this option to specify a different configuration directory
 #AST_CONFIG=__ASTERISK_ETC_DIR__
 
 # Installation directory
 AST_SBIN=__ASTERISK_SBIN_DIR__
+
+# Uncomment the following and set them to the user/groups that you
+# want to run Asterisk as. NOTE: this requires substantial work to
+# be sure that Asterisk's environment has permission to write the
+# files required  for  its  operation, including logs, its comm
+# socket, the asterisk database, etc.
+#AST_USER="asterisk"
+#AST_GROUP="asterisk"
 
 # Source function library.
 . /etc/rc.d/init.d/functions
@@ -51,6 +47,9 @@ if ! [ -d $AST_CONFIG ] ; then
 	exit 0
 fi
 
+# Uncomment this ONLY if you know what you are doing.
+# export LD_ASSUME_KERNEL=2.4.1
+
 # Full path to asterisk binary
 DAEMON=$AST_SBIN/asterisk
 
@@ -64,7 +63,7 @@ if [ "$CONFIG0" = "" ]; then
 else
 	CONFIGFILE=/etc/sysconfig/`basename $CONFIG0`
 fi
-[ -r $CONFIGFILE ] && . $CONFIGFILE
+[ -x $CONFIGFILE ] && . $CONFIGFILE
 
 RETVAL=0
 
@@ -74,7 +73,7 @@ start() {
 	VERSION=`${AST_SBIN}/asterisk -rx 'core show version'`
 	if [ "`echo $VERSION | cut -c 1-8`" = "Asterisk" ]; then
 		echo "Asterisk is already running."
-		exit 0
+		exit 1
 	fi
 
 	# Start daemons.
@@ -90,35 +89,8 @@ start() {
 	fi
 	if [ $AST_CONFIG ]; then
 		ASTARGS="$ASTARGS -C $AST_CONFIG/asterisk.conf"
-	elif [ $ALTCONF ]; then
-		ASTARGS="$ASTARGS -C $ALTCONF"
 	fi
-	if [ "x$COREDUMP" = "xyes" ]; then
-		ASTARGS="$ASTARGS -g"
-	fi
-	if [ "0$MAXLOAD" -gt "0" ]; then
-		ASTARGS="$ASTARGS -L $MAXLOAD"
-	fi
-	if [ "0$MAXCALLS" -gt "0" ]; then
-		ASTARGS="$ASTARGS -M $MAXCALLS"
-	fi
-	if [ "0$VERBOSITY" -gt "0" ]; then
-		for i in `seq 1 $VERBOSITY`; do
-			ASTARGS="$ASTARGS -v"
-		done
-	fi
-	if [ "x$INTERNALTIMING" = "xyes" ]; then
-		ASTARGS="$ASTARGS -I"
-	fi
-	if [ "x$TEMPRECORDINGLOCATION" = "xyes" -o "x$TMPRECORDINGLOCATION" = "xyes" ]; then
-		ASTARGS="$ASTARGS -t"
-	fi
-	if [ "x$COLOR" = "xyes" ]; then
-		export TERM=linux
-		daemon sh -c "$DAEMON $ASTARGS -c" >/dev/null </dev/null 2>&1 &
-	else
-		daemon $DAEMON $ASTARGS
-	fi
+	daemon $DAEMON $ASTARGS
 	RETVAL=$?
 	[ $RETVAL -eq 0 ] && touch /var/lock/subsys/asterisk
 	echo

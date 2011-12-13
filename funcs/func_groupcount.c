@@ -21,13 +21,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 232270 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -62,13 +58,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 				<para>A standard regular expression used to match a group name.</para>
 			</parameter>
 			<parameter name="category">
-				<para>A standard regular expression used to match a category name.</para>
+				<para>Category name.</para>
 			</parameter>
 		</syntax>
 		<description>
 			<para>Calculates the group count for all groups that match the specified pattern.
-			Note: category matching is applied after matching based on group.
-			Uses standard regular expression matching on both (see regex(7)).</para>
+			Uses standard regular expression matching (see regex(7)).</para>
 		</description>
 	</function>
 	<function name="GROUP" language="en_US">
@@ -139,7 +134,6 @@ static int group_count_function_read(struct ast_channel *chan, const char *cmd,
 static struct ast_custom_function group_count_function = {
 	.name = "GROUP_COUNT",
 	.read = group_count_function_read,
-	.read_max = 12,
 };
 
 static int group_match_count_function_read(struct ast_channel *chan,
@@ -165,7 +159,6 @@ static int group_match_count_function_read(struct ast_channel *chan,
 static struct ast_custom_function group_match_count_function = {
 	.name = "GROUP_MATCH_COUNT",
 	.read = group_match_count_function_read,
-	.read_max = 12,
 	.write = NULL,
 };
 

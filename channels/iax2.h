@@ -39,7 +39,7 @@
 
 #define IAX_FLAG_SC_LOG		0x80
 
-#define IAX_MAX_SHIFT		0x3F
+#define IAX_MAX_SHIFT		0x1F
 
 #define IAX_WINDOW			64
 
@@ -180,9 +180,6 @@ enum iax_frame_subclass {
 #define IAX_IE_OSPTOKEN				53		/*!< OSP token */
 #define IAX_IE_CALLTOKEN			54		/*!< Call number security token */
 
-#define IAX_IE_CAPABILITY2          55      /*!< Actual codec capability - u8 version + integer array */
-#define IAX_IE_FORMAT2              56      /*!< Desired codec format - u8 version + integer array */
-
 #define IAX_MAX_OSPBLOCK_SIZE		254		/*!< Max OSP token block size, 255 bytes - 1 byte OSP token block index */
 #define IAX_MAX_OSPBLOCK_NUM		4
 #define IAX_MAX_OSPTOKEN_SIZE		(IAX_MAX_OSPBLOCK_SIZE * IAX_MAX_OSPBLOCK_NUM)
@@ -213,12 +210,6 @@ enum iax_frame_subclass {
 #define IAX_DPSTATUS_NONEXISTENT	(1 << 2)
 #define IAX_DPSTATUS_IGNOREPAT		(1 << 14)
 #define IAX_DPSTATUS_MATCHMORE		(1 << 15)
-
-/*! iax2 format bit field for handling codecs the old way */
-typedef int64_t iax2_format;
-
-/*!\brief iax2 wrapper function for ast_getformatname */
-const char *iax2_getformatname(iax2_format format);
 
 /*! Full frames are always delivered reliably */
 struct ast_iax2_full_hdr {

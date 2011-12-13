@@ -23,8 +23,6 @@ John Todd, TalkPlus, Inc.  and JR Richardson, Ntegrated Solutions. - for funding
 Omnitor AB, Gunnar Hellström, for funding work with videocaps, T.140 RED,
 originate with video/text and many more contributions.
 
-ClearIT AB for work with meetme, res_mutestream, RTCP, manager and tonezones
-
 === WISHLIST CONTRIBUTERS ===
 Jeremy McNamara - SpeeX support
 Nick Seraphin - RDNIS support
@@ -116,8 +114,6 @@ Simon Lockhart - Porting to Solaris (based on work of Logan ???)
 Olle E. Johansson - SIP RFC compliance, documentation and testing, testing,
 	SIP outbound proxy support, Manager 1.1 update, SIP transfer support,
 	SIP presence support, SIP call state updates (dialog-info), 
-	QUEUE_EXISTS function, device state provider architecture,
-	multiparking (together with mvanbaak), meetme and parking device states,
 	MiniVM - the small voicemail system, many documentation
 	updates/corrections, and many bug fixes.
 	oej(AT)edvina.net, http://edvina.net
@@ -178,8 +174,6 @@ Voop AS - Financial support for a lot of work with the SIP driver and the IAX
 Cedric Hans - Development of chan_unistim
   cedric.hans(AT)mlkj.net
 
-Takao Takahashi & Mina Naguib - chan_unistim improvements for smaller devices
-
 Sergio Fadda - console_video: video support for chan_oss and chan_alsa
 
 Marta Carbone - console_video and the astobj2 framework
@@ -205,26 +199,6 @@ Moises Silva (moy) - for writing LibOpenR2, and providing support for it in chan
 
 Eliel C. Sardanons - XML documentation implementation, and various other contributions
      eliels(AT)gmail.com
-
-Sean Bright - Snom call pickup, newt interface for menuselect, cdr_tds rewrite,
-	countless other improvements, fixes, and good ideas.
-	sean(AT)malleable.com
-
-Jan Kaláb - Calendaring support for Exchange Server 2007+ via Exchange Web Services.
-
-University of Oslo (uio.no), Norway - SIP Max-Forwards setting support (developed by oej)
-
-FCCN, Lissabon, Portugal - SIP show channels CLI command (developed by oej)
-
-Viagenie, Canada - IPv6 support in socket layers and SIP implementation
-	Developers: Marc Blanchet, Simon Perreault and Jean-Philippe Dionne
-
-ClearIT AB, Sweden - res_mutestream, queue_exists and various other patches (developed by oej)
-
-Despegar.com, Argentina - AstData API implementation, also sponsored by Google as part of the
-	gsoc/2009 program (developed by Eliel)
-
-Philippe Lindheimer - DEV_STATE additions to CCSS
 
 === OTHER CONTRIBUTIONS ===
 John Todd - Monkey sounds and associated teletorture prompt

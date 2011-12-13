@@ -1,6 +1,6 @@
 /*
  * Asterisk -- An open source telephony toolkit.
- *
+ * 
  * Copyright (C) 2005, Christian Richter
  *
  * Christian Richter <crich@beronet.com>
@@ -28,7 +28,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 317479 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 249895 $")
 
 #include "chan_misdn_config.h"
 
@@ -47,15 +47,14 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 317479 $")
 #define NUM_GEN_ELEMENTS (sizeof(gen_spec) / sizeof(struct misdn_cfg_spec))
 #define NUM_PORT_ELEMENTS (sizeof(port_spec) / sizeof(struct misdn_cfg_spec))
 
-/*! Global jitterbuffer configuration - by default, jb is disabled
- *  \note Values shown here match the defaults shown in misdn.conf.sample */
+/*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
 {
 	.flags = 0,
-	.max_size = 200,
-	.resync_threshold = 1000,
-	.impl = "fixed",
-	.target_extra = 40,
+	.max_size = -1,
+	.resync_threshold = -1,
+	.impl = "",
+	.target_extra = -1,
 };
 
 static struct ast_jb_conf global_jbconf;
@@ -134,14 +133,7 @@ static const struct misdn_cfg_spec port_spec[] = {
 	{ "musicclass", MISDN_CFG_MUSICCLASS, MISDN_CTYPE_STR, "default", NONE,
 		"Sets the musiconhold class." },
 	{ "callerid", MISDN_CFG_CALLERID, MISDN_CTYPE_STR, "", NONE,
-		"Set the outgoing caller id to the value." },
-	{ "incoming_cid_tag", MISDN_CFG_INCOMING_CALLERID_TAG, MISDN_CTYPE_STR, "", NONE,
-		"Set the incoming caller id string tag to the value." },
-	{ "append_msn_to_cid_tag", MISDN_CFG_APPEND_MSN_TO_CALLERID_TAG, MISDN_CTYPE_BOOL, "no", NONE,
-		"Automatically appends incoming or outgoing MSN to the incoming caller\n"
-		"\tid string tag. An underscore '_' is used as delimiter. Incoming calls\n"
-		"\twill have the dialed number appended, and outgoing calls will have the\n"
-		"\tcaller number appended to the tag." },
+		"Sets the caller ID." },
 	{ "method", MISDN_CFG_METHOD, MISDN_CTYPE_STR, "standard", NONE,
 		"Set the method to use for channel selection:\n"
 		"\t  standard     - Use the first free channel starting from the lowest number.\n"
@@ -149,71 +141,62 @@ static const struct misdn_cfg_spec port_spec[] = {
 		"\t  round_robin  - Use the round robin algorithm to select a channel. Use this\n"
 		"\t                 if you want to balance your load." },
 	{ "dialplan", MISDN_CFG_DIALPLAN, MISDN_CTYPE_INT, "0", NONE,
-		"Dialplan means Type Of Number in ISDN Terms\n"
+		"Dialplan means Type Of Number in ISDN Terms (for outgoing calls)\n"
+		"\n"
 		"\tThere are different types of the dialplan:\n"
 		"\n"
-		"\tdialplan -> for outgoing call's dialed number\n"
-		"\tlocaldialplan -> for outgoing call's callerid\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
-		"\tcpndialplan -> for incoming call's connected party number sent to caller\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
+		"\tdialplan -> outgoing Number\n"
+		"\tlocaldialplan -> callerid\n"
+		"\tcpndialplan -> connected party number\n"
 		"\n"
 		"\tdialplan options:\n"
 		"\n"
 		"\t0 - unknown\n"
 		"\t1 - International\n"
 		"\t2 - National\n"
-		"\t4 - Subscriber" },
+		"\t4 - Subscriber\n"
+		"\n"
+		"\tThis setting is used for outgoing calls." },
 	{ "localdialplan", MISDN_CFG_LOCALDIALPLAN, MISDN_CTYPE_INT, "0", NONE,
-		"Dialplan means Type Of Number in ISDN Terms\n"
+		"Dialplan means Type Of Number in ISDN Terms (for outgoing calls)\n"
+		"\n"
 		"\tThere are different types of the dialplan:\n"
 		"\n"
-		"\tdialplan -> for outgoing call's dialed number\n"
-		"\tlocaldialplan -> for outgoing call's callerid\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
-		"\tcpndialplan -> for incoming call's connected party number sent to caller\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
+		"\tdialplan -> outgoing Number\n"
+		"\tlocaldialplan -> callerid\n"
+		"\tcpndialplan -> connected party number\n"
 		"\n"
 		"\tdialplan options:\n"
 		"\n"
 		"\t0 - unknown\n"
 		"\t1 - International\n"
 		"\t2 - National\n"
-		"\t4 - Subscriber" },
+		"\t4 - Subscriber\n"
+		"\n"
+		"\tThis setting is used for outgoing calls." },
 	{ "cpndialplan", MISDN_CFG_CPNDIALPLAN, MISDN_CTYPE_INT, "0", NONE,
-		"Dialplan means Type Of Number in ISDN Terms\n"
+		"Dialplan means Type Of Number in ISDN Terms (for outgoing calls)\n"
+		"\n"
 		"\tThere are different types of the dialplan:\n"
 		"\n"
-		"\tdialplan -> for outgoing call's dialed number\n"
-		"\tlocaldialplan -> for outgoing call's callerid\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
-		"\tcpndialplan -> for incoming call's connected party number sent to caller\n"
-		"\t      (if -1 is set use the value from the asterisk channel)\n"
+		"\tdialplan -> outgoing Number\n"
+		"\tlocaldialplan -> callerid\n"
+		"\tcpndialplan -> connected party number\n"
 		"\n"
 		"\tdialplan options:\n"
 		"\n"
 		"\t0 - unknown\n"
 		"\t1 - International\n"
 		"\t2 - National\n"
-		"\t4 - Subscriber" },
-	{ "unknownprefix", MISDN_CFG_TON_PREFIX_UNKNOWN, MISDN_CTYPE_STR, "", NONE,
-		"Prefix for unknown numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is unknown." },
-	{ "internationalprefix", MISDN_CFG_TON_PREFIX_INTERNATIONAL, MISDN_CTYPE_STR, "00", NONE,
-		"Prefix for international numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is international." },
-	{ "nationalprefix", MISDN_CFG_TON_PREFIX_NATIONAL, MISDN_CTYPE_STR, "0", NONE,
-		"Prefix for national numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is national." },
-	{ "netspecificprefix", MISDN_CFG_TON_PREFIX_NETWORK_SPECIFIC, MISDN_CTYPE_STR, "", NONE,
-		"Prefix for network-specific numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is network-specific." },
-	{ "subscriberprefix", MISDN_CFG_TON_PREFIX_SUBSCRIBER, MISDN_CTYPE_STR, "", NONE,
-		"Prefix for subscriber numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is subscriber." },
-	{ "abbreviatedprefix", MISDN_CFG_TON_PREFIX_ABBREVIATED, MISDN_CTYPE_STR, "", NONE,
-		"Prefix for abbreviated numbers, this is put before an incoming number\n"
-		"\tif its type-of-number is abbreviated." },
+		"\t4 - Subscriber\n"
+		"\n"
+		"\tThis setting is used for outgoing calls." },
+	{ "nationalprefix", MISDN_CFG_NATPREFIX, MISDN_CTYPE_STR, "0", NONE,
+		"Prefix for national, this is put before the\n"
+		"\toad if an according dialplan is set by the other end." },
+	{ "internationalprefix", MISDN_CFG_INTERNATPREFIX, MISDN_CTYPE_STR, "00", NONE,
+		"Prefix for international, this is put before the\n"
+		"\toad if an according dialplan is set by the other end." },
 	{ "presentation", MISDN_CFG_PRES, MISDN_CTYPE_INT, "-1", NONE,
 		"These (presentation and screen) are the exact isdn screening and presentation\n"
 		"\tindicators.\n"
@@ -230,28 +213,6 @@ static const struct misdn_cfg_spec port_spec[] = {
 		"\n"
 		"\tscreen=0, presentation=0 -> callerid presented\n"
 		"\tscreen=1, presentation=1 -> callerid restricted (the remote end doesn't see it!)" },
-	{ "outgoing_colp", MISDN_CFG_OUTGOING_COLP, MISDN_CTYPE_INT, "0", NONE,
-		"Select what to do with outgoing COLP information on this port.\n"
-		"\n"
-		"\t0 - Send out COLP information unaltered.\n"
-		"\t1 - Force COLP to restricted on all outgoing COLP information.\n"
-		"\t2 - Do not send COLP information." },
-	{ "display_connected", MISDN_CFG_DISPLAY_CONNECTED, MISDN_CTYPE_INT, "0", NONE,
-		"Put a display ie in the CONNECT message containing the following\n"
-		"\tinformation if it is available (nt port only):\n"
-		"\n"
-		"\t0 - Do not put the connected line information in the display ie.\n"
-		"\t1 - Put the available connected line name in the display ie.\n"
-		"\t2 - Put the available connected line number in the display ie.\n"
-		"\t3 - Put the available connected line name and number in the display ie." },
-	{ "display_setup", MISDN_CFG_DISPLAY_SETUP, MISDN_CTYPE_INT, "0", NONE,
-		"Put a display ie in the SETUP message containing the following\n"
-		"\tinformation if it is available (nt port only):\n"
-		"\n"
-		"\t0 - Do not put the caller information in the display ie.\n"
-		"\t1 - Put the available caller name in the display ie.\n"
-		"\t2 - Put the available caller number in the display ie.\n"
-		"\t3 - Put the available caller name and number in the display ie." },
 	{ "always_immediate", MISDN_CFG_ALWAYS_IMMEDIATE, MISDN_CTYPE_BOOL, "no", NONE,
 		"Enable this to get into the s dialplan-extension.\n"
 		"\tThere you can use DigitTimeout if you can't or don't want to use\n"
@@ -260,7 +221,7 @@ static const struct misdn_cfg_spec port_spec[] = {
 	{ "nodialtone", MISDN_CFG_NODIALTONE, MISDN_CTYPE_BOOL, "no", NONE,
 		"Enable this to prevent chan_misdn to generate the dialtone\n"
 		"\tThis makes only sense together with the always_immediate=yes option\n"
-		"\tto generate your own dialtone with Playtones or so." },
+		"\tto generate your own dialtone with Playtones or so."},
 	{ "immediate", MISDN_CFG_IMMEDIATE, MISDN_CTYPE_BOOL, "no", NONE,
 		"Enable this if you want callers which called exactly the base\n"
 		"\tnumber (so no extension is set) to jump into the s extension.\n"
@@ -297,17 +258,17 @@ static const struct misdn_cfg_spec port_spec[] = {
 #endif
 #ifdef WITH_BEROEC
 	{ "bnechocancel", MISDN_CFG_BNECHOCANCEL, MISDN_CTYPE_BOOLINT, "yes", 64,
-		"echotail in ms (1-200)" },
+		"echotail in ms (1-200)\n"},
 	{ "bnec_antihowl", MISDN_CFG_BNEC_ANTIHOWL, MISDN_CTYPE_INT, "0", NONE,
-		"Use antihowl" },
+		"Use antihowl\n"},
 	{ "bnec_nlp", MISDN_CFG_BNEC_NLP, MISDN_CTYPE_BOOL, "yes", NONE,
-		"Nonlinear Processing (much faster adaption)" },
+		"Nonlinear Processing (much faster adaption)"},
 	{ "bnec_zerocoeff", MISDN_CFG_BNEC_ZEROCOEFF, MISDN_CTYPE_BOOL, "no", NONE,
-		"ZeroCoeffeciens" },
+		"ZeroCoeffeciens\n"},
 	{ "bnec_tonedisabler", MISDN_CFG_BNEC_TD, MISDN_CTYPE_BOOL, "no", NONE,
-		"Disable Tone" },
+		"Disable Tone\n"},
 	{ "bnec_adaption", MISDN_CFG_BNEC_ADAPT, MISDN_CTYPE_INT, "1", NONE,
-		"Adaption mode (0=no,1=full,2=fast)" },
+		"Adaption mode (0=no,1=full,2=fast)\n"},
 #endif
 	{ "need_more_infos", MISDN_CFG_NEED_MORE_INFOS, MISDN_CTYPE_BOOL, "0", NONE,
 		"Send Setup_Acknowledge on incoming calls anyway (instead of PROCEEDING),\n"
@@ -351,13 +312,13 @@ static const struct misdn_cfg_spec port_spec[] = {
 	{ "faxdetect_context", MISDN_CFG_FAXDETECT_CONTEXT, MISDN_CTYPE_STR, NO_DEFAULT, NONE,
 		"Context to jump into if we detect a fax. Don't set this if you want to stay in the current context." },
 	{ "l1watcher_timeout", MISDN_CFG_L1_TIMEOUT, MISDN_CTYPE_BOOLINT, "0", 4,
-		"Monitors L1 of the port.  If L1 is down it tries\n"
-		"\tto bring it up.  The polling timeout is given in seconds.\n"
-		"\tSetting the value to 0 disables monitoring L1 of the port.\n"
+		"Watches the layer 1. If the layer 1 is down, it tries to\n"
+		"\tget it up. The timeout is given in seconds. with 0 as value it\n"
+		"\tdoes not watch the l1 at all\n"
 		"\n"
-		"\tThis option is only read at chan_misdn loading time.\n"
-		"\tYou need to unload and load chan_misdn to change the\n"
-		"\tvalue.  An asterisk restart will also do the trick." },
+		"\tThis option is only read at loading time of chan_misdn, which\n"
+		"\tmeans you need to unload and load chan_misdn to change the value,\n"
+		"\tan Asterisk restart should do the trick." },
 	{ "overlapdial", MISDN_CFG_OVERLAP_DIAL, MISDN_CTYPE_BOOLINT, "0", 4,
 		"Enables overlap dial for the given amount of seconds.\n"
 		"\tPossible values are positive integers or:\n"
@@ -376,8 +337,6 @@ static const struct misdn_cfg_spec port_spec[] = {
 		"MSN's for TE ports, listen on those numbers on the above ports, and\n"
 		"\tindicate the incoming calls to Asterisk.\n"
 		"\tHere you can give a comma separated list, or simply an '*' for any msn." },
-	{ "cc_request_retention", MISDN_CFG_CC_REQUEST_RETENTION, MISDN_CTYPE_BOOL, "yes", NONE,
-		"Enable/Disable call-completion request retention support (ptp)." },
 };
 
 static const struct misdn_cfg_spec gen_spec[] = {
@@ -407,8 +366,8 @@ static const struct misdn_cfg_spec gen_spec[] = {
 	{ "crypt_keys", MISDN_GEN_CRYPT_KEYS, MISDN_CTYPE_STR, NO_DEFAULT, NONE,
 		"Keys for cryption, you reference them in the dialplan\n"
 		"\tLater also in dynamic encr." },
- 	{ "ntkeepcalls", MISDN_GEN_NTKEEPCALLS, MISDN_CTYPE_BOOL, "no", NONE,
-		"avoid dropping calls if the L2 goes down. some Nortel pbx\n"
+ 	{ "ntkeepcalls", MISDN_GEN_NTKEEPCALLS, MISDN_CTYPE_BOOL, "no", NONE, 
+		"avoid dropping calls if the L2 goes down. some Nortel pbx\n" 
 		"do put down the L2/L1 for some milliseconds even if there\n"
 		"are running calls. with this option you can avoid dropping them" },
 	{ "ntdebugflags", MISDN_GEN_NTDEBUGFLAGS, MISDN_CTYPE_INT, "0", NONE,
@@ -429,7 +388,7 @@ static int *ptp;
 /* maps enum config elements to array positions */
 static int *map;
 
-static ast_mutex_t config_mutex;
+static ast_mutex_t config_mutex; 
 
 #define CLI_ERROR(name, value, section) ({ \
 	ast_log(LOG_WARNING, "misdn.conf: \"%s=%s\" (section: %s) invalid or out of range. " \
@@ -518,7 +477,7 @@ static void _free_port_cfg (void)
 	int i, j;
 	int gn = map[MISDN_CFG_GROUPNAME];
 	union misdn_cfg_pt* free_list[max_ports + 2];
-
+	
 	memset(free_list, 0, sizeof(free_list));
 	free_list[0] = port_cfg[0];
 	for (i = 1; i <= max_ports; ++i) {
@@ -550,7 +509,7 @@ static void _free_general_cfg (void)
 {
 	int i;
 
-	for (i = 0; i < NUM_GEN_ELEMENTS; i++)
+	for (i = 0; i < NUM_GEN_ELEMENTS; i++) 
 		if (general_cfg[i].any)
 			ast_free(general_cfg[i].any);
 }
@@ -609,7 +568,7 @@ void misdn_cfg_get(int port, enum misdn_cfg_elements elem, void *buf, int bufsiz
 	misdn_cfg_unlock();
 }
 
-enum misdn_cfg_elements misdn_cfg_get_elem(const char *name)
+enum misdn_cfg_elements misdn_cfg_get_elem(char *name)
 {
 	int pos;
 
@@ -622,11 +581,11 @@ enum misdn_cfg_elements misdn_cfg_get_elem(const char *name)
 	pos = get_cfg_position(name, PORT_CFG);
 	if (pos >= 0)
 		return port_spec[pos].elem;
-
+	
 	pos = get_cfg_position(name, GEN_CFG);
 	if (pos >= 0)
 		return gen_spec[pos].elem;
-
+	
 	return MISDN_CFG_FIRST;
 }
 
@@ -640,7 +599,7 @@ void misdn_cfg_get_name(enum misdn_cfg_elements elem, void *buf, int bufsize)
 		memset(buf, 0, 1);
 		return;
 	}
-
+	
 	/* here comes a hack to replace the (not existing) "name" element with the "ports" element */
 	if (elem == MISDN_CFG_GROUPNAME) {
 		if (!snprintf(buf, bufsize, "ports"))
@@ -673,7 +632,7 @@ void misdn_cfg_get_desc (enum misdn_cfg_elements elem, void *buf, int bufsize, v
 		spec = (struct misdn_cfg_spec *)port_spec;
 	else if ((elem > MISDN_GEN_FIRST) && (elem < MISDN_GEN_LAST))
 		spec = (struct misdn_cfg_spec *)gen_spec;
-
+		
 	if (!spec || !spec[place].desc)
 		memset(buf, 0, 1);
 	else {
@@ -702,7 +661,7 @@ int misdn_cfg_is_msn_valid (int port, char* msn)
 		iter = port_cfg[port][map[MISDN_CFG_MSNS]].ml;
 	else
 		iter = port_cfg[0][map[MISDN_CFG_MSNS]].ml;
-	for (; iter; iter = iter->next)
+	for (; iter; iter = iter->next) 
 		if (*(iter->msn) == '*' || ast_extension_match(iter->msn, msn)) {
 			re = 1;
 			break;
@@ -731,7 +690,7 @@ int misdn_cfg_is_group_method (char *group, enum misdn_cfg_method meth)
 	for (i = 1; i <= max_ports; i++) {
 		if (port_cfg[i] && port_cfg[i][map[MISDN_CFG_GROUPNAME]].str) {
 			if (!strcasecmp(port_cfg[i][map[MISDN_CFG_GROUPNAME]].str, group))
-				method = (port_cfg[i][map[MISDN_CFG_METHOD]].str ?
+				method = (port_cfg[i][map[MISDN_CFG_METHOD]].str ? 
 						  port_cfg[i][map[MISDN_CFG_METHOD]].str : port_cfg[0][map[MISDN_CFG_METHOD]].str);
 		}
 	}
@@ -751,7 +710,7 @@ int misdn_cfg_is_group_method (char *group, enum misdn_cfg_method meth)
 	return re;
 }
 
-/*!
+/*! 
  * \brief Generate a comma separated list of all active ports
  */
 void misdn_cfg_get_ports_string (char *ports)
@@ -819,10 +778,10 @@ void misdn_cfg_get_config_string (int port, enum misdn_cfg_elements elem, char* 
 			break;
 		case MISDN_CTYPE_ASTGROUP:
 			if (port_cfg[port][place].grp)
-				snprintf(buf, bufsize, " -> %s: %s", port_spec[place].name,
+				snprintf(buf, bufsize, " -> %s: %s", port_spec[place].name, 
 						 ast_print_group(tempbuf, sizeof(tempbuf), *port_cfg[port][place].grp));
 			else if (port_cfg[0][place].grp)
-				snprintf(buf, bufsize, " -> %s: %s", port_spec[place].name,
+				snprintf(buf, bufsize, " -> %s: %s", port_spec[place].name, 
 						 ast_print_group(tempbuf, sizeof(tempbuf), *port_cfg[0][place].grp));
 			else
 				snprintf(buf, bufsize, " -> %s:", port_spec[place].name);
@@ -889,7 +848,7 @@ int misdn_cfg_get_next_port (int port)
 {
 	int p = -1;
 	int gn = map[MISDN_CFG_GROUPNAME];
-
+	
 	misdn_cfg_lock();
 	for (port++; port <= max_ports; port++) {
 		if (port_cfg[port][gn].str) {
@@ -992,7 +951,7 @@ static void _build_general_config (struct ast_variable *v)
 	for (; v; v = v->next) {
 		if (!ast_jb_read_conf(&global_jbconf, v->name, v->value))
 			continue;
-		if (((pos = get_cfg_position(v->name, GEN_CFG)) < 0) ||
+		if (((pos = get_cfg_position(v->name, GEN_CFG)) < 0) || 
 			(_parse(&general_cfg[pos], v->value, gen_spec[pos].type, gen_spec[pos].boolint_def) < 0))
 			CLI_ERROR(v->name, v->value, "general");
 	}
@@ -1014,7 +973,7 @@ static void _build_port_config (struct ast_variable *v, char *cat)
 		cfg_for_ports[0] = 1;
 	}
 
-	if (((pos = get_cfg_position("name", PORT_CFG)) < 0) ||
+	if (((pos = get_cfg_position("name", PORT_CFG)) < 0) || 
 		(_parse(&cfg_tmp[pos], cat, port_spec[pos].type, port_spec[pos].boolint_def) < 0)) {
 		CLI_ERROR(v->name, v->value, cat);
 		return;
@@ -1025,7 +984,7 @@ static void _build_port_config (struct ast_variable *v, char *cat)
 			char *token, *tmp = ast_strdupa(v->value);
 			char ptpbuf[BUFFERSIZE] = "";
 			int start, end;
-			for (token = strsep(&tmp, ","); token; token = strsep(&tmp, ","), *ptpbuf = 0) {
+			for (token = strsep(&tmp, ","); token; token = strsep(&tmp, ","), *ptpbuf = 0) { 
 				if (!*token)
 					continue;
 				if (sscanf(token, "%30d-%30d%511s", &start, &end, ptpbuf) >= 2) {
@@ -1048,7 +1007,7 @@ static void _build_port_config (struct ast_variable *v, char *cat)
 				}
 			}
 		} else {
-			if (((pos = get_cfg_position(v->name, PORT_CFG)) < 0) ||
+			if (((pos = get_cfg_position(v->name, PORT_CFG)) < 0) || 
 				(_parse(&cfg_tmp[pos], v->value, port_spec[pos].type, port_spec[pos].boolint_def) < 0))
 				CLI_ERROR(v->name, v->value, cat);
 		}

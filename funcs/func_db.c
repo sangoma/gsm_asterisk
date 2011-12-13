@@ -27,13 +27,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 154542 $")
 
 #include <regex.h>
 
@@ -84,19 +80,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 		<see-also>
 			<ref type="function">DB</ref>
 		</see-also>
-	</function>
-	<function name="DB_KEYS" language="en_US">
-		<synopsis>
-			Obtain a list of keys within the Asterisk database.
-		</synopsis>
-		<syntax>
-			<parameter name="prefix" />
-		</syntax>
-		<description>
-			<para>This function will return a comma-separated list of keys existing
-			at the prefix specified within the Asterisk database.  If no argument is
-			provided, then a list of key families will be returned.</para>
-		</description>
 	</function>
 	<function name="DB_DELETE" language="en_US">
 		<synopsis>
@@ -218,62 +201,6 @@ static int function_db_exists(struct ast_channel *chan, const char *cmd,
 static struct ast_custom_function db_exists_function = {
 	.name = "DB_EXISTS",
 	.read = function_db_exists,
-	.read_max = 2,
-};
-
-static int function_db_keys(struct ast_channel *chan, const char *cmd, char *parse, struct ast_str **result, ssize_t maxlen)
-{
-	size_t parselen = strlen(parse);
-	struct ast_db_entry *dbe, *orig_dbe;
-	struct ast_str *escape_buf = NULL;
-	const char *last = "";
-
-	/* Remove leading and trailing slashes */
-	while (parse[0] == '/') {
-		parse++;
-		parselen--;
-	}
-	while (parse[parselen - 1] == '/') {
-		parse[--parselen] = '\0';
-	}
-
-	ast_str_reset(*result);
-
-	/* Nothing within the database at that prefix? */
-	if (!(orig_dbe = dbe = ast_db_gettree(parse, NULL))) {
-		return 0;
-	}
-
-	for (; dbe; dbe = dbe->next) {
-		/* Find the current component */
-		char *curkey = &dbe->key[parselen + 1], *slash;
-		if (*curkey == '/') {
-			curkey++;
-		}
-		/* Remove everything after the current component */
-		if ((slash = strchr(curkey, '/'))) {
-			*slash = '\0';
-		}
-
-		/* Skip duplicates */
-		if (!strcasecmp(last, curkey)) {
-			continue;
-		}
-		last = curkey;
-
-		if (orig_dbe != dbe) {
-			ast_str_append(result, maxlen, ",");
-		}
-		ast_str_append_escapecommas(result, maxlen, curkey, strlen(curkey));
-	}
-	ast_db_freetree(orig_dbe);
-	ast_free(escape_buf);
-	return 0;
-}
-
-static struct ast_custom_function db_keys_function = {
-	.name = "DB_KEYS",
-	.read2 = function_db_keys,
 };
 
 static int function_db_delete(struct ast_channel *chan, const char *cmd,
@@ -324,7 +251,6 @@ static int unload_module(void)
 	res |= ast_custom_function_unregister(&db_function);
 	res |= ast_custom_function_unregister(&db_exists_function);
 	res |= ast_custom_function_unregister(&db_delete_function);
-	res |= ast_custom_function_unregister(&db_keys_function);
 
 	return res;
 }
@@ -336,7 +262,6 @@ static int load_module(void)
 	res |= ast_custom_function_register(&db_function);
 	res |= ast_custom_function_register(&db_exists_function);
 	res |= ast_custom_function_register(&db_delete_function);
-	res |= ast_custom_function_register(&db_keys_function);
 
 	return res;
 }

@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2009, Digium, Inc.
+ * Copyright (C) 1999 - 2008, Digium, Inc.
  *
  * See http://www.asterisk.org for more information about
  * the Asterisk project. Please do not directly contact
@@ -15,11 +15,9 @@
  */
 
 /*! 
- * \file
- *
- * This is the main header file used for generating miscellaneous developer
- * documentation using doxygen.  This also pulls in all of the documentation
- * that is in include/asterisk/doxygen/.
+ * \file 
+ * \brief This file generates Doxygen pages from files in the /doc
+ *        directory of the Asterisk source code tree 
  */
 
 /* 
@@ -36,9 +34,6 @@
  * \arg \ref CommitMessages : Information on formatting and special tags for commit messages
  * \arg \ref ReleaseStatus : The current support level for various Asterisk releases
  * \arg \ref ReleasePolicies : Asterisk Release and Commit Policies
- * \arg \ref Reviewboard : Reviewboard Usage and Guidelines
- * \arg \ref MantisWorkflow : Workflow Guidelines for Asterisk Open Source Issue Tracker
- * \arg \ref AsteriskGitHowto : How to setup a local GIT mirror of the Asterisk SVN repository
  * \arg \ref AstCREDITS : A Thank You to contributors (unfortunately out of date)
  *
  * \section apisandinterfaces Asterisk APIs and Interfaces
@@ -66,11 +61,272 @@
  *
  * \section weblinks Web sites
  * \arg \b Main:  Asterisk Developer's website http://www.asterisk.org/developers/
- * \arg \b Bugs: The Issue Tracker https://issues.asterisk.org
+ * \arg \b Bugs: The Issue Tracker http://bugs.digium.com
  * \arg \b Lists: List Server http://lists.digium.com
  * \arg \b Wiki: The Asterisk Wiki 	http://www.voip-info.org
  * \arg \b Docs: The Asterisk Documentation Project http://www.asteriskdocs.org
  * \arg \b Digium: The Asterisk Company http://www.digium.com
+ */
+
+/*!
+ * \page ReleaseStatus Asterisk Release Status
+ *
+ * @AsteriskTrunkWarning
+ *
+ * \section warranty Warranty
+ * The following warranty applies to all open source releases of Asterisk:
+ *
+ * NO WARRANTY
+ *
+ * BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+ * FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN
+ * OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+ * PROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED
+ * OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS
+ * TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE
+ * PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,
+ * REPAIR OR CORRECTION.
+
+ * IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+ * WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+ * REDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,
+ * INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING
+ * OUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED
+ * TO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY
+ * YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER
+ * PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGES.
+ *
+ * \section releasestatustypes Release Status Types
+ *
+ * Release management is a essentially an agreement between the development
+ * community and the %user community on what kind of updates can be expected
+ * for Asterisk releases, and what types of changes these updates will contain.
+ * Once these policies are established, the development community works very
+ * hard to adhere to them.  However, the development community does reserve
+ * the right to make exceptions to these rules for special cases as the need
+ * arises.
+ *
+ * Asterisk releases are in various states of maintenance.  The states are
+ * defined here:
+ *
+ * \arg <b>None</b> - This release series is receiving no updates whatsoever.
+ * \arg <b>Security-Only</b> - This release series is receiving updates, but
+ *      only to address security issues.  Security issues found and fixed in
+ *      this release series will be accompanied by a published security advisory
+ *      from the Asterisk project.
+ * \arg <b>Full-Support</b> - This release series is receiving updates for all
+ *      types of bugs.
+ * \arg <b>Full-Development</b> - Changes in this part of Asterisk include bug
+ *      fixes, as well as new %features and architectural improvements.
+ *
+ * \section AsteriskReleases Asterisk Maintenance Levels
+ *
+ * \htmlonly
+ * <table border="1">
+ *  <tr>
+ *   <td><b>Name</b></td>
+ *   <td><b>SVN Branch</b></td>
+ *   <td><b>Status</b></td>
+ *   <td><b>Notes</b></td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk 1.0</td>
+ *   <td>/branches/1.0</td>
+ *   <td>None</td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk 1.2</td>
+ *   <td>/branches/1.2</td>
+ *   <td>Security-Only</td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk 1.4</td>
+ *   <td>/branches/1.4</td>
+ *   <td>Full-Support</td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk 1.6.0</td>
+ *   <td>/branches/1.6.0</td>
+ *   <td>Full-Support</td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk 1.6.1</td>
+ *   <td>/branches/1.6.1</td>
+ *   <td>Full-Support</td>
+ *   <td>Still in beta</td>
+ *  </tr>
+ *  <tr>
+ *   <td>Asterisk trunk</td>
+ *   <td>/trunk</td>
+ *   <td>Full-Development</td>
+ *   <td>No releases are made directly from trunk.</td>
+ *  </tr>
+ * </table>
+ * \endhtmlonly
+ *
+ * For more information on how and when Asterisk releases are made, see the
+ * release policies page:
+ * \arg \ref ReleasePolicies
+ */
+
+/*!
+ * \page ReleasePolicies Asterisk Release and Commit Policies
+ *
+ * \AsteriskTrunkWarning
+ *
+ * \section releasestatus Asterisk Release Status
+ *
+ * For more information on the current status of each Asterisk release series,
+ * please see the Asterisk Release Status page:
+ *
+ * \arg \ref ReleaseStatus
+ *
+ * <hr/>
+ *
+ * \section commitmonitoring Commit Monitoring
+ *
+ * To monitor commits to Asterisk and related projects, visit 
+ * <a href="http://lists.digium.com/">http://lists.digium.com</a>.  The Digium
+ * mailing list server hosts a %number of mailing lists for commits.
+ *
+ * <hr/>
+ *
+ * \section ast10policy Asterisk 1.0
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /branches/1.0
+ *
+ * \subsection ast10releases Release and Commit Policy
+ * No more releases of Asterisk 1.0 will be made for any reason.
+ *
+ * No commits should be made to the Asterisk 1.0 branch.
+ * 
+ * <hr/>
+ *
+ * \section ast12policy Asterisk 1.2
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /branches/1.2
+ *
+ * \subsection ast12releases Release and Commit Policy
+ *
+ * There will be no more scheduled releases of Asterisk 1.2.
+ * 
+ * Commits to the Asterisk 1.2 branch should only address security issues or
+ * regressions introduced by previous security fixes.  For a security issue, the
+ * commit should be accompanied by an 
+ * <a href="http://downloads.digium.com/pub/security/">Asterisk Security Advisory</a>
+ * and an immediate release.  When a commit goes in to fix a regression, the previous
+ * security advisory that is related to the change that introduced the bug should get
+ * updated to indicate that there is an updated version of the fix.  A release should
+ * be made immediately for these regression fixes, as well.
+ *
+ * <hr/>
+ *
+ * \section ast14policy Asterisk 1.4
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /branches/1.4
+ *
+ * \subsection ast14releases Release and Commit Policy
+ *
+ * Asterisk 1.4 is receiving regular bug fix release updates.  An attempt is made to
+ * make releases of every four to six weeks.  Since this release series is receiving
+ * changes for all types of bugs, the number of changes in a single release can be
+ * significant.  1.4.X releases go through a release candidate testing cycle to help
+ * catch any regressions that may have been introduced.
+ *
+ * Commits to Asterisk 1.4 must be to address bugs only.  No new %features should be
+ * introduced into Asterisk 1.4 to reduce the %number of changes to this established
+ * release series.  The only exceptions to this %rule are for cases where something
+ * that may be considered a feature is needed to address a bug or security issue.
+ *
+ * <hr/>
+ *
+ * \section ast16policy Asterisk 1.6
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /branches/1.6.*
+ *
+ * \subsection ast16releases Release and Commit Policy
+ *
+ * Asterisk 1.6 is managed in a different way than previous Asterisk release series.
+ * From a high level, it was inspired by the release model used for Linux 2.6.
+ * The intended time frame for 1.6.X releases is every 2 or 3 months.  Each 1.6.X
+ * release gets its own branch.  The 1.6.X branches are branches off of trunk.
+ * Once the branch is created, it only receives bug fixes.  Each 1.6.X release goes
+ * through a beta and release candidate testing cycle.
+ *
+ * After a 1.6.X release is published, it will be maintained until 1.6.[X + 3] is
+ * released.  While a 1.6.X release branch is still maintained, it will receive only
+ * bug fixes.  Periodic maintenance releases will be made and labeled as 1.6.X.Y.
+ * 1.6.X.Y releases should go through a release candidate test cycle before being
+ * published.
+ *
+ * For now, all previous 1.6 release will be maintained for security issues.  Once
+ * we have more 1.6 releases to deal with, this part of the policy will likely change.
+ * 
+ * For some history on the motivations for Asterisk 1.6 release management, see the
+ * first two sections of this
+ * <a href="http://lists.digium.com/pipermail/asterisk-dev/2007-October/030083.html">mailing list post</a>.
+ *
+ * <hr/>
+ *
+ * \section asttrunk Asterisk Trunk
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /trunk
+ *
+ * \subsection asttrunkpolicy Release and Commit Policy
+ *
+ * No releases are ever made directly from Asterisk trunk.
+ *
+ * Asterisk trunk is used as the main development area for upcoming Asterisk 1.6 
+ * releases.  Commits to Asterisk trunk are not limited.  They can be bug fixes,
+ * new %features, and architectural improvements.  However, for larger sets
+ * of changes, developers should work with the Asterisk project leaders to
+ * schedule them for inclusion.  Care is taken not to include too many invasive
+ * sets of changes for each new Asterisk 1.6 release.
+ *
+ * No changes should go into Asterisk trunk that are not ready to go into a
+ * release.  While the upcoming release will go through a beta and release
+ * candidate test cycle, code should not be in trunk until the code has been
+ * tested and reviewed such that there is reasonable belief that the code
+ * is ready to go.
+ *
+ * <hr/>
+ *
+ * \section astteam Asterisk Team Branches
+ *
+ * \subsection svnbranch SVN Branch
+ *
+ * \arg /team/&lt;developername&gt;
+ *
+ * \subsection astteampolicy Release and Commit Policy
+ *
+ * The Asterisk subversion repository has a special directory called "team"
+ * where developers can make their own personal development branches.  This is
+ * where new %features, bug fixes, and architectural improvements are developed
+ * while they are in %progress.
+ *
+ * Just about anything goes as far as commits to this area goes.  However,
+ * developers should keep in mind that anything committed here, as well as
+ * anywhere else on Digium's SVN server, falls under the contributor license
+ * agreement.
+ *
+ * In addition to each developer having their own space for working on projects,
+ * there is also a team/group folder where %group development efforts take place.
+ *
+ * Finally, in each developer folder, there is a folder called "private".  This
+ * is where developers can create branches for working on things that they are
+ * not ready for the whole world to see.
  */
 
 /*! 
@@ -82,6 +338,98 @@
  * \verbinclude CODING-GUIDELINES
  */
 
+/*!
+ * \page CommitMessages Guidelines for Commit Messages
+ *
+ * \AsteriskTrunkWarning
+ *
+ * <hr/>
+ *
+ * \section CommitMsgFormatting Commit Message Formatting
+ *
+ * The following illustrates the basic outline for commit messages:
+ *
+  \verbatim
+  <One-liner summary of changes>
+ 
+  <Verbose description of the changes>
+
+  <Special Tags>
+  \endverbatim
+ *
+ * Some commit history viewers treat the first line of commit messages as the
+ * summary for the commit.  So, an effort should be made to format our commit
+ * messages in that fashion.  The verbose description may contain multiple 
+ * paragraphs, itemized lists, etc.
+ *
+ * Commit messages should be wrapped at 80 %columns.
+ *
+ * \note For trivial commits, such as "fix the build", or "fix spelling mistake",
+ *       the verbose description may not be necessary.
+ *
+ * <hr/>
+ *
+ * \section CommitMsgTags Special Tags for Commit Messages
+ *
+ * \subsection MantisTags Mantis (http://bugs.digium.com/)
+ *
+ * To have a commit noted in an issue, use a tag of the form: 
+ * \arg (issue #1234)
+ *
+ * To have a commit automatically close an issue, use a tag of the form:
+ * \arg (closes issue #1234)
+ *
+ * When making a commit for a mantis issue, it is easiest to use the
+ * provided commit %message template functionality.  It will format the
+ * special tags appropriately, and will also include information about who
+ * reported the issue, which patches are being applied, and who did testing.
+ * 
+ * Assuming that you have bug marshal access (and if you have commit access,
+ * it is pretty safe to assume that you do), you will find the commit %message
+ * template section directly below the issue details section and above the
+ * issue relationships section.  You will have to click the '+' next to
+ * "Commit message template" to make the contents of the section visible.
+ *
+ * Here is an example of what the template will generate for you:
+ *
+  \verbatim
+  (closes issue #1234)
+  Reported by: SomeGuy
+  Patches:
+       fix_bug_1234.diff uploaded by SomeDeveloper (license 5678)
+  \endverbatim
+ *
+ * If the patch being committed was written by the person doing the commit,
+ * and is not available to reference as an upload to the issue, there is no
+ * need to include something like "fixed by me", as that will be the default
+ * assumption when a specific patch is not referenced.
+ *
+ * \subsection ReviewBoardTags Review Board (http://reviewboard.digium.com/)
+ *
+ * To have a commit set a review request as submitted, include the full URL
+ * to the review request.  For example:
+ * \arg Review: %http://reviewboard.digium.com/r/95/
+ *
+ * \note The trailing slash in the review URL is required.
+ *
+ * <hr/>
+ *
+ * \section CommitMsgSvnmerge Commit Messages with svnmerge
+ *
+ * When using the svnmerge tool for merging changes between branches, use the
+ * commit %message generated by svnmerge.  The '-f' option to svnmerge allows
+ * you to specify a file for svnmerge to write out a commit %message to.  The
+ * '-F' option to svn commit allows you to specify a file that contains the
+ * commit %message.
+ *
+ * If you are using the expect script wrappers for svnmerge from repotools,
+ * a commit %message is automatically placed in the file '../merge.msg'.
+ *
+ * For more detailed information about working with branches and merging,
+ * see the following page on %asterisk.org:
+ * \arg http://www.asterisk.org/developers/svn-branching-merging
+ */
+
 /*! 
  * \page AstAPI Asterisk API
  * \section Asteriskapi Asterisk API
@@ -90,7 +438,6 @@
  * \arg \ref AstThreadStorage
  * \arg \ref DataStores
  * \arg \ref AstExtState
- * \arg \ref AstDataRetrieval
  *
  * \subsection model_txt Generic Model
  * \verbinclude model.txt
@@ -98,38 +445,31 @@
  * \arg See \ref Def_Channel
  */
 
-/*! 
- * \page AstAPIChanges Asterisk API Changes
- *
- * \section Changes161 Version 1.6.1
- * \li ast_install_vm_functions()
- * \li vmwi_generate()
- * \li ast_channel_datastore_alloc()
- * \li ast_channel_datastore_free()
- * \li ast_channel_cmpwhentohangup()
- * \li ast_channel_setwhentohangup()
- * \li ast_settimeout()
- * \li ast_datastore_alloc()
- * \li ast_datastore_free()
- * \li ast_device_state_changed()
- * \li ast_device_state_changed_literal()
- * \li ast_dnsmgr_get()
- * \li ast_dnsmgr_lookup()
- * \li ast_dsp_set_digitmode()
- * \li ast_get_txt()
- * \li ast_event_unsubscribe()
- * \li localized_context_find_or_create()
- * \li localized_merge_contexts_and_delete()
- * \li ast_console_puts_mutable()
- * \li ast_rtp_get_quality()
- * \li ast_tcptls_client_start()
- * \li ast_tcptls_server_start()
- * \li ast_tcptls_server_stop()
- *
- * \section Changes162 Version 1.6.2
- *
- * \section Changes18 Version 1.8
- * \li ast_channel_alloc()
+/*! \page AstAPIChanges Asterisk API Changes
+ *  \section Changes161 Version 1.6.1
+ *  \li ast_install_vm_functions()
+ *  \li vmwi_generate()
+ *  \li ast_channel_datastore_alloc()
+ *  \li ast_channel_datastore_free()
+ *  \li ast_channel_cmpwhentohangup()
+ *  \li ast_channel_setwhentohangup()
+ *  \li ast_settimeout()
+ *  \li ast_datastore_alloc()
+ *  \li ast_datastore_free()
+ *  \li ast_device_state_changed()
+ *  \li ast_device_state_changed_literal()
+ *  \li ast_dnsmgr_get()
+ *  \li ast_dnsmgr_lookup()
+ *  \li ast_dsp_set_digitmode()
+ *  \li ast_get_txt()
+ *  \li ast_event_unsubscribe()
+ *  \li localized_context_find_or_create()
+ *  \li localized_merge_contexts_and_delete()
+ *  \li ast_console_puts_mutable()
+ *  \li ast_rtp_get_quality()
+ *  \li ast_tcptls_client_start()
+ *  \li ast_tcptls_server_start()
+ *  \li ast_tcptls_server_stop()
  */
 
 /*! 
@@ -309,16 +649,11 @@
  * \arg \link Config_followme Followme configuration  \endlink
  * \section cdrconf CDR configuration files
  * \arg \link Config_cdr CDR configuration  \endlink
- * \arg \link cdr_csv Default CDR driver configuration \endlink
  * \arg \link cdr_custom Custom CDR driver configuration \endlink
  * \arg \link cdr_ami Manager CDR driver configuration \endlink
  * \arg \link cdr_odbc ODBC CDR driver configuration \endlink
- * \arg \link cdr_adaptive_odbc Adaptive ODBC CDR driver configuration \endlink
  * \arg \link cdr_pgsql PostgreSQL CDR driver configuration \endlink
- * \arg \link cdr_radius RADIUS CDR driver configuration \endlink
- * \arg \link cdr_sqlite SQLite 2 CDR driver configuration \endlink
- * \arg \link cdr_sqlite3_custom SQLite 3 CDR driver configuration \endlink
- * \arg \link cdr_syslog Syslog CDR driver configuration \endlink
+ * \arg \link cdr_sqlite SQLite CDR driver configuration \endlink
  * \arg \link cdr_tds FreeTDS CDR driver configuration (Microsoft SQL Server) \endlink
  * \section miscconf Miscellenaous configuration files
  * \arg \link Config_adsi ADSI configuration  \endlink
@@ -350,7 +685,7 @@
 /*! 
  * \page Config_fea Call features configuration
  * \par See also
- * \arg \ref features.c : Call feature implementation
+ * \arg \ref res_features.c : Call feature implementation
  * \section featconf features.conf
  * \verbinclude features.conf.sample
  */
@@ -489,19 +824,11 @@
  * \verbinclude enum.conf.sample
  */
 
-/*!
- * \page cdr_csv Default CDR driver configuration
- * \par See also
- * \arg \ref cdrconf
- * \arg Implemented in \ref cdr_csv.c
- * \verbinclude cdr_csv.conf.sample
- */
-
 /*! 
  * \page cdr_custom Custom CDR Configuration
  * \par See also 
  * \arg \ref cdrconf
- * \arg Implemented in \ref cdr_custom.c
+ * \arg \ref cdr_custom.c
  * \verbinclude cdr_custom.conf.sample
  */
 
@@ -510,24 +837,15 @@
  * \par See also 
  * \arg \ref cdrconf
  * \arg \ref AstAMI
- * \arg Implemented in \ref cdr_manager.c
+ * \arg \ref cdr_manager.c
  * \verbinclude cdr_manager.conf.sample
  */
 
 /*! 
  * \page cdr_odbc ODBC CDR driver configuration
  * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_odbc.c
+ * \arg \ref cdr_odbc.c
  * \verbinclude cdr_odbc.conf.sample
- * See also:
- * \arg http://www.unixodbc.org
- */
-
-/*! 
- * \page cdr_odbc Adaptive ODBC CDR driver configuration
- * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_adaptive_odbc.c
- * \verbinclude cdr_adaptive_odbc.conf.sample
  * See also:
  * \arg http://www.unixodbc.org
  */
@@ -535,41 +853,18 @@
 /*! 
  * \page cdr_pgsql PostgreSQL CDR driver configuration
  * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_pgsql.c
+ * \arg \ref cdr_pgsql.c
  * See also:
  * \arg http://www.postgresql.org
  * \verbinclude cdr_pgsql.conf.sample
  */
 
-/*!
- * \page cdr_radius RADIUS CDR driver configuration
- * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_radius.c
- * \verbinclude cdr_radius.conf.sample
- */
-
 /*! 
- * \page cdr_sqlite SQLite 2 CDR driver configuration
+ * \page cdr_sqlite SQLite CDR driver configuration
  * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_sqlite.c
+ * \arg \ref cdr_sqlite.c
  * See also:
  * \arg http://www.sqlite.org
- */
-
-/*!
- * \page cdr_sqlite3_custom SQLite 3 CDR driver configuration
- * \arg See also \ref cdrconf
- * \arg Implemented in \ref cdr_sqlite3_custom.c
- * See also:
- * \arg http://www.sqlite.org
- * \verbinclude cdr_sqlite3_custom.conf.sample
- */
-
-/*!
- * \page cdr_syslog Syslog CDR driver configuration
- * \arg See also \ref cdrconf
- * \arg \ref cdr_syslog.c
- * \verbinclude cdr_syslog.conf.sample
  */
 
 /*! 
@@ -585,16 +880,11 @@
  * \par See also
  * \arg \ref cdr_drivers
  * \arg \link Config_cdr CDR configuration  \endlink  
- * \arg \link cdr_csv Default CDR driver configuration \endlink
  * \arg \link cdr_custom Custom CDR driver configuration \endlink
  * \arg \link cdr_ami Manager CDR driver configuration \endlink
  * \arg \link cdr_odbc ODBC CDR driver configuration \endlink
- * \arg \link cdr_adaptive_odbc Adaptive ODBC CDR driver configuration \endlink
  * \arg \link cdr_pgsql PostgreSQL CDR driver configuration \endlink
- * \arg \link cdr_radius RADIUS CDR driver configuration \endlink
- * \arg \link cdr_sqlite SQLite 2 CDR driver configuration \endlink
- * \arg \link cdr_sqlite3_custom SQLite 3 CDR driver configuration \endlink
- * \arg \link cdr_syslog Syslog CDR driver configuration \endlink
+ * \arg \link cdr_sqlite SQLite CDR driver configuration \endlink
  * \arg \link cdr_tds FreeTDS CDR driver configuration (Microsoft SQL Server) \endlink
  * \verbinclude cdr.conf.sample
  */
@@ -710,11 +1000,6 @@
  */
 
 /*! 
- * \addtogroup rtp_engines Module: RTP Engines
- * \section rtp_engine_blah Asterisk RTP Engines
- */
-
-/*! 
  * \page AstHTTP AMI over HTTP support
  * The http.c file includes support for manager transactions over
  * http.
@@ -733,4 +1018,136 @@
  * http://www.sqlite.org
  */
 
-
+/*!
+ * \page Licensing Asterisk Licensing Information
+ *
+ * \section license Asterisk License
+ * \verbinclude LICENSE
+ *
+ * \section otherlicenses Licensing of 3rd Party Code
+ *
+ * This section contains a (not yet complete) list of libraries that are used
+ * by various parts of Asterisk, including related licensing information.
+ *
+ * \subsection alsa_lib ALSA Library
+ * \arg <b>Library</b>: libasound
+ * \arg <b>Website</b>: http://www.alsa-project.org
+ * \arg <b>Used by</b>: chan_alsa
+ * \arg <b>License</b>: LGPL
+ *
+ * \subsection openssl_lib OpenSSL
+ * \arg <b>Library</b>: libcrypto, libssl
+ * \arg <b>Website</b>: http://www.openssl.org
+ * \arg <b>Used by</b>: Asterisk core (TLS for manager and HTTP), res_crypto
+ * \arg <b>License</b>: Apache 2.0
+ * \arg <b>Note</b>:    An exception has been granted to allow linking of 
+ *                      OpenSSL with Asterisk.
+ *
+ * \subsection curl_lib Curl
+ * \arg <b>Library</b>: libcurl
+ * \arg <b>Website</b>: http://curl.haxx.se
+ * \arg <b>Used by</b>: func_curl, res_config_curl, res_curl
+ * \arg <b>License</b>: BSD
+ *
+ * \subsection portaudio_lib PortAudio
+ * \arg <b>Library</b>: libportaudio
+ * \arg <b>Website</b>: http://www.portaudio.com
+ * \arg <b>Used by</b>: chan_console
+ * \arg <b>License</b>: BSD
+ * \arg <b>Note</b>:    Even though PortAudio is licensed under a BSD style
+ *                      license, PortAudio will make use of some audio interface,
+ *                      depending on how it was built.  That audio interface may
+ *                      introduce additional licensing restrictions.  On Linux,
+ *                      this would most commonly be ALSA: \ref alsa_lib.
+ *
+ * \subsection rawlist Raw list of libraries that used by any part of Asterisk
+ * \li c-client.a (app_voicemail with IMAP support)
+ * \li libSDL-1.2.so.0
+ * \li libSaClm.so.2
+ * \li libSaEvt.so.2
+ * \li libX11.so.6
+ * \li libXau.so.6
+ * \li libXdmcp.so.6
+ * \li libasound.so.2
+ * \li libc.so.6
+ * \li libcom_err.so.2
+ * \li libcrypt.so.1
+ * \li libcrypto.so.0.9.8 (chan_h323)
+ * \li libcurl.so.4
+ * \li libdirect-1.0.so.0
+ * \li libdirectfb-1.0.so.0
+ * \li libdl.so.2
+ * \li libexpat.so (chan_h323)
+ * \li libfusion-1.0.so.0
+ * \li libgcc_s.so (chan_h323)
+ * \li libgcrypt.so.11 (chan_h323)
+ * \li libglib-2.0.so.0
+ * \li libgmime-2.0.so.2
+ * \li libgmodule-2.0.so.0
+ * \li libgnutls.so.13 (chan_h323)
+ * \li libgobject-2.0.so.0
+ * \li libgpg-error.so.0 (chan_h323)
+ * \li libgssapi_krb5.so.2
+ * \li libgthread-2.0.so.0
+ * \li libidn.so.11
+ * \li libiksemel.so.3
+ * \li libisdnnet.so
+ * \li libjack.so.0
+ * \li libjpeg.so.62
+ * \li libk5crypto.so.3
+ * \li libkeyutils.so.1
+ * \li libkrb5.so.3
+ * \li libkrb5support.so.0
+ * \li liblber-2.4.so.2 (chan_h323)
+ * \li libldap_r-2.4.so.2 (chan_h323)
+ * \li libltdl.so.3
+ * \li liblua5.1.so.0
+ * \li libm.so.6
+ * \li libmISDN.so
+ * \li libnbs.so.1
+ * \li libncurses.so.5
+ * \li libnetsnmp.so.15
+ * \li libnetsnmpagent.so.15
+ * \li libnetsnmphelpers.so.15
+ * \li libnetsnmpmibs.so.15
+ * \li libnsl.so.1
+ * \li libodbc.so.1
+ * \li libogg.so.0
+ * \li libopenh323.so (chan_h323)
+ * \li libpcre.so.3
+ * \li libperl.so.5.8
+ * \li libportaudio.so.2
+ * \li libpq.so.5
+ * \li libpri.so.1.4
+ * \li libpt.so (chan_h323)
+ * \li libpthread.so.0
+ * \li libradiusclient-ng.so.2
+ * \li libresample.so.1.0
+ * \li libresolv.so.2 (chan_h323)
+ * \li librt.so.1
+ * \li libsasl2.so.2 (chan_h323)
+ * \li libselinux.so.1
+ * \li libsensors.so.3
+ * \li libspandsp.so.1
+ * \li libspeex.so.1
+ * \li libsqlite.so.0
+ * \li libsqlite3.so.0
+ * \li libss7.so.1
+ * \li libssl.so.0.9.8 (chan_h323)
+ * \li libstdc++.so (chan_h323, chan_vpb)
+ * \li libsuppserv.so
+ * \li libsybdb.so.5
+ * \li libsysfs.so.2
+ * \li libtasn1.so.3 (chan_h323)
+ * \li libtds.so.4
+ * \li libtiff.so.4
+ * \li libtonezone.so.1.0
+ * \li libvorbis.so.0
+ * \li libvorbisenc.so.2
+ * \li libvpb.a (chan_vpb)
+ * \li libwrap.so.0
+ * \li libxcb-xlib.so.0
+ * \li libxcb.so.1
+ * \li libz.so.1 (chan_h323)
+ * \li linux-vdso.so.1
+*/

@@ -30,6 +30,7 @@ extern "C" {
 /* these two are used in struct ast_audiohook */
 #include "asterisk/lock.h"
 #include "asterisk/linkedlists.h"
+
 #include "asterisk/slinfactory.h"
 
 enum ast_audiohook_type {
@@ -61,16 +62,9 @@ enum ast_audiohook_flags {
 	 * slinfactories. We will flush the factories if they contain too many samples.
 	 */
 	AST_AUDIOHOOK_SMALL_QUEUE = (1 << 3),
-	AST_AUDIOHOOK_MUTE_READ = (1 << 4),     /*!< audiohook should be mute frames read */
-	AST_AUDIOHOOK_MUTE_WRITE = (1 << 5),    /*!< audiohook should be mute frames written */
 };
 
-enum ast_audiohook_init_flags {
-	/*! Audiohook manipulate callback is capable of handling slinear at any sample rate.
-	 * Without enabling this flag on initialization the manipulation callback is guaranteed
-	 * 8khz audio only. */
-	AST_AUDIOHOOK_MANIPULATE_ALL_RATES = (1 << 0),
-};
+#define AST_AUDIOHOOK_SYNC_TOLERANCE 100 /*< Tolerance in milliseconds for audiohooks synchronization */
 
 struct ast_audiohook;
 
@@ -102,18 +96,16 @@ struct ast_audiohook {
 	ast_cond_t trigger;                                    /*!< Trigger condition (if enabled) */
 	enum ast_audiohook_type type;                          /*!< Type of audiohook */
 	enum ast_audiohook_status status;                      /*!< Status of the audiohook */
-	enum ast_audiohook_init_flags init_flags;              /*!< Init flags */
 	const char *source;                                    /*!< Who this audiohook ultimately belongs to */
 	unsigned int flags;                                    /*!< Flags on the audiohook */
 	struct ast_slinfactory read_factory;                   /*!< Factory where frames read from the channel, or read from the whisper source will go through */
 	struct ast_slinfactory write_factory;                  /*!< Factory where frames written to the channel will go through */
 	struct timeval read_time;                              /*!< Last time read factory was fed */
 	struct timeval write_time;                             /*!< Last time write factory was fed */
-	struct ast_format format;                              /*!< Format translation path is setup as */
+	int format;                                            /*!< Format translation path is setup as */
 	struct ast_trans_pvt *trans_pvt;                       /*!< Translation path for reading frames */
 	ast_audiohook_manipulate_callback manipulate_callback; /*!< Manipulation callback */
 	struct ast_audiohook_options options;                  /*!< Applicable options */
-	unsigned int hook_internal_samp_rate;                           /*!< internal read/write sample rate on the audiohook.*/
 	AST_LIST_ENTRY(ast_audiohook) list;                    /*!< Linked list information */
 };
 
@@ -123,10 +115,9 @@ struct ast_audiohook_list;
  * \param audiohook Audiohook structure
  * \param type Type of audiohook to initialize this as
  * \param source Who is initializing this audiohook
- * \param init flags
  * \return Returns 0 on success, -1 on failure
  */
-int ast_audiohook_init(struct ast_audiohook *audiohook, enum ast_audiohook_type type, const char *source, enum ast_audiohook_init_flags flags);
+int ast_audiohook_init(struct ast_audiohook *audiohook, enum ast_audiohook_type type, const char *source);
 
 /*! \brief Destroys an audiohook structure
  * \param audiohook Audiohook structure
@@ -149,18 +140,7 @@ int ast_audiohook_write_frame(struct ast_audiohook *audiohook, enum ast_audiohoo
  * \param format Format of frame remote side wants back
  * \return Returns frame on success, NULL on failure
  */
-struct ast_frame *ast_audiohook_read_frame(struct ast_audiohook *audiohook, size_t samples, enum ast_audiohook_direction direction, struct ast_format *format);
-
-/*! \brief Reads a frame in from the audiohook structure in mixed audio mode and copies read and write frame data to provided arguments.
- * \param audiohook Audiohook structure
- * \param samples Number of samples wanted
- * \param direction Direction the audio frame came from
- * \param format Format of frame remote side wants back
- * \param ast_frame read_frame - if available, we'll copy the read buffer to this.
- * \param ast_frame write_frame - if available, we'll copy the write buffer to this.
- * \return Returns frame on success, NULL on failure
- */
-struct ast_frame *ast_audiohook_read_frame_all(struct ast_audiohook *audiohook, size_t samples, struct ast_format *format, struct ast_frame **read_frame, struct ast_frame **write_frame);
+struct ast_frame *ast_audiohook_read_frame(struct ast_audiohook *audiohook, size_t samples, enum ast_audiohook_direction direction, int format);
 
 /*! \brief Attach audiohook to channel
  * \param chan Channel
@@ -310,16 +290,6 @@ int ast_audiohook_volume_get(struct ast_channel *chan, enum ast_audiohook_direct
  * \since 1.6.1
  */
 int ast_audiohook_volume_adjust(struct ast_channel *chan, enum ast_audiohook_direction direction, int volume);
-
-/*! \brief Mute frames read from or written to a channel
- * \param chan Channel to muck with
- * \param source Type of audiohook
- * \param flag which direction to set / clear
- * \param clear set or clear muted frames on direction based on flag parameter
- * \retval 0 success
- * \retval -1 failure
- */
-int ast_audiohook_set_mute(struct ast_channel *chan, const char *source, enum ast_audiohook_flags flag, int clear);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

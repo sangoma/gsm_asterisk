@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 304951 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 261498 $")
 
 #include "asterisk/heap.h"
 #include "asterisk/utils.h"
@@ -306,17 +306,38 @@ size_t ast_heap_size(struct ast_heap *h)
 	return h->cur_len;
 }
 
+#ifndef DEBUG_THREADS
+
+int ast_heap_wrlock(struct ast_heap *h)
+{
+	return ast_rwlock_wrlock(&h->lock);
+}
+
+int ast_heap_rdlock(struct ast_heap *h)
+{
+	return ast_rwlock_rdlock(&h->lock);
+}
+
+int ast_heap_unlock(struct ast_heap *h)
+{
+	return ast_rwlock_unlock(&h->lock);
+}
+
+#else /* DEBUG_THREADS */
+
 int __ast_heap_wrlock(struct ast_heap *h, const char *file, const char *func, int line)
 {
-	return __ast_rwlock_wrlock(file, line, func, &h->lock, "&h->lock");
+	return _ast_rwlock_wrlock(&h->lock, "&h->lock", file, line, func);
 }
 
 int __ast_heap_rdlock(struct ast_heap *h, const char *file, const char *func, int line)
 {
-	return __ast_rwlock_rdlock(file, line, func, &h->lock, "&h->lock");
+	return _ast_rwlock_rdlock(&h->lock, "&h->lock", file, line, func);
 }
 
 int __ast_heap_unlock(struct ast_heap *h, const char *file, const char *func, int line)
 {
-	return __ast_rwlock_unlock(file, line, func, &h->lock, "&h->lock");
+	return _ast_rwlock_unlock(&h->lock, "&h->lock", file, line, func);
 }
+
+#endif /* DEBUG_THREADS */

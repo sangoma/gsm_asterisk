@@ -48,7 +48,6 @@
 #ifndef _ASTERISK_TCPTLS_H
 #define _ASTERISK_TCPTLS_H
 
-#include "asterisk/netsock2.h"
 #include "asterisk/utils.h"
 
 #if defined(HAVE_OPENSSL) && (defined(HAVE_FUNOPEN) || defined(HAVE_FOPENCOOKIE))
@@ -73,19 +72,12 @@ enum ast_ssl_flags {
 	/*! Don't verify certificate when connecting to a server */
 	AST_SSL_DONT_VERIFY_SERVER = (1 << 1),
 	/*! Don't compare "Common Name" against IP or hostname */
-	AST_SSL_IGNORE_COMMON_NAME = (1 << 2),
-	/*! Use SSLv2 for outgoing client connections */
-	AST_SSL_SSLV2_CLIENT = (1 << 3),
-	/*! Use SSLv3 for outgoing client connections */
-	AST_SSL_SSLV3_CLIENT = (1 << 4),
-	/*! Use TLSv1 for outgoing client connections */
-	AST_SSL_TLSV1_CLIENT = (1 << 5)
+	AST_SSL_IGNORE_COMMON_NAME = (1 << 2)
 };
 
 struct ast_tls_config {
 	int enabled;
 	char *certfile;
-	char *pvtfile;
 	char *cipher;
 	char *cafile;
 	char *capath;
@@ -121,9 +113,9 @@ struct ast_tls_config {
  * arguments for the accepting thread
  */
 struct ast_tcptls_session_args {
-	struct ast_sockaddr local_address;
-	struct ast_sockaddr old_address; /*!< copy of the local or remote address depending on if its a client or server session */
-	struct ast_sockaddr remote_address;
+	struct sockaddr_in local_address;
+	struct sockaddr_in old_address; /*!< copy of the local or remote address depending on if its a client or server session */
+	struct sockaddr_in remote_address;
 	char hostname[MAXHOSTNAMELEN]; /*!< only necessary for SSL clients so we can compare to common name */
 	struct ast_tls_config *tls_cfg; /*!< points to the SSL configuration if any */
 	int accept_fd;
@@ -144,7 +136,7 @@ struct ast_tcptls_session_instance {
 	SSL *ssl;   /* ssl state */
 /*	iint (*ssl_setup)(SSL *); */
 	int client;
-	struct ast_sockaddr remote_address;
+	struct sockaddr_in remote_address;
 	struct ast_tcptls_session_args *parent;
 	ast_mutex_t lock;
 };
@@ -182,11 +174,6 @@ void ast_tcptls_server_start(struct ast_tcptls_session_args *desc);
  */
 void ast_tcptls_server_stop(struct ast_tcptls_session_args *desc);
 int ast_ssl_setup(struct ast_tls_config *cfg);
-
-/*!
- * \brief Used to parse conf files containing tls/ssl options.
- */
-int ast_tls_read_conf(struct ast_tls_config *tls_cfg, struct ast_tcptls_session_args *tls_desc, const char *varname, const char *value);
 
 HOOK_T ast_tcptls_server_read(struct ast_tcptls_session_instance *ser, void *buf, size_t count);
 HOOK_T ast_tcptls_server_write(struct ast_tcptls_session_instance *ser, const void *buf, size_t count);

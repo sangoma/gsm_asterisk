@@ -1,4 +1,4 @@
-  <!ELEMENT docs (application|function|agi|manager)*>
+  <!ELEMENT docs (application|function|agi)*>
   <!ATTLIST docs xmlns:xi CDATA #FIXED "http://www.w3.org/2001/XInclude">
 
   <!ELEMENT xi:include (xi:fallback?) >
@@ -14,20 +14,14 @@
   <!ELEMENT application (synopsis?,syntax?,description?,see-also?)>
   <!ATTLIST application name CDATA #REQUIRED>
   <!ATTLIST application language CDATA #REQUIRED>
-  <!ATTLIST application module CDATA #IMPLIED>
 
   <!ELEMENT function (synopsis?,syntax?,description?,see-also?)>
   <!ATTLIST function name CDATA #REQUIRED>
   <!ATTLIST function language CDATA #REQUIRED>
-  <!ATTLIST function module CDATA #IMPLIED>
 
   <!ELEMENT agi (synopsis?,syntax?,description?,see-also?)>
   <!ATTLIST agi name CDATA #REQUIRED>
   <!ATTLIST agi language CDATA #REQUIRED>
-
-  <!ELEMENT manager (synopsis?,syntax?,description?,see-also?)>
-  <!ATTLIST manager name CDATA #REQUIRED>
-  <!ATTLIST manager language CDATA #REQUIRED>
 
   <!ELEMENT see-also (ref|xi:include)*>
 

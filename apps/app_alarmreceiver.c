@@ -29,13 +29,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include <math.h>
 #include <sys/wait.h>
@@ -66,7 +62,7 @@ struct event_node{
 
 typedef struct event_node event_node_t;
 
-static const char app[] = "AlarmReceiver";
+static char *app = "AlarmReceiver";
 /*** DOCUMENTATION
 	<application name="AlarmReceiver" language="en_US">
 		<synopsis>
@@ -195,7 +191,7 @@ static int send_tone_burst(struct ast_channel *chan, float freq, int duration, i
 
 		if (f->frametype == AST_FRAME_VOICE) {
 			wf.frametype = AST_FRAME_VOICE;
-			ast_format_set(&wf.subclass.format, AST_FORMAT_ULAW, 0);
+			wf.subclass = AST_FORMAT_ULAW;
 			wf.offset = AST_FRIENDLY_OFFSET;
 			wf.mallocd = 0;
 			wf.data.ptr = tone_block.buf;
@@ -264,7 +260,7 @@ static int receive_dtmf_digits(struct ast_channel *chan, char *digit_string, int
 		}
 
 		/* If they hung up, leave */
-		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass.integer == AST_CONTROL_HANGUP)) {
+		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass == AST_CONTROL_HANGUP)) {
 			if (f->data.uint32) {
 				chan->hangupcause = f->data.uint32;
 			}
@@ -279,7 +275,7 @@ static int receive_dtmf_digits(struct ast_channel *chan, char *digit_string, int
 			continue;
 		}
 
-		digit_string[i++] = f->subclass.integer;  /* save digit */
+		digit_string[i++] = f->subclass;  /* save digit */
 
 		ast_frfree(f);
 
@@ -302,22 +298,18 @@ static int write_metadata( FILE *logfile, char *signalling_type, struct ast_chan
 	int res = 0;
 	struct timeval t;
 	struct ast_tm now;
-	char *cl;
-	char *cn;
+	char *cl,*cn;
 	char workstring[80];
 	char timestamp[80];
 	
 	/* Extract the caller ID location */
-	ast_copy_string(workstring,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, ""),
-		sizeof(workstring));
-	ast_shrink_phone_number(workstring);
-	if (ast_strlen_zero(workstring)) {
-		cl = "<unknown>";
-	} else {
-		cl = workstring;
-	}
-	cn = S_COR(chan->caller.id.name.valid, chan->caller.id.name.str, "<unknown>");
+	if (chan->cid.cid_num)
+		ast_copy_string(workstring, chan->cid.cid_num, sizeof(workstring));
+	workstring[sizeof(workstring) - 1] = '\0';
+
+	ast_callerid_parse(workstring, &cn, &cl);
+	if (cl)
+		ast_shrink_phone_number(cl);
 
 	/* Get the current time */
 	t = ast_tvnow();
@@ -327,27 +319,27 @@ static int write_metadata( FILE *logfile, char *signalling_type, struct ast_chan
 	ast_strftime(timestamp, sizeof(timestamp), time_stamp_format, &now);
 
 	res = fprintf(logfile, "\n\n[metadata]\n\n");
-	if (res >= 0) {
+
+	if (res >= 0)
 		res = fprintf(logfile, "PROTOCOL=%s\n", signalling_type);
-	}
-	if (res >= 0) {
-		res = fprintf(logfile, "CALLINGFROM=%s\n", cl);
-	}
-	if (res >= 0) {
-		res = fprintf(logfile, "CALLERNAME=%s\n", cn);
-	}
-	if (res >= 0) {
+
+	if (res >= 0)
+		res = fprintf(logfile, "CALLINGFROM=%s\n", (!cl) ? "<unknown>" : cl);
+
+	if (res >- 0)
+		res = fprintf(logfile, "CALLERNAME=%s\n", (!cn) ? "<unknown>" : cn);
+
+	if (res >= 0)
 		res = fprintf(logfile, "TIMESTAMP=%s\n\n", timestamp);
-	}
-	if (res >= 0) {
+
+	if (res >= 0)
 		res = fprintf(logfile, "[events]\n\n");
-	}
+
 	if (res < 0) {
 		ast_verb(3, "AlarmReceiver: can't write metadata\n");
 		ast_debug(1,"AlarmReceiver: can't write metadata\n");
-	} else {
+	} else
 		res = 0;
-	}
 
 	return res;
 }
@@ -424,7 +416,7 @@ static int log_events(struct ast_channel *chan,  char *signalling_type, event_no
 *
 * The function will return 0 when the caller hangs up, else a -1 if there was a problem.
 */
-static int receive_ademco_contact_id(struct ast_channel *chan, const void *data, int fdto, int sdto, int tldn, event_node_t **ehead)
+static int receive_ademco_contact_id( struct ast_channel *chan, void *data, int fdto, int sdto, int tldn, event_node_t **ehead)
 {
 	int i, j;
 	int res = 0;
@@ -572,7 +564,7 @@ static int receive_ademco_contact_id(struct ast_channel *chan, const void *data,
 * This is the main function called by Asterisk Core whenever the App is invoked in the extension logic.
 * This function will always return 0.
 */
-static int alarmreceiver_exec(struct ast_channel *chan, const char *data)
+static int alarmreceiver_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	event_node_t *elp, *efree;
@@ -582,12 +574,12 @@ static int alarmreceiver_exec(struct ast_channel *chan, const char *data)
 	/* Set write and read formats to ULAW */
 	ast_verb(4, "AlarmReceiver: Setting read and write formats to ULAW\n");
 
-	if (ast_set_write_format_by_id(chan,AST_FORMAT_ULAW)) {
+	if (ast_set_write_format(chan,AST_FORMAT_ULAW)) {
 		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set write format to Mu-law on %s\n",chan->name);
 		return -1;
 	}
 
-	if (ast_set_read_format_by_id(chan,AST_FORMAT_ULAW)) {
+	if (ast_set_read_format(chan,AST_FORMAT_ULAW)) {
 		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set read format to Mu-law on %s\n",chan->name);
 		return -1;
 	}

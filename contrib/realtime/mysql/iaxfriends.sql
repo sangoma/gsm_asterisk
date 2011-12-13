@@ -12,7 +12,7 @@ CREATE TABLE `iaxfriends` (
   `context` varchar(40) NULL,
   `regcontext` varchar(40) NULL,
   `host` varchar(40) NULL default 'dynamic',
-  `ipaddr` varchar(40) NULL, -- Must be updateable by Asterisk user
+  `ipaddr` varchar(20) NULL, -- Must be updateable by Asterisk user
   `port` int(5) NULL, -- Must be updateable by Asterisk user
   `defaultip` varchar(20) NULL,
   `sourceaddress` varchar(20) NULL,
@@ -37,7 +37,8 @@ CREATE TABLE `iaxfriends` (
   `transfer` varchar(10) NULL, -- mediaonly/yes/no
   `jitterbuffer` varchar(3) NULL, -- yes/no
   `forcejitterbuffer` varchar(3) NULL, -- yes/no
-  `allow` varchar(200) NULL, -- all/{list-of-codecs}
+  `disallow` varchar(40) NULL, -- all/{list-of-codecs}
+  `allow` varchar(40) NULL, -- all/{list-of-codecs}
   `codecpriority` varchar(40) NULL, 
   `qualify` varchar(10) NULL, -- yes/no/{number of milliseconds}
   `qualifysmoothing` varchar(10) NULL, -- yes/no

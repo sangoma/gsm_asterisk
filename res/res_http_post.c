@@ -27,18 +27,17 @@
 
 /*** MODULEINFO
 	<depend>gmime</depend>
-	<support_level>core</support_level>
  ***/
 
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 226101 $")
 
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <gmime/gmime.h>
-#if defined (__OpenBSD__) || defined(__FreeBSD__) || defined(__Darwin__)
+#if defined (__OpenBSD__) || defined(__FreeBSD__)
 #include <libgen.h>
 #endif
 
@@ -52,11 +51,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/ast_version.h"
 
 #define MAX_PREFIX 80
-
-/* gmime 2.4 provides a newer interface. */
-#ifdef GMIME_TYPE_CONTENT_TYPE
-#define AST_GMIME_VER_24
-#endif
 
 /* just a little structure to hold callback info for gmime */
 struct mime_cbinfo {
@@ -90,9 +84,7 @@ static void post_raw(GMimePart *part, const char *post_dir, const char *fn)
 	g_mime_data_wrapper_write_to_stream(content, stream);
 	g_mime_stream_flush(stream);
 
-#ifndef AST_GMIME_VER_24
 	g_object_unref(content);
-#endif
 	g_object_unref(stream);
 }
 
@@ -116,11 +108,7 @@ static GMimeMessage *parse_message(FILE *f)
 	return message;
 }
 
-#ifdef AST_GMIME_VER_24
-static void process_message_callback(GMimeObject *parent, GMimeObject *part, gpointer user_data)
-#else
 static void process_message_callback(GMimeObject *part, gpointer user_data)
-#endif
 {
 	struct mime_cbinfo *cbinfo = user_data;
 
@@ -134,18 +122,14 @@ static void process_message_callback(GMimeObject *part, gpointer user_data)
 		ast_log(LOG_WARNING, "Got unexpected GMIME_IS_MESSAGE_PARTIAL\n");
 		return;
 	} else if (GMIME_IS_MULTIPART(part)) {
-#ifndef AST_GMIME_VER_24
 		GList *l;
-
+		
 		ast_log(LOG_WARNING, "Got unexpected GMIME_IS_MULTIPART, trying to process subparts\n");
 		l = GMIME_MULTIPART(part)->subparts;
 		while (l) {
 			process_message_callback(l->data, cbinfo);
 			l = l->next;
 		}
-#else
-		ast_log(LOG_WARNING, "Got unexpected MIME subpart.\n");
-#endif
 	} else if (GMIME_IS_PART(part)) {
 		const char *filename;
 
@@ -167,14 +151,11 @@ static int process_message(GMimeMessage *message, const char *post_dir)
 		.post_dir = post_dir,
 	};
 
-#ifdef AST_GMIME_VER_24
-	g_mime_message_foreach(message, process_message_callback, &cbinfo);
-#else
 	g_mime_message_foreach_part(message, process_message_callback, &cbinfo);
-#endif
 
 	return cbinfo.count;
 }
+
 
 /* Find a sequence of bytes within a binary array. */
 static int find_sequence(char * inbuf, int inlen, char * matchbuf, int matchlen)
@@ -311,9 +292,10 @@ static int readmimefile(FILE * fin, FILE * fout, char * boundary, int contentlen
 	return 0;
 }
 
-static int http_post_callback(struct ast_tcptls_session_instance *ser, const struct ast_http_uri *urih, const char *uri, enum ast_http_method method, struct ast_variable *get_vars, struct ast_variable *headers)
+
+static struct ast_str *http_post_callback(struct ast_tcptls_session_instance *ser, const struct ast_http_uri *urih, const char *uri, enum ast_http_method method, struct ast_variable *vars, struct ast_variable *headers, int *status, char **title, int *contentlength)
 {
-	struct ast_variable *var, *cookies;
+	struct ast_variable *var;
 	unsigned long ident = 0;
 	FILE *f;
 	int content_len = 0;
@@ -322,45 +304,41 @@ static int http_post_callback(struct ast_tcptls_session_instance *ser, const str
 	int message_count = 0;
 	char * boundary_marker = NULL;
 
-	if (method != AST_HTTP_POST) {
-		ast_http_error(ser, 501, "Not Implemented", "Attempt to use unimplemented / unsupported method");
-		return -1;
-	}
-
-	if (!astman_is_authed(ast_http_manid_from_vars(headers))) {
-		ast_http_error(ser, 403, "Access Denied", "Sorry, I cannot let you do that, Dave.");
-		return -1;
-	}
-
 	if (!urih) {
-		ast_http_error(ser, 400, "Missing URI handle", "There was an error parsing the request");
-	        return -1;
+		return ast_http_error((*status = 400),
+			   (*title = ast_strdup("Missing URI handle")),
+			   NULL, "There was an error parsing the request");
 	}
 
-	cookies = ast_http_get_cookies(headers);
-	for (var = cookies; var; var = var->next) {
-		if (!strcasecmp(var->name, "mansession_id")) {
-			sscanf(var->value, "%30lx", &ident);
-			break;
+	for (var = vars; var; var = var->next) {
+		if (strcasecmp(var->name, "mansession_id")) {
+			continue;
 		}
-	}
-	if (cookies) {
-		ast_variables_destroy(cookies);
+
+		if (sscanf(var->value, "%30lx", &ident) != 1) {
+			return ast_http_error((*status = 400),
+					      (*title = ast_strdup("Bad Request")),
+					      NULL, "The was an error parsing the request.");
+		}
+
+		if (!astman_verify_session_writepermissions(ident, EVENT_FLAG_CONFIG)) {
+			return ast_http_error((*status = 401),
+					      (*title = ast_strdup("Unauthorized")),
+					      NULL, "You are not authorized to make this request.");
+		}
+
+		break;
 	}
 
-	if (ident == 0) {
-		ast_http_error(ser, 401, "Unauthorized", "You are not authorized to make this request.");
-		return -1;
-	}
-	if (!astman_verify_session_writepermissions(ident, EVENT_FLAG_CONFIG)) {
-		ast_http_error(ser, 401, "Unauthorized", "You are not authorized to make this request.");
-		return -1;
+	if (!var) {
+		return ast_http_error((*status = 401),
+				      (*title = ast_strdup("Unauthorized")),
+				      NULL, "You are not authorized to make this request.");
 	}
 
 	if (!(f = tmpfile())) {
 		ast_log(LOG_ERROR, "Could not create temp file.\n");
-		ast_http_error(ser, 500, "Internal server error", "Could not create temp file.");
-		return -1;
+		return NULL;
 	}
 
 	for (var = headers; var; var = var->next) {
@@ -370,8 +348,8 @@ static int http_post_callback(struct ast_tcptls_session_instance *ser, const str
 			if ((sscanf(var->value, "%30u", &content_len)) != 1) {
 				ast_log(LOG_ERROR, "Invalid Content-Length in POST request!\n");
 				fclose(f);
-				ast_http_error(ser, 500, "Internal server error", "Invalid Content-Length in POST request!");
-				return -1;
+
+				return NULL;
 			}
 			ast_debug(1, "Got a Content-Length of %d\n", content_len);
 		} else if (!strcasecmp(var->name, "Content-Type")) {
@@ -385,17 +363,19 @@ static int http_post_callback(struct ast_tcptls_session_instance *ser, const str
 	fprintf(f, "\r\n");
 
 	if (0 > readmimefile(ser->f, f, boundary_marker, content_len)) {
-		ast_debug(1, "Cannot find boundary marker in POST request.\n");
+		if (option_debug) {
+			ast_log(LOG_DEBUG, "Cannot find boundary marker in POST request.\n");
+		}
 		fclose(f);
-
-		return -1;
+		
+		return NULL;
 	}
 
 	if (fseek(f, SEEK_SET, 0)) {
 		ast_log(LOG_ERROR, "Failed to seek temp file back to beginning.\n");
 		fclose(f);
-		ast_http_error(ser, 500, "Internal server error", "Failed to seek temp file back to beginning.");
-		return -1;
+
+		return NULL;
 	}
 
 	post_dir = urih->data;
@@ -405,20 +385,24 @@ static int http_post_callback(struct ast_tcptls_session_instance *ser, const str
 	if (!message) {
 		ast_log(LOG_ERROR, "Error parsing MIME data\n");
 
-		ast_http_error(ser, 400, "Bad Request", "The was an error parsing the request.");
-		return -1;
+		return ast_http_error((*status = 400),
+				      (*title = ast_strdup("Bad Request")),
+				      NULL, "The was an error parsing the request.");
 	}
 
 	if (!(message_count = process_message(message, ast_str_buffer(post_dir)))) {
 		ast_log(LOG_ERROR, "Invalid MIME data, found no parts!\n");
 		g_object_unref(message);
-		ast_http_error(ser, 400, "Bad Request", "The was an error parsing the request.");
-		return -1;
+		return ast_http_error((*status = 400),
+				      (*title = ast_strdup("Bad Request")),
+				      NULL, "The was an error parsing the request.");
 	}
+
 	g_object_unref(message);
 
-	ast_http_error(ser, 200, "OK", "File successfully uploaded.");
-	return 0;
+	return ast_http_error((*status = 200),
+			      (*title = ast_strdup("OK")),
+			      NULL, "File successfully uploaded.");
 }
 
 static int __ast_http_post_load(int reload)
@@ -466,6 +450,8 @@ static int __ast_http_post_load(int reload)
 			ast_str_set(&ds, 0, "%s", v->value);
 			urih->data = ds;
 			urih->has_subtree = 0;
+			urih->supports_get = 0;
+			urih->supports_post = 1;
 			urih->callback = http_post_callback;
 			urih->key = __FILE__;
 			urih->mallocd = urih->dmallocd = 1;

@@ -98,10 +98,7 @@ void ast_console_puts_mutable(const char *string, int level);
 void ast_console_toggle_mute(int fd, int silent);
 
 /*!
- * \brief enables or disables logging of a specified level to the console
- * fd specifies the index of the console receiving the level change
- * level specifies the index of the logging level being toggled
- * state indicates whether logging will be on or off (0 for off, 1 for on)
+ * \since 1.6.1
  */
 void ast_console_toggle_loglevel(int fd, int level, int state);
 
@@ -125,6 +122,17 @@ void ast_console_toggle_loglevel(int fd, int level, int state);
 #undef AST_LOG_DEBUG
 #endif
 #define AST_LOG_DEBUG      __LOG_DEBUG, _A_
+
+#ifdef LOG_EVENT
+#undef LOG_EVENT
+#endif
+#define __LOG_EVENT    1
+#define LOG_EVENT      __LOG_EVENT, _A_
+
+#ifdef AST_LOG_EVENT
+#undef AST_LOG_EVENT
+#endif
+#define AST_LOG_EVENT      __LOG_EVENT, _A_
 
 #ifdef LOG_NOTICE
 #undef LOG_NOTICE
@@ -168,7 +176,7 @@ void ast_console_toggle_loglevel(int fd, int level, int state);
 #ifdef AST_LOG_VERBOSE
 #undef AST_LOG_VERBOSE
 #endif
-#define AST_LOG_VERBOSE    __LOG_VERBOSE, _A_
+#define LOG_VERBOSE    __LOG_VERBOSE, _A_
 
 #ifdef LOG_DTMF
 #undef LOG_DTMF
@@ -181,52 +189,21 @@ void ast_console_toggle_loglevel(int fd, int level, int state);
 #endif
 #define AST_LOG_DTMF    __LOG_DTMF, _A_
 
-#define NUMLOGLEVELS 7
+#define NUMLOGLEVELS 6
 
 /*!
- * \brief Get the debug level for a module
- * \param module the name of module
+ * \brief Get the debug level for a file
+ * \param file the filename
  * \return the debug level
  */
-unsigned int ast_debug_get_by_module(const char *module);
+unsigned int ast_debug_get_by_file(const char *file);
 
 /*!
- * \brief Get the verbose level for a module
- * \param module the name of module
- * \return the verbose level
+ * \brief Get the debug level for a file
+ * \param file the filename
+ * \return the debug level
  */
-unsigned int ast_verbose_get_by_module(const char *module);
-
-/*!
- * \brief Register a new logger level
- * \param name The name of the level to be registered
- * \retval -1 if an error occurs
- * \retval non-zero level to be used with ast_log for sending messages to this level
- * \since 1.8
- */
-int ast_logger_register_level(const char *name);
-
-/*!
- * \brief Unregister a previously registered logger level
- * \param name The name of the level to be unregistered
- * \return nothing
- * \since 1.8
- */
-void ast_logger_unregister_level(const char *name);
-
-/*!
- * \brief Send a log message to a dynamically registered log level
- * \param level The log level to send the message to
- *
- * Like ast_log, the log message may include printf-style formats, and
- * the data for these must be provided as additional parameters after
- * the log message.
- *
- * \return nothing
- * \since 1.8
- */
-
-#define ast_log_dynamic_level(level, ...) ast_log(level, __FILE__, __LINE__, __PRETTY_FUNCTION__, __VA_ARGS__)
+unsigned int ast_verbose_get_by_file(const char *file);
 
 /*!
  * \brief Log a DEBUG message
@@ -234,11 +211,11 @@ void ast_logger_unregister_level(const char *name);
  *        to get logged
  */
 #define ast_debug(level, ...) do {       \
-	if (option_debug >= (level) || (ast_opt_dbg_module && ast_debug_get_by_module(AST_MODULE) >= (level)) ) \
+	if (option_debug >= (level) || (ast_opt_dbg_file && ast_debug_get_by_file(__FILE__) >= (level)) ) \
 		ast_log(AST_LOG_DEBUG, __VA_ARGS__); \
 } while (0)
 
-#define VERBOSITY_ATLEAST(level) (option_verbose >= (level) || (ast_opt_verb_module && ast_verbose_get_by_module(AST_MODULE) >= (level)))
+#define VERBOSITY_ATLEAST(level) (option_verbose >= (level) || (ast_opt_verb_file && ast_verbose_get_by_file(__FILE__) >= (level)))
 
 #define ast_verb(level, ...) do { \
 	if (VERBOSITY_ATLEAST((level)) ) { \

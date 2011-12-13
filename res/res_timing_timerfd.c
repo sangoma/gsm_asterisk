@@ -25,7 +25,6 @@
 
 /*** MODULEINFO
 	<depend>timerfd</depend>
-	<support_level>core</support_level>
  ***/
 
 #include "asterisk.h"
@@ -162,32 +161,8 @@ static void timerfd_timer_ack(int handle, unsigned int quantity)
 {
 	uint64_t expirations;
 	int read_result = 0;
-	struct timerfd_timer *our_timer, find_helper = {
-		.handle = handle,
-	};
-
-	if (!(our_timer = ao2_find(timerfd_timers, &find_helper, OBJ_POINTER))) {
-		ast_log(LOG_ERROR, "Couldn't find a timer with handle %d\n", handle);
-		return;
-	}
-
-	ao2_lock(our_timer);
 
 	do {
-		struct itimerspec timer_status;
-
-		if (timerfd_gettime(handle, &timer_status)) {
-			ast_log(LOG_ERROR, "Call to timerfd_gettime() error: %s\n", strerror(errno));
-			expirations = 0;
-			break;
-		}
-
-		if (timer_status.it_value.tv_sec == 0 && timer_status.it_value.tv_nsec == 0) {
-			ast_debug(1, "Avoiding read on disarmed timerfd %d\n", handle);
-			expirations = 0;
-			break;
-		}
-
 		read_result = read(handle, &expirations, sizeof(expirations));
 		if (read_result == -1) {
 			if (errno == EINTR || errno == EAGAIN) {
@@ -198,9 +173,6 @@ static void timerfd_timer_ack(int handle, unsigned int quantity)
 			}
 		}
 	} while (read_result != sizeof(expirations));
-
-	ao2_unlock(our_timer);
-	ao2_ref(our_timer, -1);
 
 	if (expirations != quantity) {
 		ast_debug(2, "Expected to acknowledge %u ticks but got %llu instead\n", quantity, (unsigned long long) expirations);
@@ -304,7 +276,7 @@ static int load_module(void)
 
 	/* Make sure we support the necessary clock type */
 	if ((fd = timerfd_create(CLOCK_MONOTONIC, 0)) < 0) {
-		ast_log(LOG_ERROR, "timerfd_create() not supported by the kernel.  Not loading.\n");
+		ast_log(LOG_ERROR, "CLOCK_MONOTONIC not supported.  Not loading.\n");
 		return AST_MODULE_LOAD_DECLINE;
 	}
 
@@ -337,5 +309,5 @@ static int unload_module(void)
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Timerfd Timing Interface",
 		.load = load_module,
 		.unload = unload_module,
-		.load_pri = AST_MODPRI_CHANNEL_DEPEND,
+		.load_pri = 10,
 		);

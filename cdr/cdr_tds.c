@@ -14,8 +14,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief FreeTDS CDR logger
  *
  * See also
@@ -24,8 +24,7 @@
  * \ingroup cdr_drivers
  */
 
-/*!
- * \verbatim
+/*! \verbatim
  *
  * Table Structure for `cdr`
  *
@@ -59,12 +58,14 @@ CREATE TABLE [dbo].[cdr] (
 
 /*** MODULEINFO
 	<depend>freetds</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 269010 $")
+
+#include <time.h>
+#include <math.h>
 
 #include "asterisk/config.h"
 #include "asterisk/channel.h"
@@ -76,8 +77,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 #define DATE_FORMAT "%Y/%m/%d %T"
 
-static const char name[] = "FreeTDS (MSSQL)";
-static const char config[] = "cdr_tds.conf";
+static char *name = "FreeTDS (MSSQL)";
+static char *config = "cdr_tds.conf";
 
 struct cdr_tds_config {
 	AST_DECLARE_STRING_FIELDS(
@@ -88,7 +89,6 @@ struct cdr_tds_config {
 		AST_STRING_FIELD(table);
 		AST_STRING_FIELD(charset);
 		AST_STRING_FIELD(language);
-		AST_STRING_FIELD(hrtime);
 	);
 	DBPROCESS *dbproc;
 	unsigned int connected:1;
@@ -151,36 +151,7 @@ retry:
 	}
 
 	if (settings->has_userfield) {
-		if (settings->hrtime) {
-			double hrbillsec = 0.0;
-			double hrduration;
-
-			if (!ast_tvzero(cdr->answer)) {
-				hrbillsec = (double)(ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0);
-			}
-			hrduration = (double)(ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0);
-
-			erc = dbfcmd(settings->dbproc,
-					 "INSERT INTO %s "
-					 "("
-					 "accountcode, src, dst, dcontext, clid, channel, "
-					 "dstchannel, lastapp, lastdata, start, answer, [end], duration, "
-					 "billsec, disposition, amaflags, uniqueid, userfield"
-					 ") "
-					 "VALUES "
-					 "("
-					 "'%s', '%s', '%s', '%s', '%s', '%s', "
-					 "'%s', '%s', '%s', %s, %s, %s, %lf, "
-					 "%lf, '%s', '%s', '%s', '%s'"
-					 ")",
-					 settings->table,
-					 accountcode, src, dst, dcontext, clid, channel,
-					 dstchannel, lastapp, lastdata, start, answer, end, hrduration,
-					 hrbillsec, ast_cdr_disp2str(cdr->disposition), ast_cdr_flags2str(cdr->amaflags), uniqueid,
-					 userfield
-			);
-		} else {
-			erc = dbfcmd(settings->dbproc,
+		erc = dbfcmd(settings->dbproc,
 					 "INSERT INTO %s "
 					 "("
 					 "accountcode, src, dst, dcontext, clid, channel, "
@@ -199,37 +170,8 @@ retry:
 					 cdr->billsec, ast_cdr_disp2str(cdr->disposition), ast_cdr_flags2str(cdr->amaflags), uniqueid,
 					 userfield
 			);
-		}
 	} else {
-		if (settings->hrtime) {
-			double hrbillsec = 0.0;
-			double hrduration;
-
-			if (!ast_tvzero(cdr->answer)) {
-				hrbillsec = (double)(ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0);
-			}
-			hrduration = (double)(ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0);
-
-			erc = dbfcmd(settings->dbproc,
-					 "INSERT INTO %s "
-					 "("
-					 "accountcode, src, dst, dcontext, clid, channel, "
-					 "dstchannel, lastapp, lastdata, start, answer, [end], duration, "
-					 "billsec, disposition, amaflags, uniqueid"
-					 ") "
-					 "VALUES "
-					 "("
-					 "'%s', '%s', '%s', '%s', '%s', '%s', "
-					 "'%s', '%s', '%s', %s, %s, %s, %lf, "
-					 "%lf, '%s', '%s', '%s'"
-					 ")",
-					 settings->table,
-					 accountcode, src, dst, dcontext, clid, channel,
-					 dstchannel, lastapp, lastdata, start, answer, end, hrduration,
-					 hrbillsec, ast_cdr_disp2str(cdr->disposition), ast_cdr_flags2str(cdr->amaflags), uniqueid
-			);
-		} else {
-			erc = dbfcmd(settings->dbproc,
+		erc = dbfcmd(settings->dbproc,
 					 "INSERT INTO %s "
 					 "("
 					 "accountcode, src, dst, dcontext, clid, channel, "
@@ -247,7 +189,6 @@ retry:
 					 dstchannel, lastapp, lastdata, start, answer, end, cdr->duration,
 					 cdr->billsec, ast_cdr_disp2str(cdr->disposition), ast_cdr_flags2str(cdr->amaflags), uniqueid
 			);
-		}
 	}
 
 	if (erc == FAIL) {
@@ -502,19 +443,12 @@ static int tds_load_module(int reload)
 	/* Clear out any existing settings */
 	ast_string_field_init(settings, 0);
 
-	/* 'connection' is the new preferred configuration option */
-	ptr = ast_variable_retrieve(cfg, "global", "connection");
+	ptr = ast_variable_retrieve(cfg, "global", "hostname");
 	if (ptr) {
 		ast_string_field_set(settings, hostname, ptr);
 	} else {
-		/* But we keep 'hostname' for backwards compatibility */
-		ptr = ast_variable_retrieve(cfg, "global", "hostname");
-		if (ptr) {
-			ast_string_field_set(settings, hostname, ptr);
-		} else {
-			ast_log(LOG_ERROR, "Failed to connect: Database server connection not specified.\n");
-			goto failed;
-		}
+		ast_log(LOG_ERROR, "Failed to connect: Database server hostname not specified.\n");
+		goto failed;
 	}
 
 	ptr = ast_variable_retrieve(cfg, "global", "dbname");
@@ -563,13 +497,6 @@ static int tds_load_module(int reload)
 		ast_string_field_set(settings, table, "cdr");
 	}
 
-	ptr = ast_variable_retrieve(cfg, "global", "hrtime");
-	if (ptr && ast_true(ptr)) {
-		ast_string_field_set(settings, hrtime, ptr);
-	} else {
-		ast_log(LOG_NOTICE, "High Resolution Time not found, using integers for billsec and duration fields by default.\n");
-	}
-
 	mssql_disconnect();
 
 	if (mssql_connect()) {
@@ -604,9 +531,13 @@ static int load_module(void)
 	dberrhandle(tds_error_handler);
 	dbmsghandle(tds_message_handler);
 
-	settings = ast_calloc_with_stringfields(1, struct cdr_tds_config, 256);
+	settings = ast_calloc(1, sizeof(*settings));
 
-	if (!settings) {
+	if (!settings || ast_string_field_init(settings, 256)) {
+		if (settings) {
+			ast_free(settings);
+			settings = NULL;
+		}
 		dbexit();
 		return AST_MODULE_LOAD_DECLINE;
 	}
@@ -629,9 +560,8 @@ static int unload_module(void)
 	return tds_unload_module();
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "FreeTDS CDR Backend",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "FreeTDS CDR Backend",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.load_pri = AST_MODPRI_CDR_DRIVER,
 	       );

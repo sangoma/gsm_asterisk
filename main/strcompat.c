@@ -22,14 +22,6 @@
 #include "asterisk.h"
 
 #include <ctype.h>
-#include <sys/time.h>       /* for getrlimit(2) */
-#include <sys/resource.h>   /* for getrlimit(2) */
-#include <sys/types.h>      /* for opendir(3) */
-#include <dirent.h>         /* for opendir(3) */
-#include <unistd.h>         /* for fcntl(2) */
-#include <fcntl.h>          /* for fcntl(2) */
-
-#include "asterisk/utils.h"
 
 #ifndef HAVE_STRSEP
 char *strsep(char **str, const char *delims)
@@ -355,216 +347,130 @@ int getloadavg(double *list, int nelem)
 #endif /* linux */
 #endif /* !HAVE_GETLOADAVG */
 
-#ifndef HAVE_NTOHLL
-uint64_t ntohll(uint64_t net64)
-{
-#if BYTE_ORDER == BIG_ENDIAN
-	return net64;
-#elif BYTE_ORDER == LITTLE_ENDIAN
-	union {
-		unsigned char c[8];
-		uint64_t u;
-	} number;
-	number.u = net64;
-	return
-		(((uint64_t) number.c[0]) << 56) |
-		(((uint64_t) number.c[1]) << 48) |
-		(((uint64_t) number.c[2]) << 40) |
-		(((uint64_t) number.c[3]) << 32) |
-		(((uint64_t) number.c[4]) << 24) |
-		(((uint64_t) number.c[5]) << 16) |
-		(((uint64_t) number.c[6]) <<  8) |
-		(((uint64_t) number.c[7]) <<  0);
-#else
-	#error "Unknown byte order"
-#endif
-}
-#endif
 
-#ifndef HAVE_HTONLL
-uint64_t htonll(uint64_t host64)
-{
-#if BYTE_ORDER == BIG_ENDIAN
-	return host64;
-#elif BYTE_ORDER == LITTLE_ENDIAN
-	union {
-		unsigned char c[8];
-		uint64_t u;
-	} number;
-	number.u = host64;
-	return
-		(((uint64_t) number.c[0]) << 56) |
-		(((uint64_t) number.c[1]) << 48) |
-		(((uint64_t) number.c[2]) << 40) |
-		(((uint64_t) number.c[3]) << 32) |
-		(((uint64_t) number.c[4]) << 24) |
-		(((uint64_t) number.c[5]) << 16) |
-		(((uint64_t) number.c[6]) <<  8) |
-		(((uint64_t) number.c[7]) <<  0);
-#else
-	#error "Unknown byte order"
-#endif
-}
-#endif
-
-#ifndef HAVE_FFSLL
-int ffsll(long long n)
-{
-	int i;
-	for (i = 0; i < 64; i++) {
-		if ((1LL << i) & n) {
-			return i + 1;
-		}
-	}
-	return 0;
-}
-#endif
-
-#ifndef HAVE_CLOSEFROM
-void closefrom(int n)
-{
-	long x;
-	struct rlimit rl;
-	DIR *dir;
-	char path[16], *result;
-	struct dirent *entry;
-
-	snprintf(path, sizeof(path), "/proc/%d/fd", (int) getpid());
-	if ((dir = opendir(path))) {
-		while ((entry = readdir(dir))) {
-			/* Skip . and .. */
-			if (entry->d_name[0] == '.') {
-				continue;
-			}
-			if ((x = strtol(entry->d_name, &result, 10)) && x >= n) {
-#ifdef STRICT_COMPAT
-				close(x);
-#else
-				/* This isn't strictly compatible, but it's actually faster
-				 * for our purposes to set the CLOEXEC flag than to close
-				 * file descriptors.
-				 */
-				long flags = fcntl(x, F_GETFD);
-				if (flags == -1 && errno == EBADF) {
-					continue;
-				}
-				fcntl(x, F_SETFD, flags | FD_CLOEXEC);
-#endif
-			}
-		}
-		closedir(dir);
-	} else {
-		getrlimit(RLIMIT_NOFILE, &rl);
-		if (rl.rlim_cur > 65535) {
-			/* A more reasonable value.  Consider that the primary source of
-			 * file descriptors in Asterisk are UDP sockets, of which we are
-			 * limited to 65,535 per address.  We additionally limit that down
-			 * to about 10,000 sockets per protocol.  While the kernel will
-			 * allow us to set the fileno limit higher (up to 4.2 billion),
-			 * there really is no practical reason for it to be that high.
-			 */
-			rl.rlim_cur = 65535;
-		}
-		for (x = n; x < rl.rlim_cur; x++) {
-#ifdef STRICT_COMPAT
-			close(x);
-#else
-			long flags = fcntl(x, F_GETFD);
-			if (flags == -1 && errno == EBADF) {
-				continue;
-			}
-			fcntl(x, F_SETFD, flags | FD_CLOEXEC);
-#endif
-		}
-	}
-}
-#endif
-
-#ifndef HAVE_MKDTEMP
-/*	$OpenBSD: mktemp.c,v 1.30 2010/03/21 23:09:30 schwarze Exp $ */
 /*
- * Copyright (c) 1996-1998, 2008 Theo de Raadt
- * Copyright (c) 1997, 2008-2009 Todd C. Miller
+ * For strlcat()
  *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * Copyright (c) 1998 Todd C. Miller <Todd.Miller@courtesan.com>
+ * All rights reserved.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+ * THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define MKTEMP_NAME	0
-#define MKTEMP_FILE	1
-#define MKTEMP_DIR	2
-
-#define TEMPCHARS	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."
-#define NUM_CHARS	(sizeof(TEMPCHARS) - 1)
-
-static int mktemp_internal(char *path, int slen, int mode)
+/*
+ * Appends src to string dst of size siz (unlike strncat, siz is the
+ * full size of dst, not space left).  At most siz-1 characters
+ * will be copied.  Always NUL terminates (unless siz <= strlen(dst)).
+ * Returns strlen(src) + MIN(siz, strlen(initial dst)).
+ * If retval >= siz, truncation occurred.
+ */
+#ifndef HAVE_STRLCAT
+size_t strlcat(char *dst, const char *src, size_t siz)
 {
-	char *start, *cp, *ep;
-	const char *tempchars = TEMPCHARS;
-	unsigned int r, tries;
-	struct stat sb;
-	size_t len;
-	int fd;
+	register char *d = dst;
+	register const char *s = src;
+	register size_t n = siz;
+	size_t dlen;
 
-	len = strlen(path);
-	if (len == 0 || slen >= len) {
-		errno = EINVAL;
-		return(-1);
+	/* Find the end of dst and adjust bytes left but don't go past end */
+	while (n-- != 0 && *d != '\0')
+		d++;
+	dlen = d - dst;
+	n = siz - dlen;
+
+	if (n == 0)
+		return dlen + strlen(s);
+
+	while (*s != '\0') {
+		if (n != 1) {
+			*d++ = *s;
+			n--;
+		}
+		s++;
 	}
-	ep = path + len - slen;
+	*d = '\0';
 
-	tries = 1;
-	for (start = ep; start > path && start[-1] == 'X'; start--) {
-		if (tries < INT_MAX / NUM_CHARS) {
-			tries *= NUM_CHARS;
-		}
-	}
-	tries *= 2;
-
-	do {
-		for (cp = start; cp != ep; cp++) {
-			r = ast_random() % NUM_CHARS;
-			*cp = tempchars[r];
-		}
-
-		switch (mode) {
-		case MKTEMP_NAME:
-			if (lstat(path, &sb) != 0) {
-				return (errno == ENOENT ? 0 : -1);
-			}
-			break;
-		case MKTEMP_FILE:
-			fd = open(path, O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
-			if (fd != -1 || errno != EEXIST) {
-				return (fd);
-			}
-			break;
-		case MKTEMP_DIR:
-			if (mkdir(path, S_IRUSR | S_IWUSR | S_IXUSR) == 0) {
-				return (0);
-			}
-			if (errno != EEXIST) {
-				return (-1);
-			}
-			break;
-		}
-	} while (--tries);
-
-	errno = EEXIST;
-	return(-1);
+	return dlen + (s - src);	/* count does not include NUL */
 }
+#endif /* HAVE_STRLCAT */
 
-char *mkdtemp(char *path)
+/*
+ * For strlcpy()
+ *
+ * Copyright (c) 1998 Todd C. Miller <Todd.Miller@courtesan.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+ * THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * Copy src to string dst of size siz.  At most siz-1 characters
+ * will be copied.  Always NUL terminates (unless siz == 0).
+ * Returns strlen(src); if retval >= siz, truncation occurred.
+ */
+#ifndef HAVE_STRLCPY
+size_t strlcpy(char *dst, const char *src, size_t siz)
 {
-	return mktemp_internal(path, 0, MKTEMP_DIR) ? NULL : path;
+	register char *d = dst;
+	register const char *s = src;
+	register size_t n = siz;
+
+	/* Copy as many bytes as will fit */
+	if (n != 0 && --n != 0) {
+		do {
+			if ((*d++ = *s++) == 0)
+				break;
+		} while (--n != 0);
+	}
+
+	/* Not enough room in dst, add NUL and traverse rest of src */
+	if (n == 0) {
+		if (siz != 0)
+			*d = '\0';		/* NUL-terminate dst */
+		while (*s++)
+			;
+	}
+
+	return s - src - 1;	/* count does not include NUL */
 }
-#endif
+#endif /* HAVE_STRLCPY */

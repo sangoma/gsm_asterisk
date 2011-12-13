@@ -23,13 +23,9 @@
  * \ingroup codecs
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 267507 $")
 
 #include "asterisk/module.h"
 #include "asterisk/config.h"
@@ -82,14 +78,8 @@ static int lintoulaw_framein(struct ast_trans_pvt *pvt, struct ast_frame *f)
 
 static struct ast_translator ulawtolin = {
 	.name = "ulawtolin",
-	.framein = ulawtolin_framein,
-	.sample = ulaw_sample,
-	.buffer_samples = BUFFER_SAMPLES,
-	.buf_size = BUFFER_SAMPLES * 2,
-};
-
-static struct ast_translator testlawtolin = {
-	.name = "testlawtolin",
+	.srcfmt = AST_FORMAT_ULAW,
+	.dstfmt = AST_FORMAT_SLINEAR,
 	.framein = ulawtolin_framein,
 	.sample = ulaw_sample,
 	.buffer_samples = BUFFER_SAMPLES,
@@ -102,14 +92,8 @@ static struct ast_translator testlawtolin = {
 
 static struct ast_translator lintoulaw = {
 	.name = "lintoulaw",
-	.framein = lintoulaw_framein,
-	.sample = slin8_sample,
-	.buf_size = BUFFER_SAMPLES,
-	.buffer_samples = BUFFER_SAMPLES,
-};
-
-static struct ast_translator lintotestlaw = {
-	.name = "lintotestlaw",
+	.srcfmt = AST_FORMAT_SLINEAR,
+	.dstfmt = AST_FORMAT_ULAW,
 	.framein = lintoulaw_framein,
 	.sample = slin8_sample,
 	.buf_size = BUFFER_SAMPLES,
@@ -127,8 +111,6 @@ static int unload_module(void)
 
 	res = ast_unregister_translator(&lintoulaw);
 	res |= ast_unregister_translator(&ulawtolin);
-	res |= ast_unregister_translator(&testlawtolin);
-	res |= ast_unregister_translator(&lintotestlaw);
 
 	return res;
 }
@@ -137,24 +119,10 @@ static int load_module(void)
 {
 	int res;
 
-	ast_format_set(&lintoulaw.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintoulaw.dst_format, AST_FORMAT_ULAW, 0);
-
-	ast_format_set(&lintotestlaw.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintotestlaw.dst_format, AST_FORMAT_TESTLAW, 0);
-
-	ast_format_set(&ulawtolin.src_format, AST_FORMAT_ULAW, 0);
-	ast_format_set(&ulawtolin.dst_format, AST_FORMAT_SLINEAR, 0);
-
-	ast_format_set(&testlawtolin.src_format, AST_FORMAT_TESTLAW, 0);
-	ast_format_set(&testlawtolin.dst_format, AST_FORMAT_SLINEAR, 0);
-
 	res = ast_register_translator(&ulawtolin);
-	if (!res) {
+	if (!res)
 		res = ast_register_translator(&lintoulaw);
-		res |= ast_register_translator(&lintotestlaw);
-		res |= ast_register_translator(&testlawtolin);
-	} else
+	else
 		ast_unregister_translator(&ulawtolin);
 	if (res)
 		return AST_MODULE_LOAD_FAILURE;

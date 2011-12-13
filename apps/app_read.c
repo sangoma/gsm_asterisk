@@ -24,14 +24,10 @@
  * 
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 180032 $")
 
 #include "asterisk/file.h"
 #include "asterisk/pbx.h"
@@ -112,11 +108,11 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 	</application>
  ***/
 
-enum read_option_flags {
+enum {
 	OPT_SKIP = (1 << 0),
 	OPT_INDICATION = (1 << 1),
 	OPT_NOANSWER = (1 << 2),
-};
+} read_option_flags;
 
 AST_APP_OPTIONS(read_app_options, {
 	AST_APP_OPTION('s', OPT_SKIP),
@@ -126,7 +122,9 @@ AST_APP_OPTIONS(read_app_options, {
 
 static char *app = "Read";
 
-static int read_exec(struct ast_channel *chan, const char *data)
+#define ast_next_data(instr,ptr,delim) if((ptr=strchr(instr,delim))) { *(ptr) = '\0' ; ptr++;}
+
+static int read_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	char tmp[256] = "";

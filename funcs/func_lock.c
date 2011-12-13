@@ -26,13 +26,9 @@
  * 
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 232015 $")
 
 #include <signal.h>
 
@@ -92,7 +88,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 
 
-static AST_LIST_HEAD_STATIC(locklist, lock_frame);
+AST_LIST_HEAD_STATIC(locklist, lock_frame);
 
 static void lock_free(void *data);
 static void lock_fixup(void *data, struct ast_channel *oldchan, struct ast_channel *newchan);
@@ -202,16 +198,14 @@ static void *lock_broker(void *unused)
 	return NULL;
 }
 
-static int ast_channel_hash_cb(const void *obj, const int flags)
+static int null_hash_cb(const void *obj, const int flags)
 {
-	const struct ast_channel *chan = obj;
-	return ast_str_case_hash(chan->name);
+	return (int)(long) obj;
 }
 
-static int ast_channel_cmp_cb(void *obj, void *arg, int flags)
+static int null_cmp_cb(void *obj, void *arg, int flags)
 {
-	struct ast_channel *chan = obj, *cmp_args = arg;
-	return strcasecmp(chan->name, cmp_args->name) ? 0 : CMP_MATCH;
+	return obj == arg ? CMP_MATCH : 0;
 }
 
 static int get_lock(struct ast_channel *chan, char *lockname, int try)
@@ -220,7 +214,7 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 	struct lock_frame *current;
 	struct channel_lock_frame *clframe = NULL;
 	AST_LIST_HEAD(, channel_lock_frame) *list;
-	int res = 0;
+	int res = 0, *link;
 	struct timespec three_seconds = { .tv_sec = 3 };
 
 	if (!lock_store) {
@@ -280,7 +274,7 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 			AST_LIST_UNLOCK(&locklist);
 			return -1;
 		}
-		if (!(current->requesters = ao2_container_alloc(1, ast_channel_hash_cb, ast_channel_cmp_cb))) {
+		if (!(current->requesters = ao2_container_alloc(7, null_hash_cb, null_cmp_cb))) {
 			ast_mutex_destroy(&current->mutex);
 			ast_cond_destroy(&current->cond);
 			ast_free(current);
@@ -327,6 +321,12 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 		return 0;
 	}
 
+	/* Link is just an empty flag, used to check whether more than one channel
+	 * is contending for the lock. */
+	if (!(link = ao2_alloc(sizeof(*link), NULL))) {
+		return -1;
+	}
+
 	/* Okay, we have both frames, so now we need to try to lock.
 	 *
 	 * Locking order: always lock locklist first.  We need the
@@ -341,7 +341,7 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 	AST_LIST_LOCK(&locklist);
 	ast_mutex_lock(&current->mutex);
 	/* Add to requester list */
-	ao2_link(current->requesters, chan);
+	ao2_link(current->requesters, link);
 	pthread_kill(broker_tid, SIGURG);
 	AST_LIST_UNLOCK(&locklist);
 
@@ -354,7 +354,8 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 		res = -1;
 	}
 	/* Remove from requester list */
-	ao2_unlink(current->requesters, chan);
+	ao2_unlink(current->requesters, link);
+	ao2_ref(link, -1);
 	ast_mutex_unlock(&current->mutex);
 
 	return res;
@@ -433,19 +434,16 @@ static int trylock_read(struct ast_channel *chan, const char *cmd, char *data, c
 static struct ast_custom_function lock_function = {
 	.name = "LOCK",
 	.read = lock_read,
-	.read_max = 2,
 };
 
 static struct ast_custom_function trylock_function = {
 	.name = "TRYLOCK",
 	.read = trylock_read,
-	.read_max = 2,
 };
 
 static struct ast_custom_function unlock_function = {
 	.name = "UNLOCK",
 	.read = unlock_read,
-	.read_max = 2,
 };
 
 static int unload_module(void)

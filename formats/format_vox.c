@@ -23,14 +23,10 @@
  * 
  * \ingroup formats
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -45,7 +41,7 @@ static struct ast_frame *vox_read(struct ast_filestream *s, int *whennext)
 
 	/* Send a frame from the file to the appropriate channel */
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_ADPCM, 0);
+	s->fr.subclass = AST_FORMAT_ADPCM;
 	s->fr.mallocd = 0;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, BUF_SIZE);
 	if ((res = fread(s->fr.data.ptr, 1, s->fr.datalen, s->f)) < 1) {
@@ -65,8 +61,8 @@ static int vox_write(struct ast_filestream *s, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_ADPCM) {
-		ast_log(LOG_WARNING, "Asked to write non-ADPCM frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass != AST_FORMAT_ADPCM) {
+		ast_log(LOG_WARNING, "Asked to write non-ADPCM frame (%d)!\n", f->subclass);
 		return -1;
 	}
 	if ((res = fwrite(f->data.ptr, 1, f->datalen, s->f)) != f->datalen) {
@@ -112,9 +108,10 @@ static off_t vox_tell(struct ast_filestream *fs)
      return offset; 
 }
 
-static struct ast_format_def vox_f = {
+static const struct ast_format vox_f = {
 	.name = "vox",
 	.exts = "vox",
+	.format = AST_FORMAT_ADPCM,
 	.write = vox_write,
 	.seek = vox_seek,
 	.trunc = vox_trunc,
@@ -125,19 +122,18 @@ static struct ast_format_def vox_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&vox_f.format, AST_FORMAT_ADPCM, 0);
-	if (ast_format_def_register(&vox_f))
+	if (ast_format_register(&vox_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(vox_f.name);
-}
+	return ast_format_unregister(vox_f.name);
+}	
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Dialogic VOX (ADPCM) File Format",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

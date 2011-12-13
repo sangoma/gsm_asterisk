@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 317475 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -59,7 +59,7 @@ struct iax_template {
 	unsigned short serverport;
 	unsigned int altserver;
 	unsigned int flags;
-	iax2_format format;
+	unsigned int format;
 	unsigned int tos;
 	AST_LIST_ENTRY(iax_template) list;
 };
@@ -110,6 +110,7 @@ static unsigned int iax_str2flags(const char *buf)
 {
 	int x;
 	int len;
+	int found;
 	unsigned int flags = 0;
 	char *e;
 	while(buf && *buf) {
@@ -118,6 +119,7 @@ static unsigned int iax_str2flags(const char *buf)
 			len = e - buf;
 		else
 			len = 0;
+		found = 0;
 		for (x = 0; x < ARRAY_LEN(iax_flags); x++) {
 			if ((len && !strncasecmp(iax_flags[x].name, buf, len)) ||
 			    (!len && !strcasecmp(iax_flags[x].name, buf))) {
@@ -338,9 +340,8 @@ static int iax_template_parse(struct iax_template *cur, struct ast_config *cfg, 
 			} else 
 				ast_log(LOG_WARNING, "Ignoring invalid %s '%s' for '%s' at line %d\n", v->name, v->value, s, v->lineno);
 		} else if (!strcasecmp(v->name, "codec")) {
-			struct ast_format tmpfmt;
-			if ((ast_getformatbyname(v->value, &tmpfmt)) > 0) {
-				cur->format = ast_format_to_old_bitfield(&tmpfmt);
+			if ((x = ast_getformatbyname(v->value)) > 0) {
+				cur->format = x;
 			} else
 				ast_log(LOG_WARNING, "Ignoring invalid codec '%s' for '%s' at line %d\n", v->value, s, v->lineno);
 		} else if (!strcasecmp(v->name, "tos")) {
@@ -467,7 +468,7 @@ static char *iax_show_provisioning(struct ast_cli_entry *e, int cmd, struct ast_
 			ast_cli(a->fd, "Server Port:  %d\n", cur->serverport);
 			ast_cli(a->fd, "Alternate:    %s\n", alternate);
 			ast_cli(a->fd, "Flags:        %s\n", iax_provflags2str(flags, sizeof(flags), cur->flags));
-			ast_cli(a->fd, "Format:       %s\n", iax2_getformatname(cur->format));
+			ast_cli(a->fd, "Format:       %s\n", ast_getformatname(cur->format));
 			ast_cli(a->fd, "TOS:          0x%x\n", cur->tos);
 			found++;
 		}

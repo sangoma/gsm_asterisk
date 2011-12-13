@@ -24,13 +24,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -195,7 +191,6 @@ static int timeout_write(struct ast_channel *chan, const char *cmd, char *data,
 static struct ast_custom_function timeout_function = {
 	.name = "TIMEOUT",
 	.read = timeout_read,
-	.read_max = 22,
 	.write = timeout_write,
 };
 

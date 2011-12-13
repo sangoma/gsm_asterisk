@@ -1,29 +1,14 @@
 ;
 ; SIP Configuration example for Asterisk
 ;
-; Note: Please read the security documentation for Asterisk in order to
-; 	understand the risks of installing Asterisk with the sample
-;	configuration. If your Asterisk is installed on a public
-;	IP address connected to the Internet, you will want to learn
-;	about the various security settings BEFORE you start
-;	Asterisk. 
-;
-;	Especially note the following settings:
-;		- allowguest (default enabled)
-;		- permit/deny - IP address filters
-;		- contactpermit/contactdeny - IP address filters for registrations
-;		- context - Which set of services you offer various users
-;
 ; SIP dial strings
 ;-----------------------------------------------------------
-; In the dialplan (extensions.conf) you can use several
+; In the dialplan (extensions.conf) you can use several 
 ; syntaxes for dialing SIP devices.
 ;        SIP/devicename
 ;        SIP/username@domain   (SIP uri)
 ;        SIP/username[:password[:md5secret[:authname[:transport]]]]@host[:port]
 ;        SIP/devicename/extension
-;        SIP/devicename/extension/IPorHost
-;        SIP/username@domain//IPorHost
 ;
 ;
 ; Devicename
@@ -32,11 +17,11 @@
 ; username@domain
 ;        Call any SIP user on the Internet
 ;        (Don't forget to enable DNS SRV records if you want to use this)
-;
+; 
 ; devicename/extension
 ;        If you define a SIP proxy as a peer below, you may call
-;        SIP/proxyhostname/user or SIP/user@proxyhostname
-;        where the proxyhostname is defined in a section below
+;        SIP/proxyhostname/user or SIP/user@proxyhostname 
+;        where the proxyhostname is defined in a section below 
 ;        This syntax also works with ATA's with FXO ports
 ;
 ; SIP/username[:password[:md5secret[:authname]]]@host[:port]
@@ -48,22 +33,11 @@
 ;        SIP/sales:topsecret::account02@domain.com:5062
 ;        SIP/12345678::bc53f0ba8ceb1ded2b70e05c3f91de4f:myname@192.168.0.1
 ;
-; IPorHost
-;        The next server for this call regardless of domain/peer
-;
 ; All of these dial strings specify the SIP request URI.
 ; In addition, you can specify a specific To: header by adding an
 ; exclamation mark after the dial string, like
 ;
 ;         SIP/sales@mysipproxy!sales@edvina.net
-;
-; A new feature for 1.8 allows one to specify a host or IP address to use
-; when routing the call. This is typically used in tandem with func_srv if
-; multiple methods of reaching the same domain exist. The host or IP address
-; is specified after the third slash in the dialstring. Examples:
-;
-; SIP/devicename/extension/IPorHost
-; SIP/username@domain//IPorHost
 ;
 ; CLI Commands
 ; -------------------------------------------------------------
@@ -73,15 +47,14 @@
 ;
 ;   sip set debug on             Show all SIP messages
 ;
-;   sip reload                   Reload configuration file
-;   sip show settings            Show the current channel configuration
+;   module reload chan_sip.so    Reload configuration file
 ;
 ;------- Naming devices ------------------------------------------------------
 ;
 ; When naming devices, make sure you understand how Asterisk matches calls
 ; that come in.
 ;	1. Asterisk checks the SIP From: address username and matches against
-;	   names of devices with type=user
+;	   names of devices with type=user 
 ;	   The name is the text between square brackets [name]
 ;	2. Asterisk checks the From: addres and matches the list of devices
 ;	   with a type=peer
@@ -91,33 +64,29 @@
 ; Don't mix extensions with the names of the devices. Devices need a unique
 ; name. The device name is *not* used as phone numbers. Phone numbers are
 ; anything you declare as an extension in the dialplan (extensions.conf).
-;
+; 
 ; When setting up trunks, make sure there's no risk that any From: username
-; (caller ID) will match any of your device names, because then Asterisk
+; (caller ID) will match any of your device names, because then Asterisk 
 ; might match the wrong device.
 ;
 ; Note: The parameter "username" is not the username and in most cases is
 ;       not needed at all. Check below. In later releases, it's renamed
-;       to "defaultuser" which is a better name, since it is used in
+;       to "defaultuser" which is a better name, since it is used in 
 ;       combination with the "defaultip" setting.
 ;-----------------------------------------------------------------------------
 
-; ** Old configuration options **
-; The "call-limit" configuation option is considered old is replaced
-; by new functionality. To enable callcounters, you use the new 
-; "callcounter" setting (for extension states in queue and subscriptions)
+; ** Deprecated configuration options **
+; The "call-limit" configuation option is deprecated. It still works in
+; this version of Asterisk, but will disappear in the next version.
 ; You are encouraged to use the dialplan groupcount functionality
 ; to enforce call limits instead of using this channel-specific method.
-; You can still set limits per device in sip.conf or in a database by using
+;
+; You can still set limits per device in sip.conf or in a database by using 
 ; "setvar" to set variables that can be used in the dialplan for various limits.
 
 [general]
 context=default                 ; Default context for incoming calls
 ;allowguest=no                  ; Allow or reject guest calls (default is yes)
-				; If your Asterisk is connected to the Internet
-				; and you have allowguest=yes
-				; you want to check which services you offer everyone
-				; out there, by enabling them in the default context (see below).
 ;match_auth_username=yes        ; if available, match user entry using the
                                 ; 'username' field from the authentication line
                                 ; instead of the From: field.
@@ -130,59 +99,8 @@ allowoverlap=no                 ; Disable overlap dialing support. (Default is y
                                 ; asterisk.conf, it defaults to that system name
                                 ; Realms MUST be globally unique according to RFC 3261
                                 ; Set this to your host name or domain name
-;domainsasrealm=no              ; Use domains list as realms
-                                ; You can serve multiple Realms specifying several
-                                ; 'domain=...' directives (see below). 
-                                ; In this case Realm will be based on request 'From'/'To' header
-                                ; and should match one of domain names.
-                                ; Otherwise default 'realm=...' will be used.
-
-; With the current situation, you can do one of four things:
-;  a) Listen on a specific IPv4 address.      Example: bindaddr=192.0.2.1
-;  b) Listen on a specific IPv6 address.      Example: bindaddr=2001:db8::1
-;  c) Listen on the IPv4 wildcard.            Example: bindaddr=0.0.0.0
-;  d) Listen on the IPv4 and IPv6 wildcards.  Example: bindaddr=::
-; (You can choose independently for UDP, TCP, and TLS, by specifying different values for
-; "udpbindaddr", "tcpbindaddr", and "tlsbindaddr".)
-; (Note that using bindaddr=:: will show only a single IPv6 socket in netstat.
-;  IPv4 is supported at the same time using IPv4-mapped IPv6 addresses.)
-;
-; You may optionally add a port number. (The default is port 5060 for UDP and TCP, 5061
-; for TLS).
-;   IPv4 example: bindaddr=0.0.0.0:5062
-;   IPv6 example: bindaddr=[::]:5062
-;
-; The address family of the bound UDP address is used to determine how Asterisk performs
-; DNS lookups. In cases a) and c) above, only A records are considered. In case b), only
-; AAAA records are considered. In case d), both A and AAAA records are considered. Note,
-; however, that Asterisk ignores all records except the first one. In case d), when both A
-; and AAAA records are available, either an A or AAAA record will be first, and which one
-; depends on the operating system. On systems using glibc, AAAA records are given
-; priority.
-
 udpbindaddr=0.0.0.0             ; IP address to bind UDP listen socket to (0.0.0.0 binds to all)
                                 ; Optionally add a port number, 192.168.1.1:5062 (default is port 5060)
-
-; When a dialog is started with another SIP endpoint, the other endpoint
-; should include an Allow header telling us what SIP methods the endpoint
-; implements. However, some endpoints either do not include an Allow header
-; or lie about what methods they implement. In the former case, Asterisk
-; makes the assumption that the endpoint supports all known SIP methods.
-; If you know that your SIP endpoint does not provide support for a specific
-; method, then you may provide a comma-separated list of methods that your
-; endpoint does not implement in the disallowed_methods option. Note that 
-; if your endpoint is truthful with its Allow header, then there is no need 
-; to set this option. This option may be set in the general section or may
-; be set per endpoint. If this option is set both in the general section and
-; in a peer section, then the peer setting completely overrides the general
-; setting (i.e. the result is *not* the union of the two options).
-;
-; Note also that while Asterisk currently will parse an Allow header to learn
-; what methods an endpoint supports, the only actual use for this currently
-; is for determining if Asterisk may send connected line UPDATE requests and
-; MESSAGE requests. Its use may be expanded in the future.
-;
-; disallowed_methods = UPDATE
 
 ;
 ; Note that the TCP and TLS support for chan_sip is currently considered
@@ -202,6 +120,30 @@ tcpbindaddr=0.0.0.0             ; IP address for TCP server to bind to (0.0.0.0 
                                 ; For details how to construct a certificate for SIP see 
                                 ; http://tools.ietf.org/html/draft-ietf-sip-domain-certs
 
+;tlscertfile=asterisk.pem       ; Certificate file (*.pem only) to use for TLS connections 
+                                ; default is to look for "asterisk.pem" in current directory
+
+;tlscafile=</path/to/certificate>
+;        If the server your connecting to uses a self signed certificate
+;        you should have their certificate installed here so the code can 
+;        verify the authenticity of their certificate.
+
+;tlscadir=</path/to/ca/dir>
+;        A directory full of CA certificates.  The files must be named with 
+;        the CA subject name hash value. 
+;        (see man SSL_CTX_load_verify_locations for more info) 
+
+;tlsdontverifyserver=[yes|no]
+;        If set to yes, don't verify the servers certificate when acting as 
+;        a client.  If you don't have the server's CA certificate you can
+;        set this and it will connect without requiring tlscafile to be set.
+;        Default is no.
+
+;tlscipher=<SSL cipher string>
+;        A string specifying which SSL ciphers to use or not use
+;        A list of valid SSL cipher strings can be found at: 
+;                http://www.openssl.org/docs/apps/ciphers.html#CIPHER_STRINGS
+
 ;tcpauthtimeout = 30            ; tcpauthtimeout specifies the maximum number
 				; of seconds a client has to authenticate.  If
 				; the client does not authenticate beofre this
@@ -213,21 +155,21 @@ tcpbindaddr=0.0.0.0             ; IP address for TCP server to bind to (0.0.0.0 
                                 ; to connect at any given time. (default: 100)
 
 srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
-                                ; Note: Asterisk only uses the first host
+                                ; Note: Asterisk only uses the first host 
                                 ; in SRV records
-                                ; Disabling DNS SRV lookups disables the
-                                ; ability to place SIP calls based on domain
+                                ; Disabling DNS SRV lookups disables the 
+                                ; ability to place SIP calls based on domain 
                                 ; names to some other SIP users on the Internet
                                 ; Specifying a port in a SIP peer definition or
                                 ; when dialing outbound calls will supress SRV
                                 ; lookups for that peer or call.
 
-;pedantic=yes                   ; Enable checking of tags in headers,
+;pedantic=yes                   ; Enable checking of tags in headers, 
                                 ; international character conversions in URIs
                                 ; and multiline formatted headers for strict
-                                ; SIP compatibility (defaults to "yes")
+                                ; SIP compatibility (defaults to "no")
 
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of these parameters.
 ;tos_sip=cs3                    ; Sets TOS for SIP packets.
 ;tos_audio=ef                   ; Sets TOS for RTP audio packets.
 ;tos_video=af41                 ; Sets TOS for RTP video packets.
@@ -243,27 +185,19 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;minexpiry=60                   ; Minimum length of registrations/subscriptions (default 60)
 ;defaultexpiry=120              ; Default length of incoming/outgoing registration
 ;mwiexpiry=3600                 ; Expiry time for outgoing MWI subscriptions
-;maxforwards=70			; Setting for the SIP Max-Forwards: header (loop prevention)
-				; Default value is 70
-;qualifyfreq=60                 ; Qualification: How often to check for the host to be up in seconds
-				; and reported in milliseconds with sip show settings.
-                                ; Set to low value if you use low timeout for NAT of UDP sessions
-				; Default: 60
+;qualifyfreq=60                 ; Qualification: How often to check for the 
+                                ; host to be up in seconds. sip show settings reports in 
+				; milliseconds.
+                                ; Set to low value if you use low timeout for
+                                ; NAT of UDP sessions
 ;qualifygap=100			; Number of milliseconds between each group of peers being qualified
-				; Default: 100
 ;qualifypeers=1			; Number of peers in a group to be qualified at the same time
-				; Default: 1
 ;notifymimetype=text/plain      ; Allow overriding of mime type in MWI NOTIFY
 ;buggymwi=no                    ; Cisco SIP firmware doesn't support the MWI RFC
                                 ; fully. Enable this option to not get error messages
                                 ; when sending MWI to phones with this bug.
-;mwi_from=asterisk              ; When sending MWI NOTIFY requests, use this setting in
-                                ; the From: header as the "name" portion. Also fill the
-			        ; "user" portion of the URI in the From: header with this
-			        ; value if no fromuser is set
-			        ; Default: empty
-;vmexten=voicemail              ; dialplan extension to reach mailbox sets the
-                                ; Message-Account in the MWI notify message
+;vmexten=voicemail              ; dialplan extension to reach mailbox sets the 
+                                ; Message-Account in the MWI notify message 
                                 ; defaults to "asterisk"
 
 ; Codec negotiation
@@ -278,14 +212,9 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; the allowed codecs that the callee indicates that it supports. Asterisk will
 ; *not* switch to whatever codec the callee is sending.
 ;
-;preferred_codec_only=yes       ; Respond to a SIP invite with the single most preferred codec
-                                ; rather than advertising all joint codec capabilities. This
-                                ; limits the other side's codec choice to exactly what we prefer.
-
 ;disallow=all                   ; First disallow all codecs
 ;allow=ulaw                     ; Allow codecs in order of preference
-;allow=ilbc                     ; see https://wiki.asterisk.org/wiki/display/AST/RTP+Packetization
-				; for framing options
+;allow=ilbc                     ; see doc/rtp-packetization for framing options
 ;
 ; This option specifies a preference for which music on hold class this channel
 ; should listen to when put on hold if the music class has not been set on the
@@ -307,23 +236,9 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; Parkinglots are configured in features.conf
 ;language=en                    ; Default language setting for all users/peers
                                 ; This may also be set for individual users/peers
-;tonezone=se			; Default tonezone for all users/peers
-                                ; This may also be set for individual users/peers
-
 ;relaxdtmf=yes                  ; Relax dtmf handling
 ;trustrpid = no                 ; If Remote-Party-ID should be trusted
-;sendrpid = yes                 ; If Remote-Party-ID should be sent (defaults to no)
-;sendrpid = rpid                ; Use the "Remote-Party-ID" header
-                                ; to send the identity of the remote party
-                                ; This is identical to sendrpid=yes
-;sendrpid = pai                 ; Use the "P-Asserted-Identity" header
-                                ; to send the identity of the remote party
-;rpid_update = no               ; In certain cases, the only method by which a connected line
-                                ; change may be immediately transmitted is with a SIP UPDATE request.
-                                ; If communicating with another Asterisk server, and you wish to be able
-                                ; transmit such UPDATE messages to it, then you must enable this option.
-                                ; Otherwise, we will have to wait until we can send a reinvite to
-                                ; transmit the information.
+;sendrpid = yes                 ; If Remote-Party-ID should be sent
 ;prematuremedia=no              ; Some ISDN links send empty media frames before 
                                 ; the call is in ringing or progress state. The SIP 
                                 ; channel will then send 183 indicating early media
@@ -331,10 +246,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; Setting this to "yes" will stop any media before we have
                                 ; call progress (meaning the SIP channel will not send 183 Session
                                 ; Progress for early media). Default is "yes". Also make sure that
-                                ; the SIP peer is configured with progressinband=never. 
-                                ;
-                                ; In order for "noanswer" applications to work, you need to run
-                                ; the progress() application in the priority before the app.
+                                ; the SIP peer is configured with progressinband=never.
 
 ;progressinband=never           ; If we should generate in-band ringing always
                                 ; use 'never' to never use in-band signalling, even in cases
@@ -344,6 +256,11 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; The default user agent string also contains the Asterisk
                                 ; version. If you don't want to expose this, change the
                                 ; useragent string.
+;sdpsession=Asterisk PBX        ; Allows you to change the SDP session name string, (s=)
+                                ; Like the useragent parameter, the default user agent string
+                                ; also contains the Asterisk version.
+;sdpowner=root                  ; Allows you to change the username field in the SDP owner string, (o=)
+                                ; This field MUST NOT contain spaces
 ;promiscredir = no              ; If yes, allows 302 or REDIR to non-local SIP address
                                 ; Note that promiscredir when redirects are made to the
                                 ; local system will cause loops since Asterisk is incapable
@@ -351,7 +268,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;usereqphone = no               ; If yes, ";user=phone" is added to uri that contains
                                 ; a valid phone number
 ;dtmfmode = rfc2833             ; Set default dtmfmode for sending DTMF. Default: rfc2833
-                                ; Other options:
+                                ; Other options: 
                                 ; info : SIP INFO messages (application/dtmf-relay)
                                 ; shortinfo : SIP INFO messages (application/dtmf)
                                 ; inband : Inband audio (requires 64 kbit codec -alaw, ulaw)
@@ -373,7 +290,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;maxcallbitrate=384             ; Maximum bitrate for video calls (default 384 kb/s)
                                 ; Videosupport and maxcallbitrate is settable
                                 ; for peers and users as well
-;callevents=no                  ; generate manager events when sip ua
+;callevents=no                  ; generate manager events when sip ua 
                                 ; performs events (e.g. hold)
 ;authfailureevents=no           ; generate manager "peerstatus" events when peer can't
                                 ; authenticate with Asterisk. Peerstatus will be "rejected".
@@ -383,25 +300,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; instead of letting the requester know whether there was
                                 ; a matching user or peer for their request.  This reduces
                                 ; the ability of an attacker to scan for valid SIP usernames.
-                                ; This option is set to "yes" by default.
-
-;auth_options_requests = yes    ; Enabling this option will authenticate OPTIONS requests just like
-                                ; INVITE requests are.  By default this option is disabled.
-
-;accept_outofcall_message = no  ; Disable this option to reject all MESSAGE requests outside of a
-                                ; call.  By default, this option is enabled.  When enabled, MESSAGE
-                                ; requests are passed in to the dialplan.
-
-;outofcall_message_context = messages ; Context all out of dialog msgs are sent to. When this
-                                      ; option is not set, the context used during peer matching
-                                      ; is used. This option can be defined at both the peer and
-                                      ; global level.
-
-;auth_message_requests = yes    ; Enabling this option will authenticate MESSAGE requests.
-                                ; By default this option is enabled.  However, it can be disabled
-                                ; should an application desire to not load the Asterisk server with
-                                ; doing authentication and implement end to end security in the
-                                ; message body.
 
 ;g726nonstandard = yes          ; If the peer negotiates G726-32 audio, use AAL2 packing
                                 ; order instead of RFC3551 packing order (this is required
@@ -411,14 +309,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;outboundproxy=proxy.provider.domain            ; send outbound signaling to this proxy, not directly to the devices
 ;outboundproxy=proxy.provider.domain:8080       ; send outbound signaling to this proxy, not directly to the devices
 ;outboundproxy=proxy.provider.domain,force      ; Send ALL outbound signalling to proxy, ignoring route: headers
-;outboundproxy=tls://proxy.provider.domain      ; same as '=proxy.provider.domain' except we try to connect with tls
-;outboundproxy=192.0.2.1                        ; IPv4 address literal (default port is 5060)
-;outboundproxy=2001:db8::1                      ; IPv6 address literal (default port is 5060)
-;outboundproxy=192.168.0.2.1:5062               ; IPv4 address literal with explicit port
-;outboundproxy=[2001:db8::1]:5062               ; IPv6 address literal with explicit port
+;outboundproxy=tls://proxy.provider.domain      ; same as '=proxy.provider.domain' except we try to connect with tls 
 ;                                               ; (could also be tcp,udp) - defining transports on the proxy line only
 ;                                               ; applies for the global proxy, otherwise use the transport= option
-;matchexternaddrlocally = yes     ; Only substitute the externaddr or externhost setting if it matches
+;matchexterniplocally = yes     ; Only substitute the externip or externhost setting if it matches
                                 ; your localnet setting. Unless you have some sort of strange network
                                 ; setup you will not need to enable this.
 
@@ -431,33 +325,9 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;contactdeny=0.0.0.0/0.0.0.0           ; Use contactpermit and contactdeny to
 ;contactpermit=172.16.0.0/255.255.0.0  ; restrict at what IPs your users may
                                        ; register their phones.
-
-;engine=asterisk                ; RTP engine to use when communicating with the device
-
-;
-; If regcontext is specified, Asterisk will dynamically create and destroy a
-; NoOp priority 1 extension for a given peer who registers or unregisters with
-; us and have a "regexten=" configuration item.
-; Multiple contexts may be specified by separating them with '&'. The
-; actual extension is the 'regexten' parameter of the registering peer or its
-; name if 'regexten' is not provided.  If more than one context is provided,
-; the context must be specified within regexten by appending the desired
-; context after '@'.  More than one regexten may be supplied if they are
-; separated by '&'.  Patterns may be used in regexten.
-;
-;regcontext=sipregistrations
-;regextenonqualify=yes          ; Default "no"
-                                ; If you have qualify on and the peer becomes unreachable
-                                ; this setting will enforce inactivation of the regexten
-                                ; extension for the peer
-;legacy_useroption_parsing=yes	; Default "no"      ; If you have this option enabled and there are semicolons
-                                                    ; in the user field of a sip URI, the field be truncated
-                                                    ; at the first semicolon seen. This effectively makes
-                                                    ; semicolon a non-usable character for peer names, extensions,
-                                                    ; and maybe other, less tested things.  This can be useful
-                                                    ; for improving compatability with devices that like to use
-                                                    ; user options for whatever reason.  The behavior is similar to
-                                                    ; how SIP URI's were typically handled in 1.6.2, hence the name.
+;forwardloopdetected=no         ; Attempt to forward a call locally if the
+                                ; destination replies with 482 Loop Detected
+                                ; default = yes
 
 ; The shrinkcallerid function removes '(', ' ', ')', non-trailing '.', and '-' not
 ; in square brackets.  For example, the caller id value 555.5555 becomes 5555555
@@ -468,45 +338,25 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;
 ;shrinkcallerid=yes     ; on by default
 
-
-;use_q850_reason = no ; Default "no"
-                      ; Set to yes add Reason header and use Reason header if it is available.
 ;
-;------------------------ TLS settings ------------------------------------------------------------
-;tlscertfile=</path/to/certificate.pem> ; Certificate file (*.pem format only) to use for TLS connections
-                                        ; default is to look for "asterisk.pem" in current directory
-
-;tlsprivatekey=</path/to/private.pem> ; Private key file (*.pem format only) for TLS connections.
-                                      ; If no tlsprivatekey is specified, tlscertfile is searched for
-                                      ; for both public and private key.
-
-;tlscafile=</path/to/certificate>
-;        If the server your connecting to uses a self signed certificate
-;        you should have their certificate installed here so the code can
-;        verify the authenticity of their certificate.
-
-;tlscapath=</path/to/ca/dir>
-;        A directory full of CA certificates.  The files must be named with
-;        the CA subject name hash value.
-;        (see man SSL_CTX_load_verify_locations for more info)
-
-;tlsdontverifyserver=[yes|no]
-;        If set to yes, don't verify the servers certificate when acting as
-;        a client.  If you don't have the server's CA certificate you can
-;        set this and it will connect without requiring tlscafile to be set.
-;        Default is no.
-
-;tlscipher=<SSL cipher string>
-;        A string specifying which SSL ciphers to use or not use
-;        A list of valid SSL cipher strings can be found at:
-;                http://www.openssl.org/docs/apps/ciphers.html#CIPHER_STRINGS
+; If regcontext is specified, Asterisk will dynamically create and destroy a
+; NoOp priority 1 extension for a given peer who registers or unregisters with
+; us and have a "regexten=" configuration item.  
+; Multiple contexts may be specified by separating them with '&'. The 
+; actual extension is the 'regexten' parameter of the registering peer or its
+; name if 'regexten' is not provided.  If more than one context is provided,
+; the context must be specified within regexten by appending the desired
+; context after '@'.  More than one regexten may be supplied if they are 
+; separated by '&'.  Patterns may be used in regexten.
 ;
-;tlsclientmethod=tlsv1     ; values include tlsv1, sslv3, sslv2.
-                           ; Specify protocol for outbound client connections.
-                           ; If left unspecified, the default is sslv2.
+;regcontext=sipregistrations
+;regextenonqualify=yes          ; Default "no"
+                                ; If you have qualify on and the peer becomes unreachable
+                                ; this setting will enforce inactivation of the regexten
+                                ; extension for the peer
 ;
 ;--------------------------- SIP timers ----------------------------------------------------
-; These timers are used primarily in INVITE transactions.
+; These timers are used primarily in INVITE transactions. 
 ; The default for Timer T1 is 500 ms or the measured run-trip time between
 ; Asterisk and the device if you have qualify=yes for the device.
 ;
@@ -555,10 +405,11 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;session-minse=90
 ;session-refresher=uas
 ;
+
 ;--------------------------- SIP DEBUGGING ---------------------------------------------------
 ;sipdebug = yes                 ; Turn on SIP debugging by default, from
                                 ; the moment the channel loads this configuration
-;recordhistory=yes              ; Record SIP history by default
+;recordhistory=yes              ; Record SIP history by default 
                                 ; (see sip history / sip no history)
 ;dumphistory=yes                ; Dump SIP history at end of SIP dialogue
                                 ; SIP history is output to the DEBUG logging channel
@@ -567,12 +418,12 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;--------------------------- STATUS NOTIFICATIONS (SUBSCRIPTIONS) ----------------------------
 ; You can subscribe to the status of extensions with a "hint" priority
 ; (See extensions.conf.sample for examples)
-; chan_sip support two major formats for notifications: dialog-info and SIMPLE
+; chan_sip support two major formats for notifications: dialog-info and SIMPLE 
 ;
 ; You will get more detailed reports (busy etc) if you have a call counter enabled
-; for a device.
+; for a device. 
 ;
-; If you set the busylevel, we will indicate busy when we have a number of calls that
+; If you set the busylevel, we will indicate busy when we have a number of calls that 
 ; matches the busylevel treshold.
 ;
 ; For queues, you will need this level of detail in status reporting, regardless
@@ -641,19 +492,20 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; faxdetect = yes		; Default 'no', 'yes' enables both CNG and T.38 detection
 ; faxdetect = cng		; Enables only CNG detection
 ; faxdetect = t38		; Enables only T.38 detection
+; faxdetect = both		; Enables both CNG and T.38 detection (same as 'yes')
 ;
 ;----------------------------------------- OUTBOUND SIP REGISTRATIONS  ------------------------
 ; Asterisk can register as a SIP user agent to a SIP proxy (provider)
 ; Format for the register statement is:
 ;       register => [peer?][transport://]user[@domain][:secret[:authuser]]@host[:port][/extension][~expiry]
 ;
+; 
 ;
-;
-; domain is either
+; domain is either 
 ;	- domain in DNS
 ; 	- host name in DNS
 ;	- the name of a peer defined below or in realtime
-; The domain is where you register your username, so your SIP uri you are registering to
+; The domain is where you register your username, so your SIP uri you are registering to 
 ; is username@domain
 ;
 ; If no extension is given, the 's' extension is used. The extension needs to
@@ -684,7 +536,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;
 ; Examples:
 ;
-;register => 1234:password@mysipprovider.com
+;register => 1234:password@mysipprovider.com        
 ;
 ;     This will pass incoming calls to the 's' extension
 ;
@@ -715,18 +567,14 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; 0 = continue forever, hammering the other server
                                 ; until it accepts the registration
                                 ; Default is 0 tries, continue forever
-
 ;----------------------------------------- OUTBOUND MWI SUBSCRIPTIONS -------------------------
 ; Asterisk can subscribe to receive the MWI from another SIP server and store it locally for retrieval
-; by other phones. At this time, you can only subscribe using UDP as the transport.
+; by other phones.
 ; Format for the mwi register statement is:
-;       mwi => user[:secret[:authuser]]@host[:port]/mailbox
+;       mwi => user[:secret[:authuser]]@host[:port][/mailbox]
 ;
 ; Examples:
 ;mwi => 1234:password@mysipprovider.com/1234
-;mwi => 1234:password@myportprovider.com:6969/1234
-;mwi => 1234:password:authuser@myauthprovider.com/1234
-;mwi => 1234:password:authuser@myauthportprovider.com:6969/1234
 ;
 ; MWI received will be stored in the 1234 mailbox of the SIP_Remote context. It can be used by other phones by following the below:
 ; mailbox=1234@SIP_Remote
@@ -756,24 +604,20 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;   to a host outside the NAT. This information is derived by one of the
 ;   following (mutually exclusive) config file parameters:
 ;
-;   a. "externaddr = hostname[:port]" specifies a static address[:port] to
+;   a. "externip = hostname[:port]" specifies a static address[:port] to
 ;      be used in SIP and SDP messages.
 ;      The hostname is looked up only once, when [re]loading sip.conf .
-;      If a port number is not present, use the port specified in the "udpbindaddr"
-;      (which is not guaranteed to work correctly, because a NAT box might remap the
+;      If a port number is not present, use the "bindport" value (which is
+;      not guaranteed to work correctly, because a NAT box might remap the
 ;      port number as well as the address).
 ;      This approach can be useful if you have a NAT device where you can
 ;      configure the mapping statically. Examples:
 ;
-;        externaddr = 12.34.56.78          ; use this address.
-;        externaddr = 12.34.56.78:9900     ; use this address and port.
-;        externaddr = mynat.my.org:12600   ; Public address of my nat box.
-;        externtcpport = 9900   ; The externally mapped tcp port, when Asterisk is behind a static NAT or PAT. 
-;                               ; externtcpport will default to the externaddr or externhost port if either one is set. 
-;        externtlsport = 12600  ; The externally mapped tls port, when Asterisk is behind a static NAT or PAT.
-;                               ; externtlsport port will default to the RFC designated port of 5061.	
+;        externip = 12.34.56.78          ; use this address.
+;        externip = 12.34.56.78:9900     ; use this address and port.
+;        externip = mynat.my.org:12600   ; Public address of my nat box.
 ;
-;   b. "externhost = hostname[:port]" is similar to "externaddr" except
+;   b. "externhost = hostname[:port]" is similar to "externip" except
 ;      that the hostname is looked up every "externrefresh" seconds
 ;      (default 10s). This can be useful when your NAT device lets you choose
 ;      the port mapping, but the IP address is dynamic.
@@ -783,18 +627,29 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;        externhost=foo.dyndns.net       ; refreshed periodically
 ;        externrefresh=180               ; change the refresh interval
 ;
+;   c. "stunaddr = stun.server[:port]" queries the STUN server specified
+;      as an argument to obtain the external address/port.
+;      Queries are also sent periodically every "externrefresh" seconds
+;      (as a side effect, sending the query also acts as a keepalive for
+;      the state entry on the nat box):
+;
+;        stunaddr = foo.stun.com:3478
+;        externrefresh = 15
+;
 ;   Note that at the moment all these mechanism work only for the SIP socket.
-;   The IP address discovered with externaddr/externhost is reused for
+;   The IP address discovered with externip/externhost/STUN is reused for
 ;   media sessions as well, but the port numbers are not remapped so you
 ;   may still experience problems.
 ;
 ; NOTE 1: in some cases, NAT boxes will use different port numbers in
-; the internal<->external mapping. In these cases, the "externaddr" and
-; "externhost" might not help you configure addresses properly.
+; the internal<->external mapping. In these cases, the "externip" and
+; "externhost" might not help you configure addresses properly, and you
+; really need to use STUN.
 ;
-; NOTE 2: when using "externaddr" or "externhost", the address part is
-; also used as the external address for media sessions. Thus, the port
-; information in the SDP may be wrong!
+; NOTE 2: when using "externip" or "externhost", the address part is
+; also used as the external address for media sessions. Even if you 
+; use "stunaddr", STUN queries will be sent only from the SIP port,
+; not from media sockets. Thus, the port information in the SDP may be wrong!
 ;
 ; In addition to the above, Asterisk has an additional "nat" parameter to
 ; address NAT-related issues in incoming SIP or media sessions.
@@ -804,38 +659,19 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; However, this is only useful if the external traffic can reach us.
 ; The following settings are allowed (both globally and in individual sections):
 ;
-;        nat = no                ; Default. Use rport if the remote side says to use it.
-;        nat = force_rport       ; Force rport to always be on.
-;        nat = yes               ; Force rport to always be on and perform comedia RTP handling.
-;        nat = comedia           ; Use rport if the remote side says to use it and perform comedia RTP handling.
+;        nat = no                ; default. Use NAT mode only according to RFC3581 (;rport)
+;        nat = yes               ; Always ignore info and assume NAT (default)
+;        nat = never             ; Never attempt NAT mode or RFC3581 support
+;        nat = route             ; route = Assume NAT, don't send rport 
+;                                ; (work around more UNIDEN bugs)
 ;
-; 'comedia RTP handling' refers to the technique of sending RTP to the port that the
-; the other endpoint's RTP arrived from, and means 'connection-oriented media'. This is
-; only partially related to RFC 4145 which was referred to as COMEDIA while it was in
-; draft form. This method is used to accomodate endpoints that may be located behind
-; NAT devices, and as such the port number they tell Asterisk to send RTP packets to
-; for their media streams is not actual port number that will be used on the nearer
-; side of the NAT.
-;
-; In addition to these settings, Asterisk *always* uses 'symmetric RTP' mode as defined by
-; RFC 4961; Asterisk will always send RTP packets from the same port number it expects
-; to receive them on.
-;
-; The IP address used for media (audio, video, and text) in the SDP can also be overridden by using
-; the media_address configuration option. This is only applicable to the general section and
-; can not be set per-user or per-peer.
-;
-; media_address = 172.16.42.1
-;
-; Through the use of the res_stun_monitor module, Asterisk has the ability to detect when the
-; perceived external network address has changed.  When the stun_monitor is installed and
-; configured, chan_sip will renew all outbound registrations when the monitor detects any sort
-; of network change has occurred. By default this option is enabled, but only takes effect once
-; res_stun_monitor is configured.  If res_stun_monitor is enabled and you wish to not
-; generate all outbound registrations on a network change, use the option below to disable
-; this feature.
-;
-; subscribe_network_change_event = yes ; on by default
+; IT IS IMPORTANT TO NOTE that if the nat setting in the general section differs from
+; the nat setting in a peer definition, then the peer username will be discoverable
+; by outside parties as Asterisk will respond to different ports for defined and
+; undefined peers. For this reason it is recommended to ONLY DEFINE NAT SETTINGS IN THE
+; GENERAL SECTION. Specifically, if nat=route or nat=yes in one section and nat=no or
+; nat=never in the other, then valid users with settings differing from those in the
+; general section will be discoverable.
 
 ;----------------------------------- MEDIA HANDLING --------------------------------
 ; By default, Asterisk tries to re-invite media streams to an optimal path. If there's
@@ -856,6 +692,13 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; call directly between the endpoints instead of sending
                                 ; a re-INVITE).
 
+;directrtpsetup=yes             ; Enable the new experimental direct RTP setup. This sets up
+                                ; the call directly with media peer-2-peer without re-invites.
+                                ; Will not work for video and cases where the callee sends 
+                                ; RTP payloads and fmtp headers in the 200 OK that does not match the
+                                ; callers INVITE. This will also fail if directmedia is enabled when
+                                ; the device is actually behind NAT.
+
                                 ; Additionally this option does not disable all reINVITE operations.
                                 ; It only controls Asterisk generating reINVITEs for the specific
                                 ; purpose of setting up a direct media path. If a reINVITE is
@@ -873,20 +716,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; instead of INVITE. This can be combined with 'nonat', as
                                 ; 'directmedia=update,nonat'. It implies 'yes'.
 
-;directrtpsetup=yes             ; Enable the new experimental direct RTP setup. This sets up
-                                ; the call directly with media peer-2-peer without re-invites.
-                                ; Will not work for video and cases where the callee sends
-                                ; RTP payloads and fmtp headers in the 200 OK that does not match the
-                                ; callers INVITE. This will also fail if directmedia is enabled when
-                                ; the device is actually behind NAT.
-
-;directmediadeny=0.0.0.0/0      ; Use directmediapermit and directmediadeny to restrict 
-;directmediapermit=172.16.0.0/16; which peers should be able to pass directmedia to each other
-                                ; (There is no default setting, this is just an example)
-                                ; Use this if some of your phones are on IP addresses that
-                                ; can not reach each other directly. This way you can force 
-                                ; RTP to always flow through asterisk in such cases.
-
 ;ignoresdpversion=yes           ; By default, Asterisk will honor the session version
                                 ; number in SDP packets and will only modify the SDP
                                 ; session if the version number changes. This option will
@@ -896,19 +725,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; (observed with Microsoft OCS). By default this option is
                                 ; off.
 
-;sdpsession=Asterisk PBX        ; Allows you to change the SDP session name string, (s=)
-                                ; Like the useragent parameter, the default user agent string
-                                ; also contains the Asterisk version.
-;sdpowner=root                  ; Allows you to change the username field in the SDP owner string, (o=)
-                                ; This field MUST NOT contain spaces
-;encryption=no                  ; Whether to offer SRTP encrypted media (and only SRTP encrypted media)
-                                ; on outgoing calls to a peer. Calls will fail with HANGUPCAUSE=58 if
-                                ; the peer does not support SRTP. Defaults to no.
-;encryption_taglen=80           ; Set the auth tag length offered in the INVITE either 32/80 default 80
-
 ;----------------------------------------- REALTIME SUPPORT ------------------------
 ; For additional information on ARA, the Asterisk Realtime Architecture,
-; please read https://wiki.asterisk.org/wiki/display/AST/Realtime+Database+Configuration
+; please read realtime.txt and extconfig.txt in the /doc directory of the
+; source code.
 ;
 ;rtcachefriends=yes             ; Cache realtime friends by adding them to the internal list
                                 ; just like friends added from the config file only on a
@@ -920,7 +740,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;rtupdate=yes                   ; Send registry updates to database using realtime? (yes|no)
                                 ; If set to yes, when a SIP UA registers successfully, the ip address,
                                 ; the origination port, the registration period, and the username of
-                                ; the UA will be set to database via realtime.
+                                ; the UA will be set to database via realtime. 
                                 ; If not present, defaults to 'yes'. Note: realtime peers will
                                 ; probably not function across reloads in the way that you expect, if
                                 ; you turn this option off.
@@ -940,8 +760,8 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ;
                                 ; For realtime peers, when the peer is retrieved from realtime storage,
                                 ; the registration information will be used regardless of whether
-                                ; it has expired or not; if it expires while the realtime peer
-                                ; is still in memory (due to caching or other reasons), the
+                                ; it has expired or not; if it expires while the realtime peer 
+                                ; is still in memory (due to caching or other reasons), the 
                                 ; information will not be removed from realtime storage
 
 ;----------------------------------------- SIP DOMAIN SUPPORT ------------------------
@@ -981,13 +801,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; address. This is to be polite and
                                 ; it may be a mandatory requirement for some
                                 ; destinations which do not have a prior
-                                ; account relationship with your server.
-
-;------------------------------ Advice of Charge CONFIGURATION --------------------------
-; snom_aoc_enabled = yes;     ; This options turns on and off support for sending AOC-D and
-                              ; AOC-E to snom endpoints.  This option can be used both in the
-                              ; peer and global scope.  The default for this option is off.
-
+                                ; account relationship with your server. 
 
 ;------------------------------ JITTER BUFFER CONFIGURATION --------------------------
 ; jbenable = yes              ; Enables the use of a jitterbuffer on the receiving side of a
@@ -1020,16 +834,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                               ; but occasionally has spikes.
 
 ; jblog = no                  ; Enables jitterbuffer frame logging. Defaults to "no".
-
-;----------------------------- SIP_CAUSE reporting ---------------------------------
-; storesipcause = no          ; This option causes chan_sip to set the
-			      ; HASH(SIP_CAUSE,<channel name>) channel variable
-			      ; to the value of the last sip response.
-			      ; WARNING: enabling this option carries a
-			      ; significant performance burden. It should only
-			      ; be used in low call volume situations. This
-                              ; option defaults to "no".
-
 ;-----------------------------------------------------------------------------------
 
 [authentication]
@@ -1038,20 +842,20 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; any credentials in peer/register definition if realm is matched.
 ;
 ; This way, Asterisk can authenticate for outbound calls to other
-; realms. We match realm on the proxy challenge and pick an set of
+; realms. We match realm on the proxy challenge and pick an set of 
 ; credentials from this list
 ; Syntax:
 ;        auth = <user>:<secret>@<realm>
 ;        auth = <user>#<md5secret>@<realm>
 ; Example:
 ;auth=mark:topsecret@digium.com
-;
-; You may also add auth= statements to [peer] definitions
+; 
+; You may also add auth= statements to [peer] definitions 
 ; Peer auth= override all other authentication settings if we match on realm
 
 ;------------------------------------------------------------------------------
 ; DEVICE CONFIGURATION
-;
+; 
 ; The SIP channel has two types of devices, the friend and the peer.
 ; * The type=friend is a device type that accepts both incoming and outbound calls,
 ;   where Asterisk match on the From: username on incoming calls.
@@ -1066,16 +870,16 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; outbound registration or call, the secret will be used. 
 ;
 ; For device names, we recommend using only a-z, numerics (0-9) and underscore
-;
+; 
 ; For local phones, type=friend works most of the time
 ;
-; If you have one-way audio, you probably have NAT problems.
+; If you have one-way audio, you probably have NAT problems. 
 ; If Asterisk is on a public IP, and the phone is inside of a NAT device
 ; you will need to configure nat option for those phones.
 ; Also, turn on qualify=yes to keep the nat session open
-;
-; Configuration options available
-; --------------------
+; 
+; Configuration options available 
+; --------------------     
 ; context
 ; callingpres
 ; permit
@@ -1141,17 +945,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; contactdeny           ; is to register at the same IP as a SIP provider,
 ;                       ; then call oneself, and get redirected to that
 ;                       ; same location).
-; directmediapermit
-; directmediadeny
-; unsolicited_mailbox
-; use_q850_reason
-; maxforwards
-; encryption
-; description		; Used to provide a description of the peer in console output
 
 ;[sip_proxy]
 ; For incoming calls only. Example: FWD (Free World Dialup)
-; We match on IP address of the proxy for incoming calls
+; We match on IP address of the proxy for incoming calls 
 ; since we can not match on username (caller id)
 ;type=peer
 ;context=from-fwd
@@ -1162,7 +959,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;remotesecret=guessit             ; Our password to their service
 ;defaultuser=yourusername         ; Authentication user for outbound proxies
 ;fromuser=yourusername            ; Many SIP providers require this!
-;fromdomain=provider.sip.domain
+;fromdomain=provider.sip.domain 
 ;host=box.provider.com
 ;transport=udp,tcp                ; This sets the default transport type to udp for outgoing, and will
 ;                                 ; accept both tcp and udp. The default transport type is only used for
@@ -1188,10 +985,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;transport=udp,tcp                ; This sets the transport type to udp for outgoing, and will
 ;                                 ;   accept both tcp and udp. Default is udp. The first transport
 ;                                 ;   listed will always be used for outgoing connections.
-;unsolicited_mailbox=4015552299   ; If the remote SIP server sends an unsolicited MWI NOTIFY message the new/old
-;                                 ;   message count will be stored in the configured virtual mailbox. It can be used
-;                                 ;   by any device supporting MWI by specifying <configured value>@SIP_Remote as the
-;                                 ;   mailbox.
 
 ;
 ; Because you might have a large number of similar sections, it is generally
@@ -1205,12 +998,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
         type=friend
 
 [natted-phone](!,basic-options)   ; another template inheriting basic-options
-        nat=yes
         directmedia=no
         host=dynamic
 
 [public-phone](!,basic-options)   ; another template inheriting basic-options
-        nat=no
         directmedia=yes
 
 [my-codecs](!)                    ; a template for my preferred codecs
@@ -1220,14 +1011,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
         allow=gsm
         allow=g723
         allow=ulaw
-        ; Or, more simply:
-        ;allow=!all,ilbc,g729,gsm,g723,ulaw
 
 [ulaw-phone](!)                   ; and another one for ulaw-only
         disallow=all
         allow=ulaw
-        ; Again, more simply:
-        ;allow=!all,ulaw
 
 ; and finally instantiate a few phones
 ;
@@ -1243,14 +1030,12 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; Standard configurations not using templates look like this:
 ;
 ;[grandstream1]
-;type=friend
+;type=friend                         
 ;context=from-sip                ; Where to start in the dialplan when this phone calls
 ;callerid=John Doe <1234>        ; Full caller ID, to override the phones config
                                  ; on incoming calls to Asterisk
-;description=Courtesy Phone      ; Description of the peer. Shown when doing 'sip show peers'.
 ;host=192.168.0.23               ; we have a static but private IP address
                                  ; No registration allowed
-;nat=no                          ; there is not NAT between phone and Asterisk
 ;directmedia=yes                 ; allow RTP voice traffic to bypass Asterisk
 ;dtmfmode=info                   ; either RFC2833 or INFO for the BudgeTone
 ;call-limit=1                    ; permit only 1 outgoing call and 1 incoming call at a time
@@ -1280,7 +1065,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;regexten=1234                   ; When they register, create extension 1234
 ;callerid="Jane Smith" <5678>
 ;host=dynamic                    ; This device needs to register
-;nat=yes                         ; X-Lite is behind a NAT router
 ;directmedia=no                  ; Typically set to NO if behind NAT
 ;disallow=all
 ;allow=gsm                       ; GSM consumes far less bandwidth than ulaw
@@ -1294,14 +1078,14 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;context=from-sip                ; Context for incoming calls from this user
 ;secret=blah
 ;subscribecontext=localextensions ; Only allow SUBSCRIBE for local extensions
-;language=de                     ; Use German prompts for this user
+;language=de                     ; Use German prompts for this user 
 ;host=dynamic                    ; This peer register with us
 ;dtmfmode=inband                 ; Choices are inband, rfc2833, or info
 ;defaultip=192.168.0.59          ; IP used until peer registers
 ;mailbox=1234@context,2345       ; Mailbox(-es) for message waiting indicator
-;subscribemwi=yes                ; Only send notifications if this phone
+;subscribemwi=yes                ; Only send notifications if this phone 
                                  ; subscribes for mailbox notification
-;vmexten=voicemail               ; dialplan extension to reach mailbox
+;vmexten=voicemail               ; dialplan extension to reach mailbox 
                                  ; sets the Message-Account in the MWI notify message
                                  ; defaults to global vmexten which defaults to "asterisk"
 ;disallow=all
@@ -1326,14 +1110,14 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;type=friend
 ;secret=blah
 ;host=dynamic
-;insecure=port                   ; Allow matching of peer by IP address without
+;insecure=port                   ; Allow matching of peer by IP address without 
                                  ; matching port number
 ;insecure=invite                 ; Do not require authentication of incoming INVITEs
 ;insecure=port,invite            ; (both)
 ;qualify=1000                    ; Consider it down if it's 1 second to reply
                                  ; Helps with NAT session
                                  ; qualify=yes uses default value
-;qualifyfreq=60                  ; Qualification: How often to check for the
+;qualifyfreq=60                  ; Qualification: How often to check for the 
                                  ; host to be up in seconds
                                  ; Set to low value if you use low timeout for
                                  ; NAT of UDP sessions
@@ -1346,22 +1130,16 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;deny=0.0.0.0/0.0.0.0            ; ACL: Control access to this account based on IP address
 ;permit=192.168.0.60/255.255.255.0
 ;permit=192.168.0.60/24          ; we can also use CIDR notation for subnet masks
-;permit=2001:db8::/32            ; IPv6 ACLs can be specified if desired. IPv6 ACLs
-                                 ; apply only to IPv6 addresses, and IPv4 ACLs apply
-                                 ; only to IPv4 addresses.
 
 ;[cisco1]
 ;type=friend
 ;secret=blah
 ;qualify=200                     ; Qualify peer is no more than 200ms away
-;nat=yes                         ; This phone may be natted
-                                 ; Send SIP and RTP to the IP address that packet is
-                                 ; received from instead of trusting SIP headers
 ;host=dynamic                    ; This device registers with us
 ;directmedia=no                  ; Asterisk by default tries to redirect the
                                  ; RTP media stream (audio) to go directly from
                                  ; the caller to the callee.  Some devices do not
-                                 ; support this (especially if one of them is
+                                 ; support this (especially if one of them is 
                                  ; behind a NAT).
 ;defaultip=192.168.0.4           ; IP address to use until registration
 ;defaultuser=goran               ; Username to use when calling this device before registration

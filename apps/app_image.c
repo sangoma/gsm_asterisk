@@ -24,14 +24,10 @@
  * 
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 154578 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -73,7 +69,7 @@ static char *app = "SendImage";
 	</application>
  ***/
 
-static int sendimage_exec(struct ast_channel *chan, const char *data)
+static int sendimage_exec(struct ast_channel *chan, void *data)
 {
 
 	if (ast_strlen_zero(data)) {

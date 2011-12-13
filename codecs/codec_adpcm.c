@@ -27,13 +27,9 @@
  * \ingroup codecs
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 267507 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/linkedlists.h"
@@ -290,6 +286,8 @@ static struct ast_frame *lintoadpcm_frameout(struct ast_trans_pvt *pvt)
 
 static struct ast_translator adpcmtolin = {
 	.name = "adpcmtolin",
+	.srcfmt = AST_FORMAT_ADPCM,
+	.dstfmt = AST_FORMAT_SLINEAR,
 	.framein = adpcmtolin_framein,
 	.sample = adpcm_sample,
 	.desc_size = sizeof(struct adpcm_decoder_pvt),
@@ -299,6 +297,8 @@ static struct ast_translator adpcmtolin = {
 
 static struct ast_translator lintoadpcm = {
 	.name = "lintoadpcm",
+	.srcfmt = AST_FORMAT_SLINEAR,
+	.dstfmt = AST_FORMAT_ADPCM,
 	.framein = lintoadpcm_framein,
 	.frameout = lintoadpcm_frameout,
 	.sample = slin8_sample,
@@ -326,12 +326,6 @@ static int unload_module(void)
 static int load_module(void)
 {
 	int res;
-
-	ast_format_set(&adpcmtolin.src_format, AST_FORMAT_ADPCM, 0);
-	ast_format_set(&adpcmtolin.dst_format, AST_FORMAT_SLINEAR, 0);
-
-	ast_format_set(&lintoadpcm.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintoadpcm.dst_format, AST_FORMAT_ADPCM, 0);
 
 	res = ast_register_translator(&adpcmtolin);
 	if (!res)

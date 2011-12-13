@@ -27,7 +27,7 @@ ASTTOPDIR?=..
 #     changes are made to ast_expr2.y or ast_expr2.fl (or the corresponding .c files),
 #     as a regression test. Others (mere mortals?) need not bother, but they are
 #     more than welcome to play! The regression test itself is in expr2.testinput.
-ALL_UTILS:=$(MENUSELECT_UTILS)
+ALL_UTILS:=astman smsq stereorize streamplayer muted hashtest2 hashtest astcanary refcounter aelparse conf2ael
 UTILS:=$(ALL_UTILS)
 
 LIBS += $(BKTR_LIB) # astobj2 with devmode uses backtrace
@@ -75,22 +75,20 @@ all: $(UTILS)
 install:
 	for x in $(UTILS); do \
 		if [ "$$x" != "none" ]; then \
-			$(INSTALL) -m 755 $$x "$(DESTDIR)$(ASTSBINDIR)/$$x"; \
+			$(INSTALL) -m 755 $$x $(DESTDIR)$(ASTSBINDIR)/$$x; \
 		fi; \
 	done 
 
 uninstall:
-	for x in $(ALL_UTILS); do rm -f "$(DESTDIR)$(ASTSBINDIR)/$$x"; done
+	for x in $(ALL_UTILS); do rm -f $(DESTDIR)$(ASTSBINDIR)/$$x; done
 
 clean:
 	rm -f *.o $(ALL_UTILS) check_expr
 	rm -f .*.d
 	rm -f *.s *.i
-	rm -f md5.c strcompat.c ast_expr2.c ast_expr2.h ast_expr2f.c pbx_ael.c pval.c hashtab.c lock.c
+	rm -f md5.c strcompat.c ast_expr2.c ast_expr2.h ast_expr2f.c pbx_ael.c pval.c hashtab.c
 	rm -f aelparse.c aelbison.c conf2ael
 	rm -f utils.c strings.c threadstorage.c sha1.c astobj2.c hashtest2 hashtest refcounter
-	rm -f db1-ast/.*.d
-	@$(MAKE) -C db1-ast clean
 
 md5.c: $(ASTTOPDIR)/main/md5.c
 	$(ECHO_PREFIX) echo "   [CP] $(subst $(ASTTOPDIR)/,,$<) -> $@"
@@ -104,10 +102,6 @@ stereorize: stereorize.o frame.o
 stereorize: LIBS+=-lm
 
 hashtab.c: $(ASTTOPDIR)/main/hashtab.c
-	$(ECHO_PREFIX) echo "   [CP] $(subst $(ASTTOPDIR)/,,$<) -> $@"
-	$(CMD_PREFIX) cp "$<" "$@"
-
-lock.c: $(ASTTOPDIR)/main/lock.c
 	$(ECHO_PREFIX) echo "   [CP] $(subst $(ASTTOPDIR)/,,$<) -> $@"
 	$(CMD_PREFIX) cp "$<" "$@"
 
@@ -149,7 +143,7 @@ aelparse.c: $(ASTTOPDIR)/res/ael/ael_lex.c
 
 aelparse.o: _ASTCFLAGS+=-I$(ASTTOPDIR)/res -Wno-unused
 aelparse: LIBS+=-lm
-aelparse: aelparse.o aelbison.o pbx_ael.o hashtab.o lock.o ael_main.o ast_expr2f.o ast_expr2.o strcompat.o pval.o extconf.o
+aelparse: aelparse.o aelbison.o pbx_ael.o hashtab.o ael_main.o ast_expr2f.o ast_expr2.o strcompat.o pval.o extconf.o
 
 astobj2.c: $(ASTTOPDIR)/main/astobj2.c
 	$(ECHO_PREFIX) echo "   [CP] $(subst $(ASTTOPDIR)/,,$<) -> $@"
@@ -176,17 +170,17 @@ threadstorage.c: $(ASTTOPDIR)/main/threadstorage.c
 	$(CMD_PREFIX) cp "$<" "$@"
 
 hashtest2.o: _ASTCFLAGS+=-O0
-hashtest2: hashtest2.o md5.o lock.o utils.o strings.o astobj2.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
+hashtest2: hashtest2.o md5.o utils.o strings.o astobj2.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
 
-hashtest: hashtest.o md5.o hashtab.o lock.o utils.o strings.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
+hashtest: hashtest.o md5.o hashtab.o utils.o strings.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
 hashtest.o: _ASTCFLAGS+=-O0
 
-refcounter: refcounter.o md5.o hashtab.o lock.o utils.o strings.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
+refcounter: refcounter.o md5.o hashtab.o utils.o strings.o sha1.o strcompat.o threadstorage.o clicompat.o poll.o
 refcounter.o: _ASTCFLAGS+=-O0
 
 extconf.o: extconf.c
 
-conf2ael: conf2ael.o ast_expr2f.o ast_expr2.o hashtab.o lock.o aelbison.o aelparse.o pbx_ael.o pval.o extconf.o strcompat.o
+conf2ael: conf2ael.o ast_expr2f.o ast_expr2.o hashtab.o aelbison.o aelparse.o pbx_ael.o pval.o extconf.o strcompat.o
 
 check_expr2: $(ASTTOPDIR)/main/ast_expr2f.c $(ASTTOPDIR)/main/ast_expr2.c $(ASTTOPDIR)/main/ast_expr2.h
 	$(ECHO_PREFIX) echo "   [CC] ast_expr2f.c -> ast_expr2fz.o"
@@ -207,18 +201,6 @@ streamplayer: streamplayer.o
 muted: muted.o
 muted: LIBS+=$(AUDIO_LIBS)
 muted: _ASTCFLAGS:=$(filter-out -Werror,$(_ASTCFLAGS))
-
-CHECK_SUBDIR:	# do nothing, just make sure that we recurse in the subdir/
-db1-ast/libdb1.a: CHECK_SUBDIR
-	_ASTCFLAGS="$(_ASTCFLAGS) -Wno-strict-aliasing" ASTCFLAGS="$(ASTCFLAGS)" $(MAKE) -C db1-ast libdb1.a
-
-astdb2sqlite3: LIBS+=$(SQLITE3_LIB)
-astdb2sqlite3: _ASTCFLAGS+=$(SQLITE3_INCLUDE)
-astdb2sqlite3: db1-ast/libdb1.a
-
-astdb2bdb: LIBS+=$(SQLITE3_LIB)
-astdb2bdb: _ASTCFLAGS+=$(SQLITE3_INCLUDE)
-astdb2bdb: db1-ast/libdb1.a
 
 ifneq ($(wildcard .*.d),)
    include .*.d

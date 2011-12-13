@@ -23,14 +23,10 @@
  * \arg File name extension: jpeg, jpg
  * \ingroup formats
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 233694 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -52,7 +48,7 @@ static struct ast_frame *jpeg_read_image(int fd, int len)
 	}
 	memset(&fr, 0, sizeof(fr));
 	fr.frametype = AST_FRAME_IMAGE;
-	ast_format_set(&fr.subclass.format, AST_FORMAT_JPEG, 0);
+	fr.subclass = AST_FORMAT_JPEG;
 	fr.data.ptr = buf;
 	fr.src = "JPEG Read";
 	fr.datalen = len;
@@ -78,7 +74,7 @@ static int jpeg_write_image(int fd, struct ast_frame *fr)
 		ast_log(LOG_WARNING, "Not an image\n");
 		return -1;
 	}
-	if (fr->subclass.format.id != AST_FORMAT_JPEG) {
+	if (fr->subclass != AST_FORMAT_JPEG) {
 		ast_log(LOG_WARNING, "Not a jpeg image\n");
 		return -1;
 	}
@@ -96,6 +92,7 @@ static struct ast_imager jpeg_format = {
 	.name = "jpg",
 	.desc = "JPEG (Joint Picture Experts Group)",
 	.exts = "jpg|jpeg",
+	.format = AST_FORMAT_JPEG,
 	.read_image = jpeg_read_image,
 	.identify = jpeg_identify,
 	.write_image = jpeg_write_image,
@@ -103,7 +100,6 @@ static struct ast_imager jpeg_format = {
 
 static int load_module(void)
 {
-	ast_format_set(&jpeg_format.format, AST_FORMAT_JPEG, 0);
 	if (ast_image_register(&jpeg_format))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
@@ -114,10 +110,10 @@ static int unload_module(void)
 	ast_image_unregister(&jpeg_format);
 
 	return 0;
-}
+}	
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "jpeg (joint picture experts group) image format",
 	.load = load_module,
 	.unload = unload_module,
-	.load_pri = AST_MODPRI_APP_DEPEND
+	.load_pri = 10,
 );

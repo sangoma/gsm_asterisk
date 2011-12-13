@@ -84,12 +84,6 @@ struct ast_ivr_menu {
 	static struct ast_ivr_option __options_##holder[] = foo;\
 	static struct ast_ivr_menu holder = { title, flags, __options_##holder }
 
-enum ast_timelen {
-	TIMELEN_HOURS,
-	TIMELEN_MINUTES,
-	TIMELEN_SECONDS,
-	TIMELEN_MILLISECONDS,
-};
 
 /*!	\brief Runs an IVR menu
 	\return returns 0 on successful completion, -1 on hangup, or -2 on user error in menu */
@@ -112,31 +106,10 @@ int ast_ivr_menu_run(struct ast_channel *c, struct ast_ivr_menu *menu, void *cbd
 int ast_app_getdata(struct ast_channel *c, const char *prompt, char *s, int maxlen, int timeout);
 
 /*! \brief Full version with audiofd and controlfd.  NOTE: returns '2' on ctrlfd available, not '1' like other full functions */
-int ast_app_getdata_full(struct ast_channel *c, const char *prompt, char *s, int maxlen, int timeout, int audiofd, int ctrlfd);
-
-/*!
- * \since 1.8
- * \brief Run a macro on a channel, placing a second channel into autoservice.
- *
- * This is a shorthand method that makes it very easy to run a macro on any given 
- * channel. It is perfectly reasonable to supply a NULL autoservice_chan here in case
- * there is no channel to place into autoservice. It is very important that the 
- * autoservice_chan parameter is not locked prior to calling ast_app_run_macro. A 
- * deadlock could result, otherwise.
- *
- * \param autoservice_chan A channel to place into autoservice while the macro is run
- * \param macro_chan The channel to run the macro on
- * \param macro_name The name of the macro to run
- * \param macro_args The arguments to pass to the macro
- * \retval 0 success
- * \retval -1 failure
- */
-int ast_app_run_macro(struct ast_channel *autoservice_chan, struct ast_channel 
-		*macro_chan, const char * const macro_name, const char * const macro_args);
+int ast_app_getdata_full(struct ast_channel *c, char *prompt, char *s, int maxlen, int timeout, int audiofd, int ctrlfd);
 
 /*!
  * \brief Set voicemail function callbacks
- * \param[in] has_voicemail_func set function pointer
  * \param[in] inboxcount2_func set function pointer
  * \param[in] sayname_func set function pointer
  * \param[in] inboxcount_func set function pointer
@@ -270,72 +243,19 @@ int ast_control_streamfile(struct ast_channel *chan, const char *file, const cha
 /*! \brief Play a stream and wait for a digit, returning the digit that was pressed */
 int ast_play_and_wait(struct ast_channel *chan, const char *fn);
 
-/*!
- * \brief Record a file based on input from a channel
- *        This function will play "auth-thankyou" upon successful recording.
- *
- * \param chan the channel being recorded
- * \param playfile Filename of sound to play before recording begins
- * \param recordfile Filename to save the recording
- * \param maxtime_sec Longest possible message length in seconds
- * \param fmt string containing all formats to be recorded delimited by '|'
- * \param duration pointer to integer for storing length of the recording
- * \param sound_duration pointer to integer for storing length of the recording minus all silence
- * \param silencethreshold tolerance of noise levels that can be considered silence for the purpose of silence timeout, -1 for default
- * \param maxsilence_ms Length of time in milliseconds which will trigger a timeout from silence, -1 for default
- * \param path Optional filesystem path to unlock
- * \param acceptdtmf Character of DTMF to end and accept the recording
- * \param canceldtmf Character of DTMF to end and cancel the recording
- *
- * \retval -1 failure or hangup
- * \retval 'S' Recording ended from silence timeout
- * \retval 't' Recording ended from the message exceeding the maximum duration
- * \retval dtmfchar Recording ended via the return value's DTMF character for either cancel or accept.
- */
-int ast_play_and_record_full(struct ast_channel *chan, const char *playfile, const char *recordfile, int maxtime_sec, const char *fmt, int *duration, int *sound_duration, int silencethreshold, int maxsilence_ms, const char *path, const char *acceptdtmf, const char *canceldtmf);
+int ast_play_and_record_full(struct ast_channel *chan, const char *playfile, const char *recordfile, int maxtime_sec, const char *fmt, int *duration, int silencethreshold, int maxsilence_ms, const char *path, const char *acceptdtmf, const char *canceldtmf);
 
-/*!
- * \brief Record a file based on input from a channel. Use default accept and cancel DTMF.
- *        This function will play "auth-thankyou" upon successful recording.
- *
- * \param chan the channel being recorded
- * \param playfile Filename of sound to play before recording begins
- * \param recordfile Filename to save the recording
- * \param maxtime_sec Longest possible message length in seconds
- * \param fmt string containing all formats to be recorded delimited by '|'
- * \param duration pointer to integer for storing length of the recording
- * \param sound_duration pointer to integer for storing length of the recording minus all silence
- * \param silencethreshold tolerance of noise levels that can be considered silence for the purpose of silence timeout, -1 for default
- * \param maxsilence_ms length of time in milliseconds which will trigger a timeout from silence, -1 for default
- * \param path Optional filesystem path to unlock
- *
- * \retval -1 failure or hangup
- * \retval 'S' Recording ended from silence timeout
- * \retval 't' Recording ended from the message exceeding the maximum duration
- * \retval dtmfchar Recording ended via the return value's DTMF character for either cancel or accept.
- */
-int ast_play_and_record(struct ast_channel *chan, const char *playfile, const char *recordfile, int maxtime_sec, const char *fmt, int *duration, int *sound_duration, int silencethreshold, int maxsilence_ms, const char *path);
+/*! \brief Record a file for a max amount of time (in seconds), in a given list of formats separated by '|', outputting the duration of the recording, and with a maximum
+ \n
+ permitted silence time in milliseconds of 'maxsilence' under 'silencethreshold' or use '-1' for either or both parameters for defaults.
+     calls ast_unlock_path() on 'path' if passed */
+int ast_play_and_record(struct ast_channel *chan, const char *playfile, const char *recordfile, int maxtime_sec, const char *fmt, int *duration, int silencethreshold, int maxsilence_ms, const char *path);
 
-/*!
- * \brief Record a file based on input frm a channel. Recording is performed in 'prepend' mode which works a little differently from normal recordings
- *        This function will not play a success message due to post-recording control in the application this was added for.
- *
- * \param chan the channel being recorded
- * \param playfile Filename of sound to play before recording begins
- * \param recordfile Filename to save the recording
- * \param maxtime_sec Longest possible message length in seconds
- * \param fmt string containing all formats to be recorded delimited by '|'
- * \param duration pointer to integer for storing length of the recording
- * \param sound_duration pointer to integer for storing length of the recording minus all silence
- * \param beep whether to play a beep to prompt the recording
- * \param silencethreshold tolerance of noise levels that can be considered silence for the purpose of silence timeout, -1 for default
- * \param maxsilence_ms length of time in milliseconds which will trigger a timeout from silence, -1 for default.
- *
- * \retval -1 failure or hangup
- * \retval 'S' Recording ended from silence timeout
- * \retval 't' Recording either exceeded maximum duration or the call was ended via DTMF
- */
-int ast_play_and_prepend(struct ast_channel *chan, char *playfile, char *recordfile, int maxtime_sec, char *fmt, int *duration, int *sound_duration, int beep, int silencethreshold, int maxsilence_ms);
+/*! \brief Record a message and prepend the message to the given record file after
+    playing the optional playfile (or a beep), storing the duration in
+    'duration' and with a maximum permitted silence time in milliseconds of 'maxsilence' under
+    'silencethreshold' or use '-1' for either or both parameters for defaults. */
+int ast_play_and_prepend(struct ast_channel *chan, char *playfile, char *recordfile, int maxtime_sec, char *fmt, int *duration, int beep, int silencethreshold, int maxsilence_ms);
 
 enum ast_getdata_result {
 	AST_GETDATA_FAILED = -1,
@@ -538,19 +458,19 @@ struct ast_app_option {
 
   Example usage:
   \code
-  enum my_app_option_flags {
+  enum {
         OPT_JUMP = (1 << 0),
         OPT_BLAH = (1 << 1),
         OPT_BLORT = (1 << 2),
-  };
+  } my_app_option_flags;
 
-  enum my_app_option_args {
+  enum {
         OPT_ARG_BLAH = 0,
         OPT_ARG_BLORT,
         !! this entry tells how many possible arguments there are,
            and must be the last entry in the list
         OPT_ARG_ARRAY_SIZE,
-  };
+  } my_app_option_args;
 
   AST_APP_OPTIONS(my_app_options, {
         AST_APP_OPTION('j', OPT_JUMP),
@@ -633,21 +553,12 @@ int ast_app_dtget(struct ast_channel *chan, const char *context, char *collect, 
 /*! \brief Allow to record message and have a review option */
 int ast_record_review(struct ast_channel *chan, const char *playfile, const char *recordfile, int maxtime, const char *fmt, int *duration, const char *path);
 
-/*!\brief Decode an encoded control or extended ASCII character 
- * \param[in] stream String to decode
- * \param[out] result Decoded character
- * \param[out] consumed Number of characters used in stream to encode the character
- * \retval -1 Stream is of zero length
- * \retval 0 Success
- */
+/*! \brief Decode an encoded control or extended ASCII character 
+    \return Returns a pointer to the result string
+*/
 int ast_get_encoded_char(const char *stream, char *result, size_t *consumed);
 
-/*!\brief Decode a stream of encoded control or extended ASCII characters
- * \param[in] stream Encoded string
- * \param[out] result Decoded string
- * \param[in] result_len Maximum size of the result buffer
- * \return A pointer to the result string
- */
+/*! \brief Decode a stream of encoded control or extended ASCII characters */
 char *ast_get_encoded_str(const char *stream, char *result, size_t result_len);
 
 /*! \brief Decode a stream of encoded control or extended ASCII characters */
@@ -672,17 +583,6 @@ int ast_safe_fork(int stop_reaper);
  * \since 1.6.1
  */
 void ast_safe_fork_cleanup(void);
-
-/*!
- * \brief Common routine to parse time lengths, with optional time unit specifier
- * \param[in] timestr String to parse
- * \param[in] defunit Default unit type
- * \param[out] result Resulting value, specified in milliseconds
- * \retval 0 Success
- * \retval -1 Failure
- * \since 1.8
- */
-int ast_app_parse_timelen(const char *timestr, int *result, enum ast_timelen defunit);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

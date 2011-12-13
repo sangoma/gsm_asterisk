@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 278272 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 278273 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -75,7 +75,7 @@ static void *autoservice_run(void *ign)
 {
 	struct ast_frame hangup_frame = {
 		.frametype = AST_FRAME_CONTROL,
-		.subclass.integer = AST_CONTROL_HANGUP,
+		.subclass = AST_CONTROL_HANGUP,
 	};
 
 	for (;;) {

@@ -25,13 +25,9 @@
  * \ingroup bridges
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 180369 $")
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,9 +51,7 @@ static int simple_bridge_join(struct ast_bridge *bridge, struct ast_bridge_chann
 	}
 
 	/* See if we need to make these compatible */
-	if ((ast_format_cmp(&c0->writeformat, &c1->readformat) == AST_FORMAT_CMP_EQUAL) &&
-		(ast_format_cmp(&c0->readformat, &c1->writeformat) == AST_FORMAT_CMP_EQUAL) &&
-		(ast_format_cap_identical(c0->nativeformats, c1->nativeformats))) {
+	if (((c0->writeformat == c1->readformat) && (c0->readformat == c1->writeformat) && (c0->nativeformats == c1->nativeformats))) {
 		return 0;
 	}
 
@@ -91,25 +85,18 @@ static struct ast_bridge_technology simple_bridge = {
 	.name = "simple_bridge",
 	.capabilities = AST_BRIDGE_CAPABILITY_1TO1MIX | AST_BRIDGE_CAPABILITY_THREAD,
 	.preference = AST_BRIDGE_PREFERENCE_MEDIUM,
+	.formats = AST_FORMAT_AUDIO_MASK | AST_FORMAT_VIDEO_MASK | AST_FORMAT_TEXT_MASK,
 	.join = simple_bridge_join,
 	.write = simple_bridge_write,
 };
 
 static int unload_module(void)
 {
-	ast_format_cap_destroy(simple_bridge.format_capabilities);
 	return ast_bridge_technology_unregister(&simple_bridge);
 }
 
 static int load_module(void)
 {
-	if (!(simple_bridge.format_capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_add_all_by_type(simple_bridge.format_capabilities, AST_FORMAT_TYPE_AUDIO);
-	ast_format_cap_add_all_by_type(simple_bridge.format_capabilities, AST_FORMAT_TYPE_VIDEO);
-	ast_format_cap_add_all_by_type(simple_bridge.format_capabilities, AST_FORMAT_TYPE_TEXT);
-
 	return ast_bridge_technology_register(&simple_bridge);
 }
 

@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2010, Digium, Inc.
+ * Copyright (C) 1999 - 2005, Digium, Inc.
  *
  * Mark Spencer <markster@digium.com>
  *
@@ -27,24 +27,12 @@
 extern "C" {
 #endif
 
-#include "asterisk/optional_api.h"
-#include "asterisk/logger.h"
-
-#ifdef HAVE_CRYPTO
-#include "openssl/aes.h"
-typedef AES_KEY ast_aes_encrypt_key;
-typedef AES_KEY ast_aes_decrypt_key;
-#else /* !HAVE_CRYPTO */
-typedef char ast_aes_encrypt_key;
-typedef char ast_aes_decrypt_key;
-#endif /* HAVE_CRYPTO */
-
 #define AST_KEY_PUBLIC	(1 << 0)
 #define AST_KEY_PRIVATE	(1 << 1)
 
 struct ast_key;
 
-/*!
+/*! 
  * \brief Retrieve a key
  * \param name of the key we are retrieving
  * \param int type of key (AST_KEY_PUBLIC or AST_KEY_PRIVATE)
@@ -52,9 +40,9 @@ struct ast_key;
  * \retval the key on success.
  * \retval NULL on failure.
  */
-AST_OPTIONAL_API(struct ast_key *, ast_key_get, (const char *key, int type), { return NULL; });
+extern struct ast_key *(*ast_key_get)(const char *key, int type);
 
-/*!
+/*! 
  * \brief Check the authenticity of a message signature using a given public key
  * \param key a public key to use to verify
  * \param msg the message that has been signed
@@ -64,9 +52,9 @@ AST_OPTIONAL_API(struct ast_key *, ast_key_get, (const char *key, int type), { r
  * \retval -1 otherwise.
  *
  */
-AST_OPTIONAL_API(int, ast_check_signature, (struct ast_key *key, const char *msg, const char *sig), { return -1; });
+extern int (*ast_check_signature)(struct ast_key *key, const char *msg, const char *sig);
 
-/*!
+/*! 
  * \brief Check the authenticity of a message signature using a given public key
  * \param key a public key to use to verify
  * \param msg the message that has been signed
@@ -76,7 +64,7 @@ AST_OPTIONAL_API(int, ast_check_signature, (struct ast_key *key, const char *msg
  * \retval -1 otherwise.
  *
  */
-AST_OPTIONAL_API(int, ast_check_signature_bin, (struct ast_key *key, const char *msg, int msglen, const unsigned char *sig), { return -1; });
+extern int (*ast_check_signature_bin)(struct ast_key *key, const char *msg, int msglen, const unsigned char *sig);
 
 /*!
  * \brief Sign a message signature using a given private key
@@ -89,7 +77,7 @@ AST_OPTIONAL_API(int, ast_check_signature_bin, (struct ast_key *key, const char 
  * \retval -1 on failure.
  *
  */
-AST_OPTIONAL_API(int, ast_sign, (struct ast_key *key, char *msg, char *sig), { return -1; });
+extern int (*ast_sign)(struct ast_key *key, char *msg, char *sig);
 
 /*!
  * \brief Sign a message signature using a given private key
@@ -102,7 +90,7 @@ AST_OPTIONAL_API(int, ast_sign, (struct ast_key *key, char *msg, char *sig), { r
  * \retval -1 on failure.
  *
  */
-AST_OPTIONAL_API(int, ast_sign_bin, (struct ast_key *key, const char *msg, int msglen, unsigned char *sig), { return -1; });
+extern int (*ast_sign_bin)(struct ast_key *key, const char *msg, int msglen, unsigned char *sig);
 
 /*!
  * \brief Encrypt a message using a given private key
@@ -116,7 +104,7 @@ AST_OPTIONAL_API(int, ast_sign_bin, (struct ast_key *key, const char *msg, int m
  * \retval -1 on failure.
  *
  */
-AST_OPTIONAL_API(int, ast_encrypt_bin, (unsigned char *dst, const unsigned char *src, int srclen, struct ast_key *key), { return -1; });
+extern int (*ast_encrypt_bin)(unsigned char *dst, const unsigned char *src, int srclen, struct ast_key *key);
 
 /*!
  * \brief Decrypt a message using a given private key
@@ -130,54 +118,7 @@ AST_OPTIONAL_API(int, ast_encrypt_bin, (unsigned char *dst, const unsigned char 
  * \retval -1 on failure.
  *
  */
-AST_OPTIONAL_API(int, ast_decrypt_bin, (unsigned char *dst, const unsigned char *src, int srclen, struct ast_key *key), { return -1; });
-
-/*!
- * \brief Set an encryption key
- * \param key a 16 char key
- * \param ctx address of an aes encryption context
- *
- * \retval 0 success
- * \retval nonzero failure
- */
-AST_OPTIONAL_API(int, ast_aes_set_encrypt_key,
-	(const unsigned char *key, ast_aes_encrypt_key *ctx),
-	{ ast_log(LOG_WARNING, "AES encryption disabled. Install OpenSSL.\n"); return -1; });
-
-/*!
- * \brief Set a decryption key
- * \param key a 16 char key
- * \param ctx address of an aes encryption context
- *
- * \retval 0 success
- * \retval nonzero failure
- */
-AST_OPTIONAL_API(int, ast_aes_set_decrypt_key,
-	(const unsigned char *key, ast_aes_decrypt_key *ctx),
-	{ ast_log(LOG_WARNING, "AES encryption disabled. Install OpenSSL.\n"); return -1; });
-
-/*!
- * \brief AES encrypt data
- * \param in data to be encrypted
- * \param out pointer to a buffer to hold the encrypted output
- * \param ctx address of an aes encryption context filled in with ast_aes_set_encrypt_key
- */
-AST_OPTIONAL_API(void, ast_aes_encrypt,
-	(const unsigned char *in, unsigned char *out, const ast_aes_encrypt_key *ctx),
-	{ ast_log(LOG_WARNING, "AES encryption disabled. Install OpenSSL.\n");return; });
-
-/*!
- * \brief AES decrypt data
- * \param in encrypted data
- * \param out pointer to a buffer to hold the decrypted output
- * \param ctx address of an aes encryption context filled in with ast_aes_set_decrypt_key
- */
-AST_OPTIONAL_API(void, ast_aes_decrypt,
-	(const unsigned char *in, unsigned char *out, const ast_aes_decrypt_key *ctx),
-	{ ast_log(LOG_WARNING, "AES encryption disabled. Install OpenSSL.\n");return; });
-
-AST_OPTIONAL_API(int, ast_crypto_loaded, (void), { return 0; });
-
+extern int (*ast_decrypt_bin)(unsigned char *dst, const unsigned char *src, int srclen, struct ast_key *key);
 #if defined(__cplusplus) || defined(c_plusplus)
 }
 #endif

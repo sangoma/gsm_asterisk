@@ -33,14 +33,11 @@
 
 /*** MODULEINFO
 	<depend>dahdi</depend>
-	<defaultenabled>no</defaultenabled>
-	<support_level>deprecated</support_level>
-	<replacement>app_chanspy</replacement>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include <dahdi/user.h>
 
@@ -73,7 +70,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 		</description>
 	</application>
  ***/
-static const char app[] = "DAHDIBarge";
+static char *app = "DAHDIBarge";
 
 #define CONF_SIZE 160
 
@@ -116,13 +113,13 @@ static int conf_run(struct ast_channel *chan, int confno, int confflags)
 	char *buf = __buf + AST_FRIENDLY_OFFSET;
 
 	/* Set it into U-law mode (write) */
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_ULAW) < 0) {
+	if (ast_set_write_format(chan, AST_FORMAT_ULAW) < 0) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to write ulaw mode\n", chan->name);
 		goto outrun;
 	}
 
 	/* Set it into U-law mode (read) */
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_ULAW) < 0) {
+	if (ast_set_read_format(chan, AST_FORMAT_ULAW) < 0) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to read ulaw mode\n", chan->name);
 		goto outrun;
 	}
@@ -211,17 +208,17 @@ dahdiretry:
 			f = ast_read(c);
 			if (!f) 
 				break;
-			if ((f->frametype == AST_FRAME_DTMF) && (f->subclass.integer == '#')) {
+			if ((f->frametype == AST_FRAME_DTMF) && (f->subclass == '#')) {
 				ret = 0;
 				ast_frfree(f);
 				break;
 			} else if (fd != chan->fds[0]) {
 				if (f->frametype == AST_FRAME_VOICE) {
-					if (f->subclass.format.id == AST_FORMAT_ULAW) {
+					if (f->subclass == AST_FORMAT_ULAW) {
 						/* Carefully write */
 						careful_write(fd, f->data.ptr, f->datalen);
 					} else
-						ast_log(LOG_WARNING, "Huh?  Got a non-ulaw (%s) frame in the conference\n", ast_getformatname(&f->subclass.format));
+						ast_log(LOG_WARNING, "Huh?  Got a non-ulaw (%d) frame in the conference\n", f->subclass);
 				}
 			}
 			ast_frfree(f);
@@ -230,7 +227,7 @@ dahdiretry:
 			if (res > 0) {
 				memset(&fr, 0, sizeof(fr));
 				fr.frametype = AST_FRAME_VOICE;
-				ast_format_set(&fr.subclass.format, AST_FORMAT_ULAW, 0);
+				fr.subclass = AST_FORMAT_ULAW;
 				fr.datalen = res;
 				fr.samples = res;
 				fr.data.ptr = buf;
@@ -261,7 +258,7 @@ outrun:
 	return ret;
 }
 
-static int conf_exec(struct ast_channel *chan, const char *data)
+static int conf_exec(struct ast_channel *chan, void *data)
 {
 	int res = -1;
 	int retrycnt = 0;

@@ -1,5 +1,5 @@
 #! /bin/sh
-# $Id: rc.debian.asterisk 319366 2011-05-17 12:40:02Z lmadsen $
+# $Id: rc.debian.asterisk 307535 2011-02-10 22:35:49Z qwell $
 #
 # Mon Jun 04 2007 Iñaki Baz Castillo <ibc@in.ilimit.es>
 # - Eliminated SAFE_ASTERISK since it doesn't work as LSB script (it could require a independent "safe_asterisk" init script).
@@ -25,6 +25,21 @@ DAEMON=__ASTERISK_SBIN_DIR__/asterisk
 ASTVARRUNDIR=__ASTERISK_VARRUN_DIR__
 ASTETCDIR=__ASTERISK_ETC_DIR__
 TRUE=/bin/true
+
+# Uncomment this ONLY if you know what you are doing.
+# export LD_ASSUME_KERNEL=2.4.1
+
+# Uncomment the following and set them to the user/groups that you
+# want to run Asterisk as. NOTE: this requires substantial work to
+# be sure that Asterisk's environment has permission to write the
+# files required  for  its  operation, including logs, its comm
+# socket, the asterisk database, etc.
+#AST_USER="asterisk"
+#AST_GROUP="asterisk"
+
+# If you DON'T want Asterisk to start up with terminal colors, comment
+# this out.
+COLOR=yes
 
 ### BEGIN INIT INFO
 # Provides:		asterisk
@@ -53,15 +68,6 @@ fi
 # Use the LSB standard functions for services management
 . /lib/lsb/init-functions
 
-# Allow configuration overrides in /etc/default/asterisk
-CONFIG0=`readlink $0 || :` # readlink returns 1 when something isn't a symlink
-if [ "$CONFIG0" = "" ]; then
-	CONFIGFILE=/etc/default/`basename $0`
-else
-	CONFIGFILE=/etc/default/`basename $CONFIG0`
-fi
-[ -r $CONFIGFILE ] && . $CONFIGFILE
-
 case "$1" in
   start)
 	# Check if Asterisk is already running.  If it is, then bug out, because
@@ -83,31 +89,6 @@ case "$1" in
 	if [ $AST_GROUP ] ; then
 		ASTARGS="$ASTARGS -G $AST_GROUP"
 		chgrp $AST_GROUP $ASTVARRUNDIR
-	fi
-	if [ $ALTCONF ]; then
-		ASTARGS="$ASTARGS -C \"$ALTCONF\""
-	fi
-	if [ "x$COREDUMP" = "xyes" ]; then
-		ASTARGS="$ASTARGS -g"
-	fi
-	if [ "0$MAXLOAD" -gt "0" ]; then
-		ASTARGS="$ASTARGS -L $MAXLOAD"
-	fi
-	if [ "0$MAXCALLS" -gt "0" ]; then
-		ASTARGS="$ASTARGS -M $MAXCALLS"
-	fi
-	if [ "0$VERBOSITY" -gt "0" ]; then
-		for i in `seq 1 $VERBOSITY`; do
-			ASTARGS="$ASTARGS -v"
-		done
-		# -v implies -f, so we override that implicit specification here
-		ASTARGS="$ASTARGS -F"
-	fi
-	if [ "x$INTERNALTIMING" = "xyes" ]; then
-		ASTARGS="$ASTARGS -I"
-	fi
-	if [ "x$TEMPRECORDINGLOCATION" = "xyes" -o "x$TMPRECORDINGLOCATION" = "xyes" ]; then
-		ASTARGS="$ASTARGS -t"
 	fi
 	if test "x$COLOR" = "xno" ; then
 		ASTARGS="$ASTARGS -n"
@@ -132,12 +113,9 @@ case "$1" in
 	$0 start
 	# "restart|force-reload" starts Asterisk and returns 0 even if Asterisk was stopped (as LSB expects).
 	;;
-  status)
-       status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
-       ;;
   *)
 	N=/etc/init.d/$NAME
-	echo "Usage: $N {start|stop|restart|reload|force-reload|status}" >&2
+	echo "Usage: $N {start|stop|restart|reload|force-reload}" >&2
 	exit 1
 	;;
 esac

@@ -11,7 +11,7 @@
  * the GNU General Public License
  */
 
-/*! \file
+/*! \file 
  * \brief Interface to mISDN - Config
  * \author Christian Richter <crich@beronet.com>
  */
@@ -42,22 +42,14 @@ enum misdn_cfg_elements {
 	MISDN_CFG_LANGUAGE,            /* char[] */
 	MISDN_CFG_MUSICCLASS,            /* char[] */
 	MISDN_CFG_CALLERID,            /* char[] */
-	MISDN_CFG_INCOMING_CALLERID_TAG, /* char[] */
-	MISDN_CFG_APPEND_MSN_TO_CALLERID_TAG, /* int (bool) */
 	MISDN_CFG_METHOD,              /* char[] */
 	MISDN_CFG_DIALPLAN,            /* int */
 	MISDN_CFG_LOCALDIALPLAN,       /* int */
 	MISDN_CFG_CPNDIALPLAN,       /* int */
-	MISDN_CFG_TON_PREFIX_UNKNOWN,         /* char[] */
-	MISDN_CFG_TON_PREFIX_INTERNATIONAL,   /* char[] */
-	MISDN_CFG_TON_PREFIX_NATIONAL,        /* char[] */
-	MISDN_CFG_TON_PREFIX_NETWORK_SPECIFIC,/* char[] */
-	MISDN_CFG_TON_PREFIX_SUBSCRIBER,      /* char[] */
-	MISDN_CFG_TON_PREFIX_ABBREVIATED,     /* char[] */
+	MISDN_CFG_NATPREFIX,           /* char[] */
+	MISDN_CFG_INTERNATPREFIX,      /* char[] */
 	MISDN_CFG_PRES,                /* int */
 	MISDN_CFG_SCREEN,              /* int */
-	MISDN_CFG_DISPLAY_CONNECTED,   /* int */
-	MISDN_CFG_DISPLAY_SETUP,       /* int */
 	MISDN_CFG_ALWAYS_IMMEDIATE,    /* int (bool) */
 	MISDN_CFG_NODIALTONE,    /* int (bool) */
 	MISDN_CFG_IMMEDIATE,           /* int (bool) */
@@ -67,8 +59,6 @@ enum misdn_cfg_elements {
 	MISDN_CFG_EARLY_BCONNECT,      /* int (bool) */
 	MISDN_CFG_INCOMING_EARLY_AUDIO,      /* int (bool) */
 	MISDN_CFG_ECHOCANCEL,          /* int */
-	MISDN_CFG_CC_REQUEST_RETENTION,/* bool */
-	MISDN_CFG_OUTGOING_COLP,       /* int */
 #ifdef MISDN_1_2
 	MISDN_CFG_PIPELINE,      /* char[] */
 #endif
@@ -99,7 +89,7 @@ enum misdn_cfg_elements {
  	MISDN_CFG_FAXDETECT_TIMEOUT,   /* int */
 	MISDN_CFG_PTP,                 /* int (bool) */
 	MISDN_CFG_LAST,
-
+	
 	/* general config items */
 	MISDN_GEN_FIRST,
 #ifndef MISDN_1_2
@@ -126,19 +116,19 @@ enum misdn_cfg_method {
 };
 
 /* you must call misdn_cfg_init before any other function of this header file */
-int misdn_cfg_init(int max_ports, int reload);
+int misdn_cfg_init(int max_ports, int reload); 
 void misdn_cfg_reload(void);
 void misdn_cfg_destroy(void);
 
 void misdn_cfg_update_ptp( void );
 
-/* if you requst a general config element, the port value is ignored. if the requested
- * value is not available, or the buffer is too small, the buffer will be nulled (in
+/* if you requst a general config element, the port value is ignored. if the requested 
+ * value is not available, or the buffer is too small, the buffer will be nulled (in 
  * case of a char* only its first byte will be nulled). */
 void misdn_cfg_get(int port, enum misdn_cfg_elements elem, void* buf, int bufsize);
 
 /* returns the enum element for the given name, returns MISDN_CFG_FIRST if none was found */
-enum misdn_cfg_elements misdn_cfg_get_elem (const char *name);
+enum misdn_cfg_elements misdn_cfg_get_elem (char *name);
 
 /* fills the buffer with the name of the given config element */
 void misdn_cfg_get_name (enum misdn_cfg_elements elem, void *buf, int bufsize);

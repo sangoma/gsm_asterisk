@@ -24,14 +24,10 @@
  *  
  * \ingroup applications
  */
-
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 182947 $")
 
 #include <fcntl.h>
 #include <sys/time.h>
@@ -109,13 +105,13 @@ static int timed_read(int fd, void *data, int datalen)
 	
 }
 
-static int NBScat_exec(struct ast_channel *chan, const char *data)
+static int NBScat_exec(struct ast_channel *chan, void *data)
 {
 	int res=0;
 	int fds[2];
 	int ms = -1;
 	int pid = -1;
-	struct ast_format owriteformat;
+	int owriteformat;
 	struct timeval next;
 	struct ast_frame *f;
 	struct myframe {
@@ -123,8 +119,7 @@ static int NBScat_exec(struct ast_channel *chan, const char *data)
 		char offset[AST_FRIENDLY_OFFSET];
 		short frdata[160];
 	} myf;
-
-	ast_format_clear(&owriteformat);
+	
 	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, fds)) {
 		ast_log(LOG_WARNING, "Unable to create socketpair\n");
 		return -1;
@@ -132,8 +127,8 @@ static int NBScat_exec(struct ast_channel *chan, const char *data)
 	
 	ast_stopstream(chan);
 
-	ast_format_copy(&owriteformat, &chan->writeformat);
-	res = ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR);
+	owriteformat = chan->writeformat;
+	res = ast_set_write_format(chan, AST_FORMAT_SLINEAR);
 	if (res < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
 		return -1;
@@ -153,7 +148,7 @@ static int NBScat_exec(struct ast_channel *chan, const char *data)
 				res = timed_read(fds[0], myf.frdata, sizeof(myf.frdata));
 				if (res > 0) {
 					myf.f.frametype = AST_FRAME_VOICE;
-					ast_format_set(&myf.f.subclass.format, AST_FORMAT_SLINEAR, 0);
+					myf.f.subclass = AST_FORMAT_SLINEAR;
 					myf.f.datalen = res;
 					myf.f.samples = res / 2;
 					myf.f.mallocd = 0;
@@ -202,8 +197,8 @@ static int NBScat_exec(struct ast_channel *chan, const char *data)
 	
 	if (pid > -1)
 		kill(pid, SIGKILL);
-	if (!res && owriteformat.id)
-		ast_set_write_format(chan, &owriteformat);
+	if (!res && owriteformat)
+		ast_set_write_format(chan, owriteformat);
 
 	return res;
 }

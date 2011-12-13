@@ -26,13 +26,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 220292 $")
 
 #include <math.h>
 #include <sys/time.h>
@@ -114,12 +110,12 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 		</see-also>
 	</application>
  ***/
-static const char app[] = "DISA";
+static char *app = "DISA";
 
 enum {
 	NOANSWER_FLAG = (1 << 0),
 	POUND_TO_END_FLAG = (1 << 1),
-};
+} option_flags;
 
 AST_APP_OPTIONS(app_opts, {
 	AST_APP_OPTION('n', NOANSWER_FLAG),
@@ -144,7 +140,7 @@ static void play_dialtone(struct ast_channel *chan, char *mailbox)
 	}
 }
 
-static int disa_exec(struct ast_channel *chan, const char *data)
+static int disa_exec(struct ast_channel *chan, void *data)
 {
 	int i = 0, j, k = 0, did_ignore = 0, special_noanswer = 0;
 	int firstdigittimeout = (chan->pbx ? chan->pbx->rtimeoutms : 20000);
@@ -224,7 +220,7 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 			return -1;
 		}
 
-		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass.integer == AST_CONTROL_HANGUP)) {
+		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass == AST_CONTROL_HANGUP)) {
 			if (f->data.uint32)
 				chan->hangupcause = f->data.uint32;
 			ast_frfree(f);
@@ -238,7 +234,7 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 			continue;
 		}
 
-		j = f->subclass.integer;  /* save digit */
+		j = f->subclass;  /* save digit */
 		ast_frfree(f);
 
 		if (!i) {
@@ -312,11 +308,9 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 				}
 			} else {
 				if (j == '#') { /* end of extension .. maybe */
-					if (i == 0
-						&& (ast_matchmore_extension(chan, args.context, "#", 1,
-							S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))
-							|| ast_exists_extension(chan, args.context, "#", 1,
-								S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) ) {
+					if (i == 0 && 
+							(ast_matchmore_extension(chan, args.context, "#", 1, chan->cid.cid_num) ||
+							 ast_exists_extension(chan, args.context, "#", 1, chan->cid.cid_num)) ) {
 						/* Let the # be the part of, or the entire extension */
 					} else {
 						break;
@@ -346,8 +340,7 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 				}
 
 			/* if can do some more, do it */
-			if (!ast_matchmore_extension(chan, args.context, exten, 1,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+			if (!ast_matchmore_extension(chan,args.context,exten,1, chan->cid.cid_num)) {
 				break;
 			}
 		}
@@ -359,16 +352,13 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 		int recheck = 0;
 		struct ast_flags cdr_flags = { AST_CDR_FLAG_POSTED };
 
-		if (!ast_exists_extension(chan, args.context, exten, 1,
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+		if (!ast_exists_extension(chan, args.context, exten, 1, chan->cid.cid_num)) {
 			pbx_builtin_setvar_helper(chan, "INVALID_EXTEN", exten);
 			exten[0] = 'i';
 			exten[1] = '\0';
 			recheck = 1;
 		}
-		if (!recheck
-			|| ast_exists_extension(chan, args.context, exten, 1,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+		if (!recheck || ast_exists_extension(chan, args.context, exten, 1, chan->cid.cid_num)) {
 			ast_playtones_stop(chan);
 			/* We're authenticated and have a target extension */
 			if (!ast_strlen_zero(args.cid)) {

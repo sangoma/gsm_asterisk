@@ -24,13 +24,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 153365 $")
 
 #include "asterisk/module.h"
 #include "asterisk/pbx.h"
@@ -78,7 +74,6 @@ static int sha1(struct ast_channel *chan, const char *cmd, char *data,
 static struct ast_custom_function sha1_function = {
 	.name = "SHA1",
 	.read = sha1,
-	.read_max = 42,
 };
 
 static int unload_module(void)

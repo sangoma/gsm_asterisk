@@ -16,12 +16,8 @@
  * at the top of the source tree.
  */
 
-/*** MODULEINFO
-	<support_level>extended</support_level>
- ***/
-
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 298957 $")
 
 #include "asterisk/ast_expr.h"
 

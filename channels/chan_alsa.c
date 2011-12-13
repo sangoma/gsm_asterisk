@@ -29,12 +29,11 @@
 
 /*** MODULEINFO
 	<depend>alsa</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 249895 $")
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -58,14 +57,13 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
 #include "asterisk/musiconhold.h"
 #include "asterisk/poll-compat.h"
 
-/*! Global jitterbuffer configuration - by default, jb is disabled
- *  \note Values shown here match the defaults shown in alsa.conf.sample */
+/*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf = {
 	.flags = 0,
-	.max_size = 200,
-	.resync_threshold = 1000,
-	.impl = "fixed",
-	.target_extra = 40,
+	.max_size = -1,
+	.resync_threshold = -1,
+	.impl = "",
+	.target_extra = -1,
 };
 static struct ast_jb_conf global_jbconf;
 
@@ -132,10 +130,8 @@ static int readdev = -1;
 static int writedev = -1;
 
 static int autoanswer = 1;
-static int mute = 0;
-static int noaudiocapture = 0;
 
-static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+static struct ast_channel *alsa_request(const char *type, int format, void *data, int *cause);
 static int alsa_digit(struct ast_channel *c, char digit, unsigned int duration);
 static int alsa_text(struct ast_channel *c, const char *text);
 static int alsa_hangup(struct ast_channel *c);
@@ -146,9 +142,10 @@ static int alsa_write(struct ast_channel *chan, struct ast_frame *f);
 static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, size_t datalen);
 static int alsa_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 
-static struct ast_channel_tech alsa_tech = {
+static const struct ast_channel_tech alsa_tech = {
 	.type = "Console",
 	.description = tdesc,
+	.capabilities = AST_FORMAT_SLINEAR,
 	.requester = alsa_request,
 	.send_digit_end = alsa_digit,
 	.send_text = alsa_text,
@@ -269,22 +266,15 @@ static snd_pcm_t *alsa_card_init(char *dev, snd_pcm_stream_t stream)
 
 static int soundcard_init(void)
 {
-	if (!noaudiocapture) {
-		alsa.icard = alsa_card_init(indevname, SND_PCM_STREAM_CAPTURE);
-		if (!alsa.icard) {
-			ast_log(LOG_ERROR, "Problem opening alsa capture device\n");
-			return -1;
-		}
-	}
-
+	alsa.icard = alsa_card_init(indevname, SND_PCM_STREAM_CAPTURE);
 	alsa.ocard = alsa_card_init(outdevname, SND_PCM_STREAM_PLAYBACK);
 
-	if (!alsa.ocard) {
-		ast_log(LOG_ERROR, "Problem opening ALSA playback device\n");
+	if (!alsa.icard || !alsa.ocard) {
+		ast_log(LOG_ERROR, "Problem opening ALSA I/O devices\n");
 		return -1;
 	}
 
-	return writedev;
+	return readdev;
 }
 
 static int alsa_digit(struct ast_channel *c, char digit, unsigned int duration)
@@ -321,12 +311,9 @@ static int alsa_call(struct ast_channel *c, char *dest, int timeout)
 	ast_verbose(" << Call placed to '%s' on console >> \n", dest);
 	if (autoanswer) {
 		ast_verbose(" << Auto-answered >> \n");
-		if (mute) {
-			ast_verbose( " << Muted >> \n" );
-		}
 		grab_owner();
 		if (alsa.owner) {
-			f.subclass.integer = AST_CONTROL_ANSWER;
+			f.subclass = AST_CONTROL_ANSWER;
 			ast_queue_frame(alsa.owner, &f);
 			ast_channel_unlock(alsa.owner);
 		}
@@ -334,16 +321,14 @@ static int alsa_call(struct ast_channel *c, char *dest, int timeout)
 		ast_verbose(" << Type 'answer' to answer, or use 'autoanswer' for future calls >> \n");
 		grab_owner();
 		if (alsa.owner) {
-			f.subclass.integer = AST_CONTROL_RINGING;
+			f.subclass = AST_CONTROL_RINGING;
 			ast_queue_frame(alsa.owner, &f);
 			ast_channel_unlock(alsa.owner);
 			ast_indicate(alsa.owner, AST_CONTROL_RINGING);
 		}
 	}
-	if (!noaudiocapture) {
-		snd_pcm_prepare(alsa.icard);
-		snd_pcm_start(alsa.icard);
-	}
+	snd_pcm_prepare(alsa.icard);
+	snd_pcm_start(alsa.icard);
 	ast_mutex_unlock(&alsalock);
 
 	return 0;
@@ -354,10 +339,8 @@ static int alsa_answer(struct ast_channel *c)
 	ast_mutex_lock(&alsalock);
 	ast_verbose(" << Console call has been answered >> \n");
 	ast_setstate(c, AST_STATE_UP);
-	if (!noaudiocapture) {
-		snd_pcm_prepare(alsa.icard);
-		snd_pcm_start(alsa.icard);
-	}
+	snd_pcm_prepare(alsa.icard);
+	snd_pcm_start(alsa.icard);
 	ast_mutex_unlock(&alsalock);
 
 	return 0;
@@ -371,9 +354,7 @@ static int alsa_hangup(struct ast_channel *c)
 	ast_verbose(" << Hangup on console >> \n");
 	ast_module_unref(ast_module_info->self);
 	hookstate = 0;
-	if (!noaudiocapture) {
-		snd_pcm_drop(alsa.icard);
-	}
+	snd_pcm_drop(alsa.icard);
 	ast_mutex_unlock(&alsalock);
 
 	return 0;
@@ -384,6 +365,7 @@ static int alsa_write(struct ast_channel *chan, struct ast_frame *f)
 	static char sizbuf[8000];
 	static int sizpos = 0;
 	int len = sizpos;
+	int pos;
 	int res = 0;
 	/* size_t frames = 0; */
 	snd_pcm_state_t state;
@@ -397,6 +379,7 @@ static int alsa_write(struct ast_channel *chan, struct ast_frame *f)
 	} else {
 		memcpy(sizbuf + sizpos, f->data.ptr, f->datalen);
 		len += f->datalen;
+		pos = 0;
 		state = snd_pcm_state(alsa.ocard);
 		if (state == SND_PCM_STATE_XRUN)
 			snd_pcm_prepare(alsa.ocard);
@@ -444,7 +427,7 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 
 	ast_mutex_lock(&alsalock);
 	f.frametype = AST_FRAME_NULL;
-	f.subclass.integer = 0;
+	f.subclass = 0;
 	f.samples = 0;
 	f.datalen = 0;
 	f.data.ptr = NULL;
@@ -453,12 +436,6 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 	f.mallocd = 0;
 	f.delivery.tv_sec = 0;
 	f.delivery.tv_usec = 0;
-
-	if (noaudiocapture) {
-		/* Return null frame to asterisk*/
-		ast_mutex_unlock(&alsalock);
-		return &f;
-	}
 
 	state = snd_pcm_state(alsa.icard);
 	if ((state != SND_PCM_STATE_PREPARED) && (state != SND_PCM_STATE_RUNNING)) {
@@ -494,14 +471,8 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 			ast_mutex_unlock(&alsalock);
 			return &f;
 		}
-		if (mute) {
-			/* Don't transmit if muted */
-			ast_mutex_unlock(&alsalock);
-			return &f;
-		}
-
 		f.frametype = AST_FRAME_VOICE;
-		ast_format_set(&f.subclass.format, AST_FORMAT_SLINEAR, 0);
+		f.subclass = AST_FORMAT_SLINEAR;
 		f.samples = FRAME_SIZE;
 		f.datalen = FRAME_SIZE * 2;
 		f.data.ptr = buf;
@@ -536,7 +507,6 @@ static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, s
 	case AST_CONTROL_BUSY:
 	case AST_CONTROL_CONGESTION:
 	case AST_CONTROL_RINGING:
-	case AST_CONTROL_INCOMPLETE:
 	case -1:
 		res = -1;  /* Ask for inband indications */
 		break;
@@ -563,19 +533,18 @@ static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, s
 	return res;
 }
 
-static struct ast_channel *alsa_new(struct chan_alsa_pvt *p, int state, const char *linkedid)
+static struct ast_channel *alsa_new(struct chan_alsa_pvt *p, int state)
 {
 	struct ast_channel *tmp = NULL;
 
-	if (!(tmp = ast_channel_alloc(1, state, 0, 0, "", p->exten, p->context, linkedid, 0, "ALSA/%s", indevname)))
+	if (!(tmp = ast_channel_alloc(1, state, 0, 0, "", p->exten, p->context, 0, "ALSA/%s", indevname)))
 		return NULL;
 
 	tmp->tech = &alsa_tech;
 	ast_channel_set_fd(tmp, 0, readdev);
-	ast_format_set(&tmp->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&tmp->writeformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_cap_add(tmp->nativeformats, &tmp->writeformat);
-
+	tmp->nativeformats = AST_FORMAT_SLINEAR;
+	tmp->readformat = AST_FORMAT_SLINEAR;
+	tmp->writeformat = AST_FORMAT_SLINEAR;
 	tmp->tech_pvt = p;
 	if (!ast_strlen_zero(p->context))
 		ast_copy_string(tmp->context, p->context, sizeof(tmp->context));
@@ -597,16 +566,13 @@ static struct ast_channel *alsa_new(struct chan_alsa_pvt *p, int state, const ch
 	return tmp;
 }
 
-static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *alsa_request(const char *type, int fmt, void *data, int *cause)
 {
-	struct ast_format tmpfmt;
-	char buf[256];
+	int oldformat = fmt;
 	struct ast_channel *tmp = NULL;
 
-	ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0);
-
-	if (!(ast_format_cap_iscompatible(cap, &tmpfmt))) {
-		ast_log(LOG_NOTICE, "Asked to get a channel of format '%s'\n", ast_getformatname_multiple(buf, sizeof(buf), cap));
+	if (!(fmt &= AST_FORMAT_SLINEAR)) {
+		ast_log(LOG_NOTICE, "Asked to get a channel of format '%d'\n", oldformat);
 		return NULL;
 	}
 
@@ -615,7 +581,7 @@ static struct ast_channel *alsa_request(const char *type, struct ast_format_cap 
 	if (alsa.owner) {
 		ast_log(LOG_NOTICE, "Already have a call on the ALSA channel\n");
 		*cause = AST_CAUSE_BUSY;
-	} else if (!(tmp = alsa_new(&alsa, AST_STATE_DOWN, requestor ? requestor->linkedid : NULL))) {
+	} else if (!(tmp = alsa_new(&alsa, AST_STATE_DOWN))) {
 		ast_log(LOG_WARNING, "Unable to create new ALSA channel\n");
 	}
 
@@ -701,21 +667,18 @@ static char *console_answer(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 		ast_cli(a->fd, "No one is calling us\n");
 		res = CLI_FAILURE;
 	} else {
-		if (mute) {
-			ast_verbose( " << Muted >> \n" );
-		}
 		hookstate = 1;
 		grab_owner();
 		if (alsa.owner) {
-			ast_queue_control(alsa.owner, AST_CONTROL_ANSWER);
+			struct ast_frame f = { AST_FRAME_CONTROL, AST_CONTROL_ANSWER };
+
+			ast_queue_frame(alsa.owner, &f);
 			ast_channel_unlock(alsa.owner);
 		}
 	}
 
-	if (!noaudiocapture) {
-		snd_pcm_prepare(alsa.icard);
-		snd_pcm_start(alsa.icard);
-	}
+	snd_pcm_prepare(alsa.icard);
+	snd_pcm_start(alsa.icard);
 
 	ast_mutex_unlock(&alsalock);
 
@@ -747,7 +710,7 @@ static char *console_sendtext(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 		ast_cli(a->fd, "No channel active\n");
 		res = CLI_FAILURE;
 	} else {
-		struct ast_frame f = { AST_FRAME_TEXT };
+		struct ast_frame f = { AST_FRAME_TEXT, 0 };
 		char text2send[256] = "";
 
 		while (tmparg < a->argc) {
@@ -761,7 +724,11 @@ static char *console_sendtext(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 		grab_owner();
 		if (alsa.owner) {
 			ast_queue_frame(alsa.owner, &f);
-			ast_queue_control(alsa.owner, AST_CONTROL_ANSWER);
+			f.frametype = AST_FRAME_CONTROL;
+			f.subclass = AST_CONTROL_ANSWER;
+			f.data.ptr = NULL;
+			f.datalen = 0;
+			ast_queue_frame(alsa.owner, &f);
 			ast_channel_unlock(alsa.owner);
 		}
 	}
@@ -813,7 +780,7 @@ static char *console_dial(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 {
 	char tmp[256], *tmp2;
 	char *mye, *myc;
-	const char *d;
+	char *d;
 	char *res = CLI_SUCCESS;
 
 	switch (cmd) {
@@ -836,7 +803,7 @@ static char *console_dial(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 		if (a->argc == 3) {
 			if (alsa.owner) {
 				for (d = a->argv[2]; *d; d++) {
-					struct ast_frame f = { .frametype = AST_FRAME_DTMF, .subclass.integer = *d };
+					struct ast_frame f = { .frametype = AST_FRAME_DTMF, .subclass = *d };
 
 					ast_queue_frame(alsa.owner, &f);
 				}
@@ -864,56 +831,12 @@ static char *console_dial(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 			ast_copy_string(alsa.exten, mye, sizeof(alsa.exten));
 			ast_copy_string(alsa.context, myc, sizeof(alsa.context));
 			hookstate = 1;
-			alsa_new(&alsa, AST_STATE_RINGING, NULL);
+			alsa_new(&alsa, AST_STATE_RINGING);
 		} else
 			ast_cli(a->fd, "No such extension '%s' in context '%s'\n", mye, myc);
 	}
 
 	ast_mutex_unlock(&alsalock);
-
-	return res;
-}
-
-static char *console_mute(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	int toggle = 0;
-	char *res = CLI_SUCCESS;
-
-	switch (cmd) {
-	case CLI_INIT:
-		e->command = "console {mute|unmute} [toggle]";
-		e->usage =
-			"Usage: console {mute|unmute} [toggle]\n"
-			"       Mute/unmute the microphone.\n";
-		return NULL;
-	case CLI_GENERATE:
-		return NULL;
-	}
-
-
-	if (a->argc > 3) {
-		return CLI_SHOWUSAGE;
-	}
-
-	if (a->argc == 3) {
-		if (strcasecmp(a->argv[2], "toggle"))
-			return CLI_SHOWUSAGE;
-		toggle = 1;
-	}
-
-	if (a->argc < 2) {
-		return CLI_SHOWUSAGE;
-	}
-
-	if (!strcasecmp(a->argv[1], "mute")) {
-		mute = toggle ? !mute : 1;
-	} else if (!strcasecmp(a->argv[1], "unmute")) {
-		mute = toggle ? !mute : 0;
-	} else {
-		return CLI_SHOWUSAGE;
-	}
-
-	ast_cli(a->fd, "Console mic is %s\n", mute ? "off" : "on");
 
 	return res;
 }
@@ -924,7 +847,6 @@ static struct ast_cli_entry cli_alsa[] = {
 	AST_CLI_DEFINE(console_dial, "Dial an extension on the console"),
 	AST_CLI_DEFINE(console_sendtext, "Send text to the remote device"),
 	AST_CLI_DEFINE(console_autoanswer, "Sets/displays autoanswer"),
-	AST_CLI_DEFINE(console_mute, "Disable/Enable mic input"),
 };
 
 static int load_module(void)
@@ -932,12 +854,6 @@ static int load_module(void)
 	struct ast_config *cfg;
 	struct ast_variable *v;
 	struct ast_flags config_flags = { 0 };
-	struct ast_format tmpfmt;
-
-	if (!(alsa_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_add(alsa_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
 
 	/* Copy the default jb config over global_jbconf */
 	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
@@ -955,33 +871,27 @@ static int load_module(void)
 	v = ast_variable_browse(cfg, "general");
 	for (; v; v = v->next) {
 		/* handle jb conf */
-		if (!ast_jb_read_conf(&global_jbconf, v->name, v->value)) {
-			continue;
-		}
-
-		if (!strcasecmp(v->name, "autoanswer")) {
+		if (!ast_jb_read_conf(&global_jbconf, v->name, v->value))
+				continue;
+		
+		if (!strcasecmp(v->name, "autoanswer"))
 			autoanswer = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "mute")) {
-			mute = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "noaudiocapture")) {
-			noaudiocapture = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "silencesuppression")) {
+		else if (!strcasecmp(v->name, "silencesuppression"))
 			silencesuppression = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "silencethreshold")) {
+		else if (!strcasecmp(v->name, "silencethreshold"))
 			silencethreshold = atoi(v->value);
-		} else if (!strcasecmp(v->name, "context")) {
+		else if (!strcasecmp(v->name, "context"))
 			ast_copy_string(context, v->value, sizeof(context));
-		} else if (!strcasecmp(v->name, "language")) {
+		else if (!strcasecmp(v->name, "language"))
 			ast_copy_string(language, v->value, sizeof(language));
-		} else if (!strcasecmp(v->name, "extension")) {
+		else if (!strcasecmp(v->name, "extension"))
 			ast_copy_string(exten, v->value, sizeof(exten));
-		} else if (!strcasecmp(v->name, "input_device")) {
+		else if (!strcasecmp(v->name, "input_device"))
 			ast_copy_string(indevname, v->value, sizeof(indevname));
-		} else if (!strcasecmp(v->name, "output_device")) {
+		else if (!strcasecmp(v->name, "output_device"))
 			ast_copy_string(outdevname, v->value, sizeof(outdevname));
-		} else if (!strcasecmp(v->name, "mohinterpret")) {
+		else if (!strcasecmp(v->name, "mohinterpret"))
 			ast_copy_string(mohinterpret, v->value, sizeof(mohinterpret));
-		}
 	}
 	ast_config_destroy(cfg);
 
@@ -1015,12 +925,7 @@ static int unload_module(void)
 	if (alsa.owner)
 		return -1;
 
-	alsa_tech.capabilities = ast_format_cap_destroy(alsa_tech.capabilities);
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "ALSA Console Channel Driver",
-		.load = load_module,
-		.unload = unload_module,
-		.load_pri = AST_MODPRI_CHANNEL_DRIVER,
-	);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "ALSA Console Channel Driver");

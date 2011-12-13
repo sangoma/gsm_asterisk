@@ -1,6 +1,6 @@
 /*
  * Stubs for some cli functions used by the test routines.
- * $Revision: 92103 $
+ * $Revision: 284593 $
  */
 void ast_cli(int fd, const char *fmt, ...);
 void ast_cli(int fd, const char *fmt, ...)
@@ -14,3 +14,4 @@ int ast_cli_register_multiple(struct ast_cli_entry *e, int len)
 {
 	return 0;
 }
+

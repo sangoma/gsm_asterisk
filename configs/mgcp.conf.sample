@@ -5,16 +5,11 @@
 ;port = 2427
 ;bindaddr = 0.0.0.0
 
-; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
+; See qos.tex or Quality of Service section of asterisk.pdf for a description of these parameters.
 ;tos=cs3		; Sets TOS for signaling packets.
 ;tos_audio=ef		; Sets TOS for RTP audio packets.
 ;cos=3			; Sets 802.1p priority for signaling packets.
 ;cos_audio=5		; Sets 802.1p priority for RTP audio packets.
-
-;---------------------- DIGIT TIMEOUTS ----------------------------
-firstdigittimeout = 30000 ; default 16000 = 16s
-gendigittimeout = 10000   ; default  8000 = 8s 
-matchdigittimeout = 5000  ; defaults 3000 = 3s
 
 ;------------------------------ JITTER BUFFER CONFIGURATION --------------------------
 ; jbenable = yes              ; Enables the use of a jitterbuffer on the receiving side of a
@@ -111,10 +106,7 @@ matchdigittimeout = 5000  ; defaults 3000 = 3s
 ;directmedia	= no
 ;transfer	= no
 ;dtmfmode	= inband
-;setvar=one=1           ; Set channel variables associated with this incoming line
-;setvar=two=2
 ;line => aaln/1			; now lets save this config to line1 aka aaln/1
-;clearvars=all          ; Reset list of variables back to none
 ;callerid 	= "Duane Cox" <456>	; now lets setup line 2
 ;callwaiting	= no
 ;callreturn	= yes
@@ -123,20 +115,3 @@ matchdigittimeout = 5000  ; defaults 3000 = 3s
 ;transfer	= no
 ;dtmfmode	= inband
 ;line => aaln/2			; now lets save this config to line2 aka aaln/2
-
-; PacketCable
-;[sbv5121e-mta.test.local]
-;host        = 10.0.1.3
-;callwaiting = 1
-;canreinvite = 1
-;dtmfmode    = rfc2833
-;amaflags    = BILLING
-;ncs         = yes ; Use NCS 1.0 signalling
-;pktcgatealloc = yes ; Allocate DQOS gate on CMTS
-;hangupongateremove = yes ; Hangup the channel if the CMTS close the gate
-;callerid    = 3622622225
-;accountcode = test-3622622225
-;line        = aaln/1
-;callerid    = 3622622226
-;accountcode = test-3622622226
-;line        = aaln/2

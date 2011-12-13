@@ -27,11 +27,10 @@
 
 /*** MODULEINFO
 	<depend>app_voicemail</depend>
-	<support_level>core</support_level>
  ***/
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 263809 $")
 
 #include <ctype.h>
 
@@ -58,8 +57,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			<parameter name="dial-context" required="false">
 				<para>This is the dialplan context to use when looking for an
 				extension that the user has selected, or when jumping to the
-				<literal>o</literal> or <literal>a</literal> extension. If not
-				specified, the current context will be used.</para>
+				<literal>o</literal> or <literal>a</literal> extension.</para>
 			</parameter>
 			<parameter name="options" required="false">
 				<optionlist>
@@ -91,9 +89,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 						<para>Instead of reading each name sequentially and asking for
 						confirmation, create a menu of up to 8 names.</para>
 					</option>
-					<option name="n">
-						<para>Read digits even if the channel is not answered.</para>
-					</option>
 					<option name="p">
 						<para>Pause for n milliseconds after the digits are typed.  This is
 						helpful for people with cellphones, who are not holding the
@@ -119,7 +114,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 	</application>
 
  ***/
-static const char app[] = "Directory";
+static char *app = "Directory";
 
 /* For simplicity, I'm keeping the format compatible with the voicemail config,
    but i'm open to suggestions for isolating it */
@@ -134,8 +129,7 @@ enum {
 	OPT_LISTBYLASTNAME =  (1 << 4),
 	OPT_LISTBYEITHER =    OPT_LISTBYFIRSTNAME | OPT_LISTBYLASTNAME,
 	OPT_PAUSE =           (1 << 5),
-	OPT_NOANSWER =        (1 << 6),
-};
+} directory_option_flags;
 
 enum {
 	OPT_ARG_FIRSTNAME =   0,
@@ -163,7 +157,6 @@ AST_APP_OPTIONS(directory_app_options, {
 	AST_APP_OPTION('e', OPT_SAYEXTENSION),
 	AST_APP_OPTION('v', OPT_FROMVOICEMAIL),
 	AST_APP_OPTION('m', OPT_SELECTFROMMENU),
-	AST_APP_OPTION('n', OPT_NOANSWER),
 });
 
 static int compare(const char *text, const char *template)
@@ -248,7 +241,7 @@ static int compare(const char *text, const char *template)
 
 static int goto_exten(struct ast_channel *chan, const char *dialcontext, char *ext)
 {
-	if (!ast_goto_if_exists(chan, S_OR(dialcontext, chan->context), ext, 1) ||
+	if (!ast_goto_if_exists(chan, dialcontext, ext, 1) ||
 		(!ast_strlen_zero(chan->macrocontext) &&
 		!ast_goto_if_exists(chan, chan->macrocontext, ext, 1))) {
 		return 0;
@@ -687,11 +680,11 @@ static int do_directory(struct ast_channel *chan, struct ast_config *vmcfg, stru
 	int count, i;
 	char ext[10] = "";
 
-	if (digit == '0' && !goto_exten(chan, dialcontext, "o")) {
+	if (digit == '0' && !goto_exten(chan, S_OR(dialcontext, "default"), "o")) {
 		return digit;
 	}
 
-	if (digit == '*' && !goto_exten(chan, dialcontext, "a")) {
+	if (digit == '*' && !goto_exten(chan, S_OR(dialcontext, "default"), "a")) {
 		return digit;
 	}
 
@@ -755,7 +748,7 @@ exit:
 	return res;
 }
 
-static int directory_exec(struct ast_channel *chan, const char *data)
+static int directory_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0, digit = 3;
 	struct ast_config *cfg, *ucfg;
@@ -824,12 +817,9 @@ static int directory_exec(struct ast_channel *chan, const char *data)
 	}
 	digits[7] = digit + '0';
 
-	if (chan->_state != AST_STATE_UP) {
-		if (!ast_test_flag(&flags, OPT_NOANSWER)) {
-			/* Otherwise answer unless we're supposed to read while on-hook */
-			res = ast_answer(chan);
-		}
-	}
+	if (chan->_state != AST_STATE_UP)
+		res = ast_answer(chan);
+
 	for (;;) {
 		if (!ast_strlen_zero(dirintro) && !res) {
 			res = ast_stream_and_wait(chan, dirintro, AST_DIGIT_ANY);

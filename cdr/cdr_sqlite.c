@@ -17,8 +17,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief Store CDR records in a SQLite database.
  *
  * \author Holger Schurig <hs4233@mail.mn-solutions.de>
@@ -36,14 +36,11 @@
 
 /*** MODULEINFO
 	<depend>sqlite</depend>
-	<defaultenabled>no</defaultenabled>
-	<support_level>deprecated</support_level>
-	<replacement>sqlite3_custom</replacement>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 300574 $")
 
 #include <sqlite.h>
 
@@ -52,20 +49,19 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/utils.h"
 #include "asterisk/paths.h"
 
-#define LOG_UNIQUEID    0
-#define LOG_USERFIELD   0
-#define LOG_HRTIME      0
+#define LOG_UNIQUEID	0
+#define LOG_USERFIELD	0
 
 /* When you change the DATE_FORMAT, be sure to change the CHAR(19) below to something else */
 #define DATE_FORMAT "%Y-%m-%d %T"
 
-static const char name[] = "sqlite";
+static char *name = "sqlite";
 static sqlite* db = NULL;
 
 AST_MUTEX_DEFINE_STATIC(sqlite_lock);
 
 /*! \brief SQL table format */
-static const char sql_create_table[] = "CREATE TABLE cdr ("
+static char sql_create_table[] = "CREATE TABLE cdr ("
 "	AcctId		INTEGER PRIMARY KEY,"
 "	clid		VARCHAR(80),"
 "	src		VARCHAR(80),"
@@ -78,13 +74,8 @@ static const char sql_create_table[] = "CREATE TABLE cdr ("
 "	start		CHAR(19),"
 "	answer		CHAR(19),"
 "	end		CHAR(19),"
-#if LOG_HRTIME
-"	duration	FLOAT,"
-"	billsec		FLOAT,"
-#else
 "	duration	INTEGER,"
 "	billsec		INTEGER,"
-#endif
 "	disposition	INTEGER,"
 "	amaflags	INTEGER,"
 "	accountcode	VARCHAR(20)"
@@ -110,23 +101,12 @@ static int sqlite_log(struct ast_cdr *cdr)
 	char *zErr = 0;
 	char startstr[80], answerstr[80], endstr[80];
 	int count;
-#if LOG_HRTIME
-	double hrbillsec = 0.0;
-	double hrduration;
-#endif
 
 	ast_mutex_lock(&sqlite_lock);
 
 	format_date(startstr, sizeof(startstr), &cdr->start);
 	format_date(answerstr, sizeof(answerstr), &cdr->answer);
 	format_date(endstr, sizeof(endstr), &cdr->end);
-
-#if LOG_HRTIME
-	if (!ast_tvzero(cdr->answer)) {
-		hrbillsec = (double) ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0;
-	}
-	hrduration = (double) ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0;
-#endif
 
 	for(count=0; count<5; count++) {
 		res = sqlite_exec_printf(db,
@@ -146,11 +126,7 @@ static int sqlite_log(struct ast_cdr *cdr)
 				"'%q', '%q', '%q', '%q', "
 				"'%q', '%q', '%q', '%q', "
 				"'%q', '%q', '%q', "
-#if LOG_HRTIME
-				"%f, %f, %d, %d, "
-#else
 				"%d, %d, %d, %d, "
-#endif
 				"'%q'"
 #				if LOG_UNIQUEID
 				",'%q'"
@@ -162,11 +138,7 @@ static int sqlite_log(struct ast_cdr *cdr)
 				cdr->clid, cdr->src, cdr->dst, cdr->dcontext,
 				cdr->channel, cdr->dstchannel, cdr->lastapp, cdr->lastdata,
 				startstr, answerstr, endstr,
-#if LOG_HRTIME
-				hrduration, hrbillsec, cdr->disposition, cdr->amaflags,
-#else
 				cdr->duration, cdr->billsec, cdr->disposition, cdr->amaflags,
-#endif
 				cdr->accountcode
 #				if LOG_UNIQUEID
 				,cdr->uniqueid
@@ -213,7 +185,7 @@ static int load_module(void)
 	if (!db) {
 		ast_log(LOG_ERROR, "cdr_sqlite: %s\n", zErr);
 		ast_free(zErr);
-		return AST_MODULE_LOAD_DECLINE;
+		return -1;
 	}
 
 	/* is the table there? */
@@ -232,18 +204,14 @@ static int load_module(void)
 	res = ast_cdr_register(name, ast_module_info->description, sqlite_log);
 	if (res) {
 		ast_log(LOG_ERROR, "Unable to register SQLite CDR handling\n");
-		return AST_MODULE_LOAD_DECLINE;
+		return -1;
 	}
-	return AST_MODULE_LOAD_SUCCESS;
+	return 0;
 
 err:
 	if (db)
 		sqlite_close(db);
-	return AST_MODULE_LOAD_DECLINE;
+	return -1;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "SQLite CDR Backend",
-	.load = load_module,
-	.unload = unload_module,
-	.load_pri = AST_MODPRI_CDR_DRIVER,
-);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "SQLite CDR Backend");

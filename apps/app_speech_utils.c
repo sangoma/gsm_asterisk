@@ -25,13 +25,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 264336 $");
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -485,7 +481,7 @@ static struct ast_custom_function speech_function = {
 
 
 /*! \brief SpeechCreate() Dialplan Application */
-static int speech_create(struct ast_channel *chan, const char *data)
+static int speech_create(struct ast_channel *chan, void *data)
 {
 	struct ast_speech *speech = NULL;
 	struct ast_datastore *datastore = NULL;
@@ -512,7 +508,7 @@ static int speech_create(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief SpeechLoadGrammar(Grammar Name,Path) Dialplan Application */
-static int speech_load(struct ast_channel *chan, const char *vdata)
+static int speech_load(struct ast_channel *chan, void *vdata)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -538,7 +534,7 @@ static int speech_load(struct ast_channel *chan, const char *vdata)
 }
 
 /*! \brief SpeechUnloadGrammar(Grammar Name) Dialplan Application */
-static int speech_unload(struct ast_channel *chan, const char *data)
+static int speech_unload(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -553,7 +549,7 @@ static int speech_unload(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief SpeechDeactivateGrammar(Grammar Name) Dialplan Application */
-static int speech_deactivate(struct ast_channel *chan, const char *data)
+static int speech_deactivate(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -568,7 +564,7 @@ static int speech_deactivate(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief SpeechActivateGrammar(Grammar Name) Dialplan Application */
-static int speech_activate(struct ast_channel *chan, const char *data)
+static int speech_activate(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -583,7 +579,7 @@ static int speech_activate(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief SpeechStart() Dialplan Application */
-static int speech_start(struct ast_channel *chan, const char *data)
+static int speech_start(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -597,7 +593,7 @@ static int speech_start(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief SpeechProcessingSound(Sound File) Dialplan Application */
-static int speech_processing_sound(struct ast_channel *chan, const char *data)
+static int speech_processing_sound(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -640,13 +636,13 @@ AST_APP_OPTIONS(speech_background_options, BEGIN_OPTIONS
 END_OPTIONS );
 
 /*! \brief SpeechBackground(Sound File,Timeout) Dialplan Application */
-static int speech_background(struct ast_channel *chan, const char *data)
+static int speech_background(struct ast_channel *chan, void *data)
 {
 	unsigned int timeout = 0;
 	int res = 0, done = 0, started = 0, quieted = 0, max_dtmf_len = 0;
 	struct ast_speech *speech = find_speech(chan);
 	struct ast_frame *f = NULL;
-	struct ast_format oldreadformat;
+	int oldreadformat = AST_FORMAT_SLINEAR;
 	char dtmf[AST_MAX_EXTENSION] = "";
 	struct timeval start = { 0, 0 }, current;
 	struct ast_datastore *datastore = NULL;
@@ -662,7 +658,6 @@ static int speech_background(struct ast_channel *chan, const char *data)
 	parse = ast_strdupa(data);
 	AST_STANDARD_APP_ARGS(args, parse);
 
-	ast_format_clear(&oldreadformat);
 	if (speech == NULL)
 		return -1;
 
@@ -678,10 +673,10 @@ static int speech_background(struct ast_channel *chan, const char *data)
 	}
 
 	/* Record old read format */
-	ast_format_copy(&oldreadformat, &chan->readformat);
+	oldreadformat = chan->readformat;
 
 	/* Change read format to be signed linear */
-	if (ast_set_read_format(chan, &speech->format))
+	if (ast_set_read_format(chan, speech->format))
 		return -1;
 
 	if (!ast_strlen_zero(args.soundfile)) {
@@ -829,7 +824,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 			/* Free the frame we received */
 			switch (f->frametype) {
 			case AST_FRAME_DTMF:
-				if (dtmf_terminator != '\0' && f->subclass.integer == dtmf_terminator) {
+				if (dtmf_terminator != '\0' && f->subclass == dtmf_terminator) {
 					done = 1;
 				} else {
 					quieted = 1;
@@ -842,7 +837,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 						started = 1;
 					}
 					start = ast_tvnow();
-					snprintf(tmp, sizeof(tmp), "%c", f->subclass.integer);
+					snprintf(tmp, sizeof(tmp), "%c", f->subclass);
 					strncat(dtmf, tmp, sizeof(dtmf) - strlen(dtmf) - 1);
 					/* If the maximum length of the DTMF has been reached, stop now */
 					if (max_dtmf_len && strlen(dtmf) == max_dtmf_len)
@@ -850,7 +845,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 				}
 				break;
 			case AST_FRAME_CONTROL:
-				switch (f->subclass.integer) {
+				switch (f->subclass) {
 				case AST_CONTROL_HANGUP:
 					/* Since they hung up we should destroy the speech structure */
 					done = 3;
@@ -886,7 +881,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 			ast_channel_datastore_remove(chan, datastore);
 	} else {
 		/* Channel is okay so restore read format */
-		ast_set_read_format(chan, &oldreadformat);
+		ast_set_read_format(chan, oldreadformat);
 	}
 
 	return 0;
@@ -894,7 +889,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 
 
 /*! \brief SpeechDestroy() Dialplan Application */
-static int speech_destroy(struct ast_channel *chan, const char *data)
+static int speech_destroy(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_speech *speech = find_speech(chan);
@@ -960,8 +955,4 @@ static int load_module(void)
 	return res;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "Dialplan Speech Applications",
-		.load = load_module,
-		.unload = unload_module,
-		.nonoptreq = "res_speech",
-		);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Dialplan Speech Applications");

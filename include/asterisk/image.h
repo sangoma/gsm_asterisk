@@ -28,7 +28,7 @@ struct ast_imager {
 	char *name;			/*!< Name */
 	char *desc;			/*!< Description */
 	char *exts;			/*!< Extension(s) (separated by '|' ) */
-	struct ast_format format; /*!< Image format */
+	int format;			/*!< Image format */
 	struct ast_frame *(*read_image)(int fd, int len);	/*!< Read an image from a file descriptor */
 	int (*identify)(int fd);				/*!< Identify if this is that type of file */
 	int (*write_image)(int fd, struct ast_frame *frame);	/*!< Returns length written */
@@ -51,18 +51,18 @@ int ast_supports_images(struct ast_channel *chan);
  * \retval 0 on success
  * \retval -1 on error
  */
-int ast_send_image(struct ast_channel *chan, const char *filename);
+int ast_send_image(struct ast_channel *chan, char *filename);
 
 /*! 
  * \brief Make an image 
  * \param filename filename of image to prepare
  * \param preflang preferred language to get the image...?
- * \param format the format of the file, NULL for any image format
+ * \param format the format of the file
  * Make an image from a filename ??? No estoy positivo
  * \retval an ast_frame on success
  * \retval NULL on failure
  */
-struct ast_frame *ast_read_image(const char *filename, const char *preflang, struct ast_format *format);
+struct ast_frame *ast_read_image(char *filename, const char *preflang, int format);
 
 /*! 
  * \brief Register image format

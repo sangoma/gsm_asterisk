@@ -25,13 +25,9 @@
  * \ingroup channel_drivers
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 180369 $")
 
 #include <fcntl.h>
 #include <sys/signal.h>
@@ -43,6 +39,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/pbx.h"
 #include "asterisk/sched.h"
 #include "asterisk/io.h"
+#include "asterisk/rtp.h"
 #include "asterisk/acl.h"
 #include "asterisk/callerid.h"
 #include "asterisk/file.h"
@@ -50,16 +47,17 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/app.h"
 #include "asterisk/bridging.h"
 
-static struct ast_channel *bridge_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+static struct ast_channel *bridge_request(const char *type, int format, void *data, int *cause);
 static int bridge_call(struct ast_channel *ast, char *dest, int timeout);
 static int bridge_hangup(struct ast_channel *ast);
 static struct ast_frame *bridge_read(struct ast_channel *ast);
 static int bridge_write(struct ast_channel *ast, struct ast_frame *f);
 static struct ast_channel *bridge_bridgedchannel(struct ast_channel *chan, struct ast_channel *bridge);
 
-static struct ast_channel_tech bridge_tech = {
+static const struct ast_channel_tech bridge_tech = {
 	.type = "Bridge",
 	.description = "Bridge Interaction Channel",
+	.capabilities = -1,
 	.requester = bridge_request,
 	.call = bridge_call,
 	.hangup = bridge_hangup,
@@ -192,10 +190,9 @@ static int bridge_hangup(struct ast_channel *ast)
 }
 
 /*! \brief Called when we want to place a call somewhere, but not actually call it... yet */
-static struct ast_channel *bridge_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *bridge_request(const char *type, int format, void *data, int *cause)
 {
 	struct bridge_pvt *p = NULL;
-	struct ast_format slin;
 
 	/* Try to allocate memory for our very minimal pvt structure */
 	if (!(p = ast_calloc(1, sizeof(*p)))) {
@@ -203,12 +200,12 @@ static struct ast_channel *bridge_request(const char *type, struct ast_format_ca
 	}
 
 	/* Try to grab two Asterisk channels to use as input and output channels */
-	if (!(p->input = ast_channel_alloc(1, AST_STATE_UP, 0, 0, "", "", "", requestor ? requestor->linkedid : NULL, 0, "Bridge/%p-input", p))) {
+	if (!(p->input = ast_channel_alloc(1, AST_STATE_UP, 0, 0, "", "", "", 0, "Bridge/%p-input", p))) {
 		ast_free(p);
 		return NULL;
 	}
-	if (!(p->output = ast_channel_alloc(1, AST_STATE_UP, 0, 0, "", "", "", requestor ? requestor->linkedid : NULL, 0, "Bridge/%p-output", p))) {
-		p->input = ast_channel_release(p->input);
+	if (!(p->output = ast_channel_alloc(1, AST_STATE_UP, 0, 0, "", "", "", 0, "Bridge/%p-output", p))) {
+		ast_channel_free(p->input);
 		ast_free(p);
 		return NULL;
 	}
@@ -219,22 +216,11 @@ static struct ast_channel *bridge_request(const char *type, struct ast_format_ca
 	/* Setup parameters on both new channels */
 	p->input->tech = p->output->tech = &bridge_tech;
 	p->input->tech_pvt = p->output->tech_pvt = p;
-
-	ast_format_set(&slin, AST_FORMAT_SLINEAR, 0);
-
-	ast_format_cap_add(p->input->nativeformats, &slin);
-	ast_format_cap_add(p->output->nativeformats, &slin);
-	ast_format_copy(&p->input->readformat, &slin);
-	ast_format_copy(&p->output->readformat, &slin);
-	ast_format_copy(&p->input->rawreadformat, &slin);
-	ast_format_copy(&p->output->rawreadformat, &slin);
-	ast_format_copy(&p->input->writeformat, &slin);
-	ast_format_copy(&p->output->writeformat, &slin);
-	ast_format_copy(&p->input->rawwriteformat, &slin);
-	ast_format_copy(&p->output->rawwriteformat, &slin);
-
-	ast_answer(p->output);
-	ast_answer(p->input);
+	p->input->nativeformats = p->output->nativeformats = AST_FORMAT_SLINEAR;
+	p->input->readformat = p->output->readformat = AST_FORMAT_SLINEAR;
+	p->input->rawreadformat = p->output->rawreadformat = AST_FORMAT_SLINEAR;
+	p->input->writeformat = p->output->writeformat = AST_FORMAT_SLINEAR;
+	p->input->rawwriteformat = p->output->rawwriteformat = AST_FORMAT_SLINEAR;
 
 	return p->input;
 }
@@ -242,11 +228,6 @@ static struct ast_channel *bridge_request(const char *type, struct ast_format_ca
 /*! \brief Load module into PBX, register channel */
 static int load_module(void)
 {
-	if (!(bridge_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_FAILURE;
-	}
-
-	ast_format_cap_add_all(bridge_tech.capabilities);
 	/* Make sure we can register our channel type */
 	if (ast_channel_register(&bridge_tech)) {
 		ast_log(LOG_ERROR, "Unable to register channel class 'Bridge'\n");
@@ -259,12 +240,7 @@ static int load_module(void)
 static int unload_module(void)
 {
 	ast_channel_unregister(&bridge_tech);
-	bridge_tech.capabilities = ast_format_cap_destroy(bridge_tech.capabilities);
 	return 0;
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Bridge Interaction Channel",
-	.load = load_module,
-	.unload = unload_module,
-	.load_pri = AST_MODPRI_CHANNEL_DRIVER,
-);
+AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Bridge Interaction Channel");

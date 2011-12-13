@@ -16,8 +16,8 @@
  * at the top of the source tree.
  */
 
-/*!
- * \file
+/*! \file
+ *
  * \brief ODBC CDR Backend
  *
  * \author Brian K. West <brian@bkw.org>
@@ -30,12 +30,13 @@
 
 /*** MODULEINFO
 	<depend>res_odbc</depend>
-	<support_level>extended</support_level>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 329615 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 283318 $")
+
+#include <time.h>
 
 #include "asterisk/config.h"
 #include "asterisk/channel.h"
@@ -45,16 +46,14 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 329615 $")
 
 #define DATE_FORMAT "%Y-%m-%d %T"
 
-static const char name[] = "ODBC";
-static const char config_file[] = "cdr_odbc.conf";
+static char *name = "ODBC";
+static char *config_file = "cdr_odbc.conf";
 static char *dsn = NULL, *table = NULL;
 
 enum {
 	CONFIG_LOGUNIQUEID =       1 << 0,
 	CONFIG_USEGMTIME =         1 << 1,
 	CONFIG_DISPOSITIONSTRING = 1 << 2,
-	CONFIG_HRTIME =            1 << 3,
-	CONFIG_REGISTERED =        1 << 4,
 };
 
 static struct ast_flags config = { 0 };
@@ -98,23 +97,8 @@ static SQLHSTMT execute_cb(struct odbc_obj *obj, void *data)
 	SQLBindParameter(stmt, 6, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, sizeof(cdr->dstchannel), 0, cdr->dstchannel, 0, NULL);
 	SQLBindParameter(stmt, 7, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, sizeof(cdr->lastapp), 0, cdr->lastapp, 0, NULL);
 	SQLBindParameter(stmt, 8, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, sizeof(cdr->lastdata), 0, cdr->lastdata, 0, NULL);
-
-	if (ast_test_flag(&config, CONFIG_HRTIME)) {
-		double hrbillsec = 0.0;
-		double hrduration;
-
-		if (!ast_tvzero(cdr->answer)) {
-			hrbillsec = (double) ast_tvdiff_us(cdr->end, cdr->answer) / 1000000.0;
-		}
-		hrduration = (double) ast_tvdiff_us(cdr->end, cdr->start) / 1000000.0;
-
-		SQLBindParameter(stmt, 9, SQL_PARAM_INPUT, SQL_C_DOUBLE, SQL_FLOAT, 0, 0, &hrduration, 0, NULL);
-		SQLBindParameter(stmt, 10, SQL_PARAM_INPUT, SQL_C_DOUBLE, SQL_FLOAT, 0, 0, &hrbillsec, 0, NULL);
-	} else {
-		SQLBindParameter(stmt, 9, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0, &cdr->duration, 0, NULL);
-		SQLBindParameter(stmt, 10, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0, &cdr->billsec, 0, NULL);
-	}
-
+	SQLBindParameter(stmt, 9, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0, &cdr->duration, 0, NULL);
+	SQLBindParameter(stmt, 10, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0, &cdr->billsec, 0, NULL);
 	if (ast_test_flag(&config, CONFIG_DISPOSITIONSTRING))
 		SQLBindParameter(stmt, 11, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, strlen(ast_cdr_disp2str(cdr->disposition)) + 1, 0, ast_cdr_disp2str(cdr->disposition), 0, NULL);
 	else
@@ -220,14 +204,6 @@ static int odbc_load_module(int reload)
 			ast_debug(1, "cdr_odbc: Logging in local time\n");
 		}
 
-		if (((tmp = ast_variable_retrieve(cfg, "global", "hrtime"))) && ast_true(tmp)) {
-			ast_set_flag(&config, CONFIG_HRTIME);
-			ast_debug(1, "cdr_odbc: Logging billsec and duration fields as floats\n");
-		} else {
-			ast_clear_flag(&config, CONFIG_HRTIME);
-			ast_debug(1, "cdr_odbc: Logging billsec and duration fields as integers\n");
-		}
-
 		if ((tmp = ast_variable_retrieve(cfg, "global", "table")) == NULL) {
 			ast_log(LOG_WARNING, "cdr_odbc: table not specified.  Assuming cdr\n");
 			tmp = "cdr";
@@ -243,24 +219,14 @@ static int odbc_load_module(int reload)
 		ast_verb(3, "cdr_odbc: dsn is %s\n", dsn);
 		ast_verb(3, "cdr_odbc: table is %s\n", table);
 
-		if (!ast_test_flag(&config, CONFIG_REGISTERED)) {
-			res = ast_cdr_register(name, ast_module_info->description, odbc_log);
-			if (res) {
-				ast_log(LOG_ERROR, "cdr_odbc: Unable to register ODBC CDR handling\n");
-			} else {
-				ast_set_flag(&config, CONFIG_REGISTERED);
-			}
+		res = ast_cdr_register(name, ast_module_info->description, odbc_log);
+		if (res) {
+			ast_log(LOG_ERROR, "cdr_odbc: Unable to register ODBC CDR handling\n");
 		}
 	} while (0);
 
-	if (ast_test_flag(&config, CONFIG_REGISTERED) && (!cfg || dsn == NULL || table == NULL)) {
-		ast_cdr_unregister(name);
-		ast_clear_flag(&config, CONFIG_REGISTERED);
-	}
-
-	if (cfg && cfg != CONFIG_STATUS_FILEUNCHANGED && cfg != CONFIG_STATUS_FILEINVALID) {
+	if (cfg && cfg != CONFIG_STATUS_FILEUNCHANGED && cfg != CONFIG_STATUS_FILEINVALID)
 		ast_config_destroy(cfg);
-	}
 	return res;
 }
 
@@ -290,9 +256,8 @@ static int reload(void)
 	return odbc_load_module(1);
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "ODBC CDR Backend",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "ODBC CDR Backend",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.load_pri = AST_MODPRI_CDR_DRIVER,
 	       );

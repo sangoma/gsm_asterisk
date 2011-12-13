@@ -25,13 +25,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 154578 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -47,7 +43,7 @@ enum {
 	OPT_DATABASE = (1 << 1),
 	OPT_MULTIPLE = (1 << 3),
 	OPT_REMOVE = (1 << 4),
-};
+} auth_option_flags;
 
 AST_APP_OPTIONS(auth_app_options, {
 	AST_APP_OPTION('a', OPT_ACCOUNT),
@@ -57,7 +53,7 @@ AST_APP_OPTIONS(auth_app_options, {
 });
 
 
-static const char app[] = "Authenticate";
+static char *app = "Authenticate";
 /*** DOCUMENTATION
 	<application name="Authenticate" language="en_US">
 		<synopsis>
@@ -109,7 +105,7 @@ static const char app[] = "Authenticate";
 	</application>
  ***/
 
-static int auth_exec(struct ast_channel *chan, const char *data)
+static int auth_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0, retries, maxdigits;
 	char passwd[256], *prompt = "agent-pass", *argcopy = NULL;

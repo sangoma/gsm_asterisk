@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 213179 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 213182 $")
 
 #include "asterisk/ulaw.h"
 #include "asterisk/logger.h"
@@ -178,7 +178,7 @@ void ast_ulaw_init(void)
 #ifndef G711_NEW_ALGORITHM
 	for (i = 0;i < 256;i++) {
 		short mu,e,f,y;
-		static const short etab[]={0,132,396,924,1980,4092,8316,16764};
+		static short etab[]={0,132,396,924,1980,4092,8316,16764};
 		
 		mu = 255-i;
 		e = (mu & 0x70)/16;

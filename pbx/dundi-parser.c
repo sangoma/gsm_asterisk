@@ -24,7 +24,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 196072 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 136298 $")
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -155,7 +155,7 @@ static void dump_hint(char *output, int maxlen, void *value, int len)
 
 static void dump_cause(char *output, int maxlen, void *value, int len)
 {
-	static const char * const causes[] = {
+	static char *causes[] = {
 		"SUCCESS",
 		"GENERAL",
 		"DYNAMIC",

@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2010, Digium, Inc.
+ * Copyright (C) 1999 - 2005, Digium, Inc.
  *
  * Matt O'Gorman <mogorman@digium.com>
  *
@@ -72,9 +72,6 @@
  */
 #define AJI_MAX_JIDLEN 3071
 #define AJI_MAX_RESJIDLEN 1023
-#define AJI_MAX_ATTRLEN   256
-
-#define MUC_NS "http://jabber.org/protocol/muc"
 
 enum aji_state {
 	AJI_DISCONNECTING,
@@ -85,20 +82,13 @@ enum aji_state {
 
 enum {
 	AJI_AUTOPRUNE = (1 << 0),
-	AJI_AUTOREGISTER = (1 << 1),
-	AJI_AUTOACCEPT = (1 << 2),
-};
-
-enum {
-	AJI_XEP0248 = (1 << 0),
-	AJI_PUBSUB = (1 << 1),
-	AJI_PUBSUB_AUTOCREATE = (1 << 2),
+	AJI_AUTOREGISTER = (1 << 1)
 };
 
 enum aji_btype {
-	AJI_USER = 0,
-	AJI_TRANS = 1,
-	AJI_UTRANS = 2,
+	AJI_USER=0,
+	AJI_TRANS=1,
+	AJI_UTRANS=2
 };
 
 struct aji_version {
@@ -127,7 +117,7 @@ struct aji_message {
 	char *from;
 	char *message;
 	char id[25];
-	struct timeval arrived;
+	time_t arrived;
 	AST_LIST_ENTRY(aji_message) list;
 };
 
@@ -152,12 +142,10 @@ struct aji_client {
 	char password[160];
 	char user[AJI_MAX_JIDLEN];
 	char serverhost[AJI_MAX_RESJIDLEN];
-	char pubsub_node[AJI_MAX_RESJIDLEN];
 	char statusmessage[256];
 	char name_space[256];
 	char sid[10]; /* Session ID */
 	char mid[6]; /* Message ID */
-	char context[AST_MAX_CONTEXT];
 	iksid *jid;
 	iksparser *p;
 	iksfilter *f;
@@ -179,8 +167,6 @@ struct aji_client {
 	int timeout;
 	int message_timeout;
 	int authorized;
-	int distribute_events;
-	int send_to_dialplan;
 	struct ast_flags flags;
 	int component; /* 0 client,  1 component */
 	struct aji_buddy_container buddies;
@@ -199,9 +185,6 @@ struct aji_client_container{
 int ast_aji_send(struct aji_client *client, iks *x);
 /*! Send jabber chat message from connected client to jabber URI */
 int ast_aji_send_chat(struct aji_client *client, const char *address, const char *message);
-/*! Send jabber chat message from connected client to a groupchat using 
- *  a given nickname */
-int ast_aji_send_groupchat(struct aji_client *client, const char *nick, const char *address, const char *message);
 /*! Disconnect jabber client */
 int ast_aji_disconnect(struct aji_client *client);
 int ast_aji_check_roster(void);
@@ -210,9 +193,8 @@ void ast_aji_increment_mid(char *mid);
 int ast_aji_create_chat(struct aji_client *client,char *room, char *server, char *topic);
 /*! Invite to opened Chat session */
 int ast_aji_invite_chat(struct aji_client *client, char *user, char *room, char *message);
-/*! Join/leave existing Chat session */
-int ast_aji_join_chat(struct aji_client *client, char *room, char *nick);
-int ast_aji_leave_chat(struct aji_client *client, char *room, char *nick);
+/*! Join existing Chat session */
+int ast_aji_join_chat(struct aji_client *client,char *room);
 struct aji_client *ast_aji_get_client(const char *name);
 struct aji_client_container *ast_aji_get_clients(void);
 

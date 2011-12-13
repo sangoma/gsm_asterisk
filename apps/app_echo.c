@@ -25,13 +25,9 @@
  * \ingroup applications
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 249952 $")
 
 #include "asterisk/file.h"
 #include "asterisk/module.h"
@@ -46,22 +42,20 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
 		<description>
 			<para>Echos back any audio, video or DTMF frames read from the calling 
 			channel back to itself. Note: If '#' detected application exits</para>
-			<para>This application does not automatically answer and should be
-			preceeded by an application such as Answer() or Progress().</para>
 		</description>
 	</application>
  ***/
 
-static const char app[] = "Echo";
+static char *app = "Echo";
 
-static int echo_exec(struct ast_channel *chan, const char *data)
+static int echo_exec(struct ast_channel *chan, void *data)
 {
 	int res = -1;
-	struct ast_format format;
+	int format;
 
-	ast_best_codec(chan->nativeformats, &format);
-	ast_set_write_format(chan, &format);
-	ast_set_read_format(chan, &format);
+	format = ast_best_codec(chan->nativeformats);
+	ast_set_write_format(chan, format);
+	ast_set_read_format(chan, format);
 
 	while (ast_waitfor(chan, -1) > -1) {
 		struct ast_frame *f = ast_read(chan);
@@ -74,7 +68,7 @@ static int echo_exec(struct ast_channel *chan, const char *data)
 			ast_frfree(f);
 			goto end;
 		}
-		if ((f->frametype == AST_FRAME_DTMF) && (f->subclass.integer == '#')) {
+		if ((f->frametype == AST_FRAME_DTMF) && (f->subclass == '#')) {
 			res = 0;
 			ast_frfree(f);
 			goto end;

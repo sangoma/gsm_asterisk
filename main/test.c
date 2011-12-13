@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332844 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 286024 $");
 
 #include "asterisk/_private.h"
 
@@ -41,7 +41,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332844 $");
 #include "asterisk/version.h"
 #include "asterisk/paths.h"
 #include "asterisk/time.h"
-#include "asterisk/manager.h"
 
 /*! This array corresponds to the values defined in the ast_test_state enum */
 static const char * const test_result2str[] = {
@@ -612,8 +611,8 @@ static char *complete_test_name(const char *line, const char *word, int pos, int
 static char *test_cli_show_registered(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 #define FORMAT "%-25.25s %-30.30s %-40.40s %-13.13s\n"
-	static const char * const option1[] = { "all", "category", NULL };
-	static const char * const option2[] = { "name", NULL };
+	static char * const option1[] = { "all", "category", NULL };
+	static char * const option2[] = { "name", NULL };
 	struct ast_test *test = NULL;
 	int count = 0;
 	switch (cmd) {
@@ -673,8 +672,8 @@ static char *test_cli_show_registered(struct ast_cli_entry *e, int cmd, struct a
 
 static char *test_cli_execute_registered(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	static const char * const option1[] = { "all", "category", NULL };
-	static const char * const option2[] = { "name", NULL };
+	static char * const option1[] = { "all", "category", NULL };
+	static char * const option2[] = { "name", NULL };
 
 	switch (cmd) {
 	case CLI_INIT:
@@ -740,7 +739,7 @@ static char *test_cli_show_results(struct ast_cli_entry *e, int cmd, struct ast_
 {
 #define FORMAT_RES_ALL1 "%s%s %-30.30s %-25.25s %-10.10s\n"
 #define FORMAT_RES_ALL2 "%s%s %-30.30s %-25.25s %s%ums\n"
-	static const char * const option1[] = { "all", "failed", "passed", NULL };
+	static char * const option1[] = { "all", "failed", "passed", NULL };
 	char result_buf[32] = { 0 };
 	struct ast_test *test = NULL;
 	int failed = 0;
@@ -809,7 +808,7 @@ static char *test_cli_show_results(struct ast_cli_entry *e, int cmd, struct ast_
 
 static char *test_cli_generate_results(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	static const char * const option[] = { "xml", "txt", NULL };
+	static char * const option[] = { "xml", "txt", NULL };
 	const char *file = NULL;
 	const char *type = "";
 	int isxml = 0;
@@ -885,51 +884,9 @@ static struct ast_cli_entry test_cli[] = {
 	AST_CLI_DEFINE(test_cli_show_results,              "show last test results"),
 	AST_CLI_DEFINE(test_cli_generate_results,          "generate test results to file"),
 };
-
-int __ast_test_suite_event_notify(const char *file, const char *func, int line,
-		const char *state, const char *fmt, ...)
-{
-	struct ast_str *buf = NULL;
-	va_list ap;
-
-	if (!(buf = ast_str_create(128))) {
-		return -1;
-	}
-
-	va_start(ap, fmt);
-	ast_str_set_va(&buf, 0, fmt, ap);
-	va_end(ap);
-
-	manager_event(EVENT_FLAG_TEST, "TestEvent",
-		"Type: StateChange\r\n"
-		"State: %s\r\n"
-		"AppFile: %s\r\n"
-		"AppFunction: %s\r\n"
-		"AppLine: %d\r\n%s\r\n",
-		state, file, func, line, ast_str_buffer(buf));
-
-	ast_free(buf);
-
-	return 0;
-}
-
-int __ast_test_suite_assert_notify(const char *file, const char *func, int line,
-		const char *exp)
-{
-	manager_event(EVENT_FLAG_TEST, "TestEvent",
-		"Type: Assert\r\n"
-		"AppFile: %s\r\n"
-		"AppFunction: %s\r\n"
-		"AppLine: %d\r\n"
-		"Expression: %s\r\n",
-		file, func, line, exp);
-
-	return 0;
-}
-
 #endif /* TEST_FRAMEWORK */
 
-int ast_test_init()
+int ast_test_init(void)
 {
 #ifdef TEST_FRAMEWORK
 	/* Register cli commands */

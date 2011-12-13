@@ -22,13 +22,9 @@
  *
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/file.h"
 #include "asterisk/logger.h"
@@ -45,6 +41,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/sched.h"
 #include "asterisk/io.h"
 #include "asterisk/utils.h"
+#include "asterisk/crypto.h"
 #include "asterisk/astdb.h"
 
 
@@ -80,7 +77,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 	char *newpattern=NULL; \
 	loopback_subst(buf, sizeof(buf), exten, context, priority, data); \
 	loopback_parse(&newexten, &newcontext, &newpriority, &newpattern, buf); \
-	ast_debug(1, "Parsed into %s @ %s priority %d\n", newexten, newcontext, newpriority); \
+	ast_log(LOG_DEBUG, "Parsed into %s @ %s priority %d\n", newexten, newcontext, newpriority); \
 	if (!strcasecmp(newcontext, context)) return -1
 
 static char *loopback_subst(char *buf, int buflen, const char *exten, const char *context, int priority, const char *data)

@@ -24,13 +24,9 @@
  * \ingroup functions
  */
 
-/*** MODULEINFO
-	<support_level>core</support_level>
- ***/
-
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 211580 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -80,6 +76,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 		</description>	
 	</function>
  ***/
+
+/* Maximum length of any variable */
+#define MAXRESULT	1024
 
 struct sortable_keys {
 	char *key;
@@ -152,86 +151,99 @@ static int sort_internal(struct ast_channel *chan, char *data, char *buffer, siz
 	return 0;
 }
 
-static int cut_internal(struct ast_channel *chan, char *data, struct ast_str **buf, ssize_t buflen)
+static int cut_internal(struct ast_channel *chan, char *data, char *buffer, size_t buflen)
 {
-	char *parse, ds[2], *var_expr;
+	char *parse;
 	size_t delim_consumed;
-	struct ast_str *var_value;
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(varname);
 		AST_APP_ARG(delimiter);
 		AST_APP_ARG(field);
 	);
 
+	*buffer = '\0';
+
 	parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
 
-	/* Check arguments */
+	/* Check and parse arguments */
 	if (args.argc < 3) {
 		return ERROR_NOARG;
-	} else if (!(var_expr = alloca(strlen(args.varname) + 4))) {
-		return ERROR_NOMEM;
-	}
+	} else {
+		char d, ds[2] = "";
+		char *tmp = alloca(strlen(args.varname) + 4);
+		char varvalue[MAXRESULT], *tmp2=varvalue;
 
-	/* Get the value of the variable named in the 1st argument */
-	snprintf(var_expr, strlen(args.varname) + 4, "${%s}", args.varname);
-	var_value = ast_str_create(16);
-	ast_str_substitute_variables(&var_value, 0, chan, var_expr);
+		if (tmp) {
+			snprintf(tmp, strlen(args.varname) + 4, "${%s}", args.varname);
+		} else {
+			return ERROR_NOMEM;
+		}
 
-	/* Copy delimiter from 2nd argument to ds[] possibly decoding backslash escapes */
-	if (ast_get_encoded_char(args.delimiter, ds, &delim_consumed)) {
-		ast_copy_string(ds, "-", sizeof(ds));
-	}
-	ds[1] = '\0';
+		if (ast_get_encoded_char(args.delimiter, ds, &delim_consumed))
+			ast_copy_string(ds, "-", sizeof(ds));
 
-	if (ast_str_strlen(var_value)) {
-		int curfieldnum = 1;
-		char *curfieldptr = ast_str_buffer(var_value);
-		int out_field_count = 0;
+		/* String form of the delimiter, for use with strsep(3) */
+		d = *ds;
 
-		while (curfieldptr != NULL && args.field != NULL) {
-			char *next_range = strsep(&(args.field), "&");
-			int start_field, stop_field;
-			char trashchar;
+		pbx_substitute_variables_helper(chan, tmp, tmp2, MAXRESULT - 1);
 
-			if (sscanf(next_range, "%30d-%30d", &start_field, &stop_field) == 2) {
-				/* range with both start and end */
-			} else if (sscanf(next_range, "-%30d", &stop_field) == 1) {
-				/* range with end only */
-				start_field = 1;
-			} else if ((sscanf(next_range, "%30d%1c", &start_field, &trashchar) == 2) && (trashchar == '-')) {
-				/* range with start only */
-				stop_field = INT_MAX;
-			} else if (sscanf(next_range, "%30d", &start_field) == 1) {
-				/* single number */
-				stop_field = start_field;
-			} else {
-				/* invalid field spec */
-				ast_free(var_value);
-				return ERROR_USAGE;
-			}
+		if (tmp2) {
+			int curfieldnum = 1, firstfield = 1;
+			while (tmp2 != NULL && args.field != NULL) {
+				char *nextgroup = strsep(&(args.field), "&");
+				int num1 = 0, num2 = MAXRESULT;
+				char trashchar;
 
-			/* Get to start, if not there already */
-			while (curfieldptr != NULL && curfieldnum < start_field) {
-				strsep(&curfieldptr, ds);
-				curfieldnum++;
-			}
+				if (sscanf(nextgroup, "%30d-%30d", &num1, &num2) == 2) {
+					/* range with both start and end */
+				} else if (sscanf(nextgroup, "-%30d", &num2) == 1) {
+					/* range with end */
+					num1 = 0;
+				} else if ((sscanf(nextgroup, "%30d%1c", &num1, &trashchar) == 2) && (trashchar == '-')) {
+					/* range with start */
+					num2 = MAXRESULT;
+				} else if (sscanf(nextgroup, "%30d", &num1) == 1) {
+					/* single number */
+					num2 = num1;
+				} else {
+					return ERROR_USAGE;
+				}
 
-			/* Most frequent problem is the expectation of reordering fields */
-			if (curfieldnum > start_field) {
-				ast_log(LOG_WARNING, "We're already past the field you wanted?\n");
-			}
+				/* Get to start, if any */
+				if (num1 > 0) {
+					while (tmp2 != (char *)NULL + 1 && curfieldnum < num1) {
+						tmp2 = strchr(tmp2, d) + 1;
+						curfieldnum++;
+					}
+				}
 
-			/* Output fields until we either run out of fields or stop_field is reached */
-			while (curfieldptr != NULL && curfieldnum <= stop_field) {
-				char *field_value = strsep(&curfieldptr, ds);
-				ast_str_append(buf, buflen, "%s%s", out_field_count++ ? ds : "", field_value);
-				curfieldnum++;
+				/* Most frequent problem is the expectation of reordering fields */
+				if ((num1 > 0) && (curfieldnum > num1))
+					ast_log(LOG_WARNING, "We're already past the field you wanted?\n");
+
+				/* Re-null tmp2 if we added 1 to NULL */
+				if (tmp2 == (char *)NULL + 1)
+					tmp2 = NULL;
+
+				/* Output fields until we either run out of fields or num2 is reached */
+				while (tmp2 != NULL && curfieldnum <= num2) {
+					char *tmp3 = strsep(&tmp2, ds);
+					int curlen = strlen(buffer);
+
+					if (firstfield) {
+						snprintf(buffer, buflen, "%s", tmp3);
+						firstfield = 0;
+					} else {
+						snprintf(buffer + curlen, buflen - curlen, "%c%s", d, tmp3);
+					}
+
+					curfieldnum++;
+				}
 			}
 		}
 	}
-	ast_free(var_value);
 	return 0;
 }
 
@@ -259,32 +271,6 @@ static int acf_sort_exec(struct ast_channel *chan, const char *cmd, char *data, 
 static int acf_cut_exec(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
 	int ret = -1;
-	struct ast_str *str = ast_str_create(16);
-
-	switch (cut_internal(chan, data, &str, len)) {
-	case ERROR_NOARG:
-		ast_log(LOG_ERROR, "Syntax: CUT(<varname>,<char-delim>,<range-spec>) - missing argument!\n");
-		break;
-	case ERROR_NOMEM:
-		ast_log(LOG_ERROR, "Out of memory\n");
-		break;
-	case ERROR_USAGE:
-		ast_log(LOG_ERROR, "Usage: CUT(<varname>,<char-delim>,<range-spec>)\n");
-		break;
-	case 0:
-		ret = 0;
-		ast_copy_string(buf, ast_str_buffer(str), len);
-		break;
-	default:
-		ast_log(LOG_ERROR, "Unknown internal error\n");
-	}
-	ast_free(str);
-	return ret;
-}
-
-static int acf_cut_exec2(struct ast_channel *chan, const char *cmd, char *data, struct ast_str **buf, ssize_t len)
-{
-	int ret = -1;
 
 	switch (cut_internal(chan, data, buf, len)) {
 	case ERROR_NOARG:
@@ -306,15 +292,14 @@ static int acf_cut_exec2(struct ast_channel *chan, const char *cmd, char *data, 
 	return ret;
 }
 
-static struct ast_custom_function acf_sort = {
+struct ast_custom_function acf_sort = {
 	.name = "SORT",
 	.read = acf_sort_exec,
 };
 
-static struct ast_custom_function acf_cut = {
+struct ast_custom_function acf_cut = {
 	.name = "CUT",
 	.read = acf_cut_exec,
-	.read2 = acf_cut_exec2,
 };
 
 static int unload_module(void)

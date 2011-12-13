@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 2007-2008, Digium, Inc.
+ * Copyright (C) 2007-2008, Dwayne M. Hubbard 
  *
  * Dwayne M. Hubbard <dhubbard@digium.com>
  *
@@ -15,9 +15,8 @@
  * the GNU General Public License Version 2. See the LICENSE file
  * at the top of the source tree.
  */
-
-/*!
- * \file
+/*! \file
+ *
  * \brief Maintain a container of uniquely-named taskprocessor threads that can be shared across modules.
  *
  * \author Dwayne Hubbard <dhubbard@digium.com>
@@ -25,7 +24,10 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306258 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 185947 $")
+
+#include <signal.h>
+#include <sys/time.h>
 
 #include "asterisk/_private.h"
 #include "asterisk/module.h"
@@ -35,13 +37,11 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306258 $")
 #include "asterisk/taskprocessor.h"
 
 
-/*!
- * \brief tps_task structure is queued to a taskprocessor
+/*! \brief tps_task structure is queued to a taskprocessor
  *
  * tps_tasks are processed in FIFO order and freed by the taskprocessing
  * thread after the task handler returns.  The callback function that is assigned
- * to the execute() function pointer is responsible for releasing datap resources if necessary.
- */
+ * to the execute() function pointer is responsible for releasing datap resources if necessary. */
 struct tps_task {
 	/*! \brief The execute() task callback function pointer */
 	int (*execute)(void *datap);
@@ -62,7 +62,7 @@ struct tps_taskprocessor_stats {
 /*! \brief A ast_taskprocessor structure is a singleton by name */
 struct ast_taskprocessor {
 	/*! \brief Friendly name of the taskprocessor */
-	const char *name;
+	char *name;
 	/*! \brief Thread poll condition */
 	ast_cond_t poll_cond;
 	/*! \brief Taskprocessor thread */
@@ -189,7 +189,7 @@ static int tps_ping_handler(void *datap)
 static char *cli_tps_ping(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	struct timeval begin, end, delta;
-	const char *name;
+	char *name;
 	struct timeval when;
 	struct timespec ts;
 	struct ast_taskprocessor *tps = NULL;
@@ -346,13 +346,13 @@ static int tps_cmp_cb(void *obj, void *arg, int flags)
 static void tps_taskprocessor_destroy(void *tps)
 {
 	struct ast_taskprocessor *t = tps;
-
+	
 	if (!tps) {
 		ast_log(LOG_ERROR, "missing taskprocessor\n");
 		return;
 	}
-	ast_debug(1, "destroying taskprocessor '%s'\n", t->name);
-	/* kill it */
+	ast_log(LOG_DEBUG, "destroying taskprocessor '%s'\n", t->name);
+	/* kill it */	
 	ast_mutex_lock(&t->taskprocessor_lock);
 	t->poll_thread_run = 0;
 	ast_cond_signal(&t->poll_cond);
@@ -366,7 +366,7 @@ static void tps_taskprocessor_destroy(void *tps)
 		ast_free(t->stats);
 		t->stats = NULL;
 	}
-	ast_free((char *) t->name);
+	ast_free(t->name);
 }
 
 /* pop the front task and return it */
@@ -404,7 +404,7 @@ const char *ast_taskprocessor_name(struct ast_taskprocessor *tps)
 /* Provide a reference to a taskprocessor.  Create the taskprocessor if necessary, but don't
  * create the taskprocessor if we were told via ast_tps_options to return a reference only 
  * if it already exists */
-struct ast_taskprocessor *ast_taskprocessor_get(const char *name, enum ast_tps_options create)
+struct ast_taskprocessor *ast_taskprocessor_get(char *name, enum ast_tps_options create)
 {
 	struct ast_taskprocessor *p, tmp_tps = {
 		.name = name,

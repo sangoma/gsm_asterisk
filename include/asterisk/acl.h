@@ -29,7 +29,6 @@ extern "C" {
 #endif
 
 #include "asterisk/network.h"
-#include "asterisk/netsock2.h"
 #include "asterisk/io.h"
 
 #define AST_SENSE_DENY                  0
@@ -46,11 +45,11 @@ extern "C" {
  * thing public and let users play with them.
  */
 struct ast_ha {
-	/* Host access rule */
-	struct ast_sockaddr addr;
-	struct ast_sockaddr netmask;
-	int sense;
-	struct ast_ha *next;
+        /* Host access rule */
+        struct in_addr netaddr;  
+        struct in_addr netmask;
+        int sense;
+        struct ast_ha *next;
 };
 
 /*!
@@ -111,11 +110,11 @@ struct ast_ha *ast_append_ha(const char *sense, const char *stuff, struct ast_ha
  * the one whose sense will be returned.
  *
  * \param ha The head of the list of host access rules to follow
- * \param addr An ast_sockaddr whose address is considered when matching rules
+ * \param sin A sockaddr_in whose address is considered when matching rules
  * \retval AST_SENSE_ALLOW The IP address passes our ACL
  * \retval AST_SENSE_DENY The IP address fails our ACL
  */
-int ast_apply_ha(const struct ast_ha *ha, const struct ast_sockaddr *addr);
+int ast_apply_ha(struct ast_ha *ha, struct sockaddr_in *sin);
 
 /*!
  * \brief Get the IP address given a hostname
@@ -125,12 +124,12 @@ int ast_apply_ha(const struct ast_ha *ha, const struct ast_sockaddr *addr);
  * of getting an entire hostent structure, you instead are given
  * only the IP address inserted into a sockaddr_in structure.
  *
- * \param[out] addr The IP address is written into sin->sin_addr
+ * \param[out] sin The IP address is written into sin->sin_addr
  * \param value The hostname to look up
  * \retval 0 Success
  * \retval -1 Failure
  */
-int ast_get_ip(struct ast_sockaddr *addr, const char *value);
+int ast_get_ip(struct sockaddr_in *sin, const char *value);
 
 /*!
  * \brief Get the IP address given a hostname and optional service
@@ -142,17 +141,14 @@ int ast_get_ip(struct ast_sockaddr *addr, const char *value);
  * an SRV lookup will be done for "_sip._udp.example.com". If service is NULL,
  * then this function acts exactly like a call to ast_get_ip.
  *
- * \param addr The IP address found.  The address family is used as an input parameter to
- * filter the returned addresses. if it is 0, both IPv4 and IPv6 addresses
- * can be returned.
- *
+ * \param[out] sin The IP address is written into sin->sin_addr
  * \param value The hostname to look up
  * \param service A specific service provided by the host. A NULL service results
  * in an A-record lookup instead of an SRV lookup
  * \retval 0 Success
  * \retval -1 Failure
  */
-int ast_get_ip_or_srv(struct ast_sockaddr *addr, const char *value, const char *service);
+int ast_get_ip_or_srv(struct sockaddr_in *sin, const char *value, const char *service);
 
 /*!
  * \brief Get our local IP address when contacting a remote host
@@ -168,7 +164,7 @@ int ast_get_ip_or_srv(struct ast_sockaddr *addr, const char *value, const char *
  * \retval -1 Failure
  * \retval 0 Success
  */
-int ast_ouraddrfor(const struct ast_sockaddr *them, struct ast_sockaddr *us);
+int ast_ouraddrfor(struct in_addr *them, struct in_addr *us);
 
 /*!
  * \brief Find an IP address associated with a specific interface
@@ -186,7 +182,7 @@ int ast_ouraddrfor(const struct ast_sockaddr *them, struct ast_sockaddr *us);
  * \retval -1 Failure. address is filled with 0s
  * \retval 0 Success
  */
-int ast_lookup_iface(char *iface, struct ast_sockaddr *address);
+int ast_lookup_iface(char *iface, struct in_addr *address);
 
 /*!
  * \brief Duplicate the contents of a list of host access rules
@@ -220,12 +216,10 @@ struct ast_ha *ast_duplicate_ha_list(struct ast_ha *original);
  * \param[out] ourip Our IP address is written here when it is found
  * \param bindaddr A hint used for finding our IP. See the steps above for
  * more details
- * \param family Only addresses of the given family will be returned. Use 0
- * or AST_SOCKADDR_UNSPEC to get addresses of all families.
  * \retval 0 Success
  * \retval -1 Failure
  */
-int ast_find_ourip(struct ast_sockaddr *ourip, const struct ast_sockaddr *bindaddr, int family);
+int ast_find_ourip(struct in_addr *ourip, struct sockaddr_in bindaddr);
 
 /*!
  * \brief Convert a string to the appropriate COS value

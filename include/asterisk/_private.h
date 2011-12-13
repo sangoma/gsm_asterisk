@@ -35,19 +35,14 @@ int astobj2_init(void);			/*!< Provided by astobj2.c */
 int ast_file_init(void);		/*!< Provided by file.c */
 int ast_features_init(void);            /*!< Provided by features.c */
 void ast_autoservice_init(void);	/*!< Provided by autoservice.c */
-int ast_data_init(void);		/*!< Provided by data.c */
 int ast_http_init(void);		/*!< Provided by http.c */
 int ast_http_reload(void);		/*!< Provided by http.c */
 int ast_tps_init(void); 		/*!< Provided by taskprocessor.c */
 int ast_timing_init(void);		/*!< Provided by timing.c */
 int ast_indications_init(void); /*!< Provided by indications.c */
 int ast_indications_reload(void);/*!< Provided by indications.c */
-void ast_stun_init(void);               /*!< Provided by stun.c */
-int ast_cel_engine_init(void);		/*!< Provided by cel.c */
-int ast_cel_engine_reload(void);	/*!< Provided by cel.c */
-int ast_ssl_init(void);                 /*!< Provided by ssl.c */
-int ast_test_init(void);            /*!< Provided by test.c */
-int ast_msg_init(void);             /*!< Provided by message.c */
+int ast_ssl_init(void);                 /*!< Porvided by ssl.c */
+int ast_test_init(void);                /*!< Provided by test.c */
 
 /*!
  * \brief Reload asterisk modules.
@@ -91,16 +86,4 @@ int ast_xmldoc_load_documentation(void);
  */
 int ast_plc_reload(void);
 
-/*!
- * \brief Init the ast_format attribute interface register container.
- */
-int ast_format_attr_init(void);
-
-/*!
- * \brief Init the Asterisk global format list after all format attribute modules have been loaded
- */
-int ast_format_list_init(void);
-
-/*! \brief initializes the rtp engine arrays */
-int ast_rtp_engine_init(void);
 #endif /* _ASTERISK__PRIVATE_H */

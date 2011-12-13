@@ -31,14 +31,11 @@
 
 /*** MODULEINFO
 	<depend>dahdi</depend>
-	<defaultenabled>no</defaultenabled>
-	<support_level>deprecated</support_level>
-	<replacement>app_confbridge</replacement>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 320236 $")
 
 #include <dahdi/user.h>
 
@@ -62,8 +59,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 #include "asterisk/dial.h"
 #include "asterisk/causes.h"
 #include "asterisk/paths.h"
-#include "asterisk/data.h"
-#include "asterisk/test.h"
 
 #include "enter.h"
 #include "leave.h"
@@ -112,20 +107,11 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 					<option name="F">
 						<para>Pass DTMF through the conference.</para>
 					</option>
-					<option name="G">
-						<argument name="x" required="true">
-							<para>The file to playback</para>
-						</argument>
-						<para>Play an intro announcement in conference.</para>
-					</option>
 					<option name="i">
 						<para>Announce user join/leave with review.</para>
 					</option>
 					<option name="I">
 						<para>Announce user join/leave without review.</para>
-					</option>
-					<option name="k">
-						<para>Close the conference if there's only one active participant left at exit.</para>
 					</option>
 					<option name="l">
 						<para>Set listen only mode (Listen only, no talking).</para>
@@ -147,13 +133,10 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 					</option>
 					<option name="p" hasparams="optional">
 						<para>Allow user to exit the conference by pressing <literal>#</literal> (default)
-						or any of the defined keys.  The key used is set to channel variable
+						or any of the defined keys. If keys contain <literal>*</literal> this will override
+						option <literal>s</literal>. The key used is set to channel variable
 						<variable>MEETME_EXIT_KEY</variable>.</para>
 						<argument name="keys" required="true" />
-						<note>
-							<para>Option <literal>s</literal> has priority for <literal>*</literal>
-							since it cannot change its activation code.</para>
-						</note>
 					</option>
 					<option name="P">
 						<para>Always prompt for the pin even if it is specified.</para>
@@ -177,13 +160,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 					<option name="T">
 						<para>Set talker detection (sent to manager interface and meetme list).</para>
 					</option>
-					<option name="v" hasparams="optional">
-						<para>Announce when a user is joining or leaving the conference.  Use the voicemail greeting as the announcement.
-						 If the i or I options are set, the application will fall back to them if no voicemail greeting can be found.</para>
-						<argument name="mailbox@[context]" required="true">
-							<para>The mailbox and voicemail context to play from.  If no context provided, assumed context is default.</para>
-						</argument>
-					</option>
 					<option name="w" hasparams="optional">
 						<para>Wait until the marked user enters the conference.</para>
 						<argument name="secs" required="true" />
@@ -195,10 +171,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 						<para>Allow user to exit the conference by entering a valid single digit
 						extension <variable>MEETME_EXIT_CONTEXT</variable> or the current context
 						if that variable is not defined.</para>
-						<note>
-							<para>Option <literal>s</literal> has priority for <literal>*</literal>
-							since it cannot change its activation code.</para>
-						</note>
 					</option>
 					<option name="1">
 						<para>Do not play message when first person enters</para>
@@ -384,7 +356,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 		</syntax>
 		<description>
 			<para>Run admin <replaceable>command</replaceable> for a specific
-			<replaceable>channel</replaceable> in any conference.</para>
+			<replaceable>channel</replaceable> in any coference.</para>
 		</description>
 	</application>
 	<application name="SLAStation" language="en_US">
@@ -448,93 +420,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 			</variablelist>
 		</description>
 	</application>
-	<function name="MEETME_INFO" language="en_US">
-		<synopsis>
-			Query a given conference of various properties.
-		</synopsis>
-		<syntax>
-			<parameter name="keyword" required="true">
-				<para>Options:</para>
-				<enumlist>
-					<enum name="lock">
-						<para>Boolean of whether the corresponding conference is locked.</para>
-					</enum>
-					<enum name="parties">
-						<para>Number of parties in a given conference</para>
-					</enum>
-					<enum name="activity">
-						<para>Duration of conference in seconds.</para>
-					</enum>
-					<enum name="dynamic">
-						<para>Boolean of whether the corresponding conference is dynamic.</para>
-					</enum>
-				</enumlist>
-			</parameter>
-			<parameter name="confno" required="true">
-				<para>Conference number to retrieve information from.</para>
-			</parameter>
-		</syntax>
-		<description />
-		<see-also>
-			<ref type="application">MeetMe</ref>
-			<ref type="application">MeetMeCount</ref>
-			<ref type="application">MeetMeAdmin</ref>
-			<ref type="application">MeetMeChannelAdmin</ref>
-		</see-also>
-	</function>
-	<manager name="MeetmeMute" language="en_US">
-		<synopsis>
-			Mute a Meetme user.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Meetme" required="true" />
-			<parameter name="Usernum" required="true" />
-		</syntax>
-		<description>
-		</description>
-	</manager>
-	<manager name="MeetmeUnmute" language="en_US">
-		<synopsis>
-			Unmute a Meetme user.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Meetme" required="true" />
-			<parameter name="Usernum" required="true" />
-		</syntax>
-		<description>
-		</description>
-	</manager>
-	<manager name="MeetmeList" language="en_US">
-		<synopsis>
-			List participants in a conference.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Conference" required="false">
-				<para>Conference number.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Lists all users in a particular MeetMe conference.
-			MeetmeList will follow as separate events, followed by a final event called
-			MeetmeListComplete.</para>
-		</description>
-	</manager>
-	<manager name="MeetmeListRooms" language="en_US">
-		<synopsis>
-			List active conferences.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-		</syntax>
-		<description>
-			<para>Lists data about all active conferences.
-				MeetmeListRooms will follow as separate events, followed by a final event called
-				MeetmeListRoomsComplete.</para>
-		</description>
-	</manager>
  ***/
 
 #define CONFIG_FILE_NAME "meetme.conf"
@@ -552,7 +437,6 @@ enum {
 	ADMINFLAG_KICKME =    (1 << 3),  /*!< User has been kicked */
 	/*! User has requested to speak */
 	ADMINFLAG_T_REQUEST = (1 << 4),
-	ADMINFLAG_HANGUP = (1 << 5),	/*!< User will be leaving the conference */
 };
 
 #define MEETME_DELAYDETECTTALK     300
@@ -636,16 +520,9 @@ enum {
 	CONFFLAG_KICK_CONTINUE = (1 << 28),
 	CONFFLAG_DURATION_STOP = (1 << 29),
 	CONFFLAG_DURATION_LIMIT = (1 << 30),
+	/*! Do not write any audio to this channel until the state is up. */
+	CONFFLAG_NO_AUDIO_UNTIL_UP = (1 << 31),
 };
-
-/* These flags are defined separately because we ran out of bits that an enum can be used to represent. 
-   If you add new flags, be sure to do it in the same way that these are. */
-/*! Do not write any audio to this channel until the state is up. */
-#define CONFFLAG_NO_AUDIO_UNTIL_UP  (1ULL << 31)
-#define CONFFLAG_INTROMSG           (1ULL << 32) /*!< If set play an intro announcement at start of conference */
-#define CONFFLAG_INTROUSER_VMREC    (1ULL << 33)
-/*! If there's only one person left in a conference when someone leaves, kill the conference */
-#define CONFFLAG_KILL_LAST_MAN_STANDING ((uint64_t)1 << 34)
 
 enum {
 	OPT_ARG_WAITMARKED = 0,
@@ -653,9 +530,7 @@ enum {
 	OPT_ARG_DURATION_STOP = 2,
 	OPT_ARG_DURATION_LIMIT = 3,
 	OPT_ARG_MOH_CLASS = 4,
-	OPT_ARG_INTROMSG = 5,
-	OPT_ARG_INTROUSER_VMREC = 6,
-	OPT_ARG_ARRAY_SIZE = 7,
+	OPT_ARG_ARRAY_SIZE = 5,
 };
 
 AST_APP_OPTIONS(meetme_opts, BEGIN_OPTIONS
@@ -669,11 +544,8 @@ AST_APP_OPTIONS(meetme_opts, BEGIN_OPTIONS
 	AST_APP_OPTION('E', CONFFLAG_EMPTYNOPIN ),
 	AST_APP_OPTION('e', CONFFLAG_EMPTY ),
 	AST_APP_OPTION('F', CONFFLAG_PASS_DTMF ),
-	AST_APP_OPTION_ARG('G', CONFFLAG_INTROMSG, OPT_ARG_INTROMSG ),
-	AST_APP_OPTION_ARG('v', CONFFLAG_INTROUSER_VMREC , OPT_ARG_INTROUSER_VMREC),
 	AST_APP_OPTION('i', CONFFLAG_INTROUSER ),
 	AST_APP_OPTION('I', CONFFLAG_INTROUSERNOREVIEW ),
-	AST_APP_OPTION('k', CONFFLAG_KILL_LAST_MAN_STANDING ),
 	AST_APP_OPTION_ARG('M', CONFFLAG_MOH, OPT_ARG_MOH_CLASS ),
 	AST_APP_OPTION('m', CONFFLAG_STARTMUTED ),
 	AST_APP_OPTION('o', CONFFLAG_OPTIMIZETALKER ),
@@ -693,12 +565,12 @@ AST_APP_OPTIONS(meetme_opts, BEGIN_OPTIONS
 	AST_APP_OPTION_ARG('L', CONFFLAG_DURATION_LIMIT, OPT_ARG_DURATION_LIMIT),
 END_OPTIONS );
 
-static const char * const app = "MeetMe";
-static const char * const app2 = "MeetMeCount";
-static const char * const app3 = "MeetMeAdmin";
-static const char * const app4 = "MeetMeChannelAdmin";
-static const char * const slastation_app = "SLAStation";
-static const char * const slatrunk_app = "SLATrunk";
+static const char *app = "MeetMe";
+static const char *app2 = "MeetMeCount";
+static const char *app3 = "MeetMeAdmin";
+static const char *app4 = "MeetMeChannelAdmin";
+static const char *slastation_app = "SLAStation";
+static const char *slatrunk_app = "SLATrunk";
 
 /* Lookup RealTime conferences based on confno and current time */
 static int rt_schedule;
@@ -707,7 +579,7 @@ static int earlyalert;
 static int endalert;
 static int extendby;
 
-/*! Log participant count to the RealTime backend */
+/* Log participant count to the RealTime backend */
 static int rt_log_members;
 
 #define MAX_CONFNUM 80
@@ -728,7 +600,6 @@ struct announce_listitem {
 	char language[MAX_LANGUAGE];
 	struct ast_channel *confchan;
 	int confusers;
-	int vmrec;
 	enum announcetypes announcetype;
 };
 
@@ -750,7 +621,6 @@ struct ast_conference {
 	enum recording_state recording:2;       /*!< recording status */
 	unsigned int isdynamic:1;               /*!< Created on the fly? */
 	unsigned int locked:1;                  /*!< Is the conference locked? */
-	unsigned int gmuted:1;                  /*!< Is the conference globally muted? (all non-admins) */
 	pthread_t recordthread;                 /*!< thread for recording */
 	ast_mutex_t recordthreadlock;           /*!< control threads trying to start recordthread */
 	pthread_attr_t attr;                    /*!< thread attribute */
@@ -789,21 +659,21 @@ struct volume {
 /*! \brief The MeetMe User object */
 struct ast_conf_user {
 	int user_no;                            /*!< User Number */
-	struct ast_flags64 userflags;           /*!< Flags as set in the conference */
+	int userflags;                          /*!< Flags as set in the conference */
 	int adminflags;                         /*!< Flags set by the Admin */
 	struct ast_channel *chan;               /*!< Connected channel */
 	int talking;                            /*!< Is user talking */
-	int dahdichannel;                       /*!< Is a DAHDI channel */
+	int dahdichannel;                         /*!< Is a DAHDI channel */
 	char usrvalue[50];                      /*!< Custom User Value */
-	char namerecloc[PATH_MAX];		/*!< Name Recorded file Location */
+	char namerecloc[PATH_MAX];				/*!< Name Recorded file Location */
 	time_t jointime;                        /*!< Time the user joined the conference */
-	time_t kicktime;                        /*!< Time the user will be kicked from the conference */
-	struct timeval start_time;              /*!< Time the user entered into the conference */
-	long timelimit;                         /*!< Time limit for the user to be in the conference L(x:y:z) */
-	long play_warning;                      /*!< Play a warning when 'y' ms are left */
-	long warning_freq;                      /*!< Repeat the warning every 'z' ms */
-	const char *warning_sound;              /*!< File to play as warning if 'y' is defined */
-	const char *end_sound;                  /*!< File to play when time is up. */
+ 	time_t kicktime;                        /*!< Time the user will be kicked from the conference */
+ 	struct timeval start_time;              /*!< Time the user entered into the conference */
+ 	long timelimit;                         /*!< Time limit for the user to be in the conference L(x:y:z) */
+ 	long play_warning;                      /*!< Play a warning when 'y' ms are left */
+ 	long warning_freq;                      /*!< Repeat the warning every 'z' ms */
+ 	const char *warning_sound;              /*!< File to play as warning if 'y' is defined */
+ 	const char *end_sound;                  /*!< File to play when time is up. */
 	struct volume talk;
 	struct volume listen;
 	AST_LIST_ENTRY(ast_conf_user) list;
@@ -984,18 +854,17 @@ static struct {
 	.thread = AST_PTHREADT_NULL,
 };
 
-/*! \brief The number of audio buffers to be allocated on pseudo channels
+/*! The number of audio buffers to be allocated on pseudo channels
  *  when in a conference */
 static int audio_buffers;
 
-/*! \brief Map 'volume' levels from -5 through +5 into decibel (dB) 
- *    settings for channel drivers.
- *
- *  \note these are not a straight linear-to-dB
+/*! Map 'volume' levels from -5 through +5 into
+ *  decibel (dB) settings for channel drivers
+ *  Note: these are not a straight linear-to-dB
  *  conversion... the numbers have been modified
- *  to give the user a better level of adjustability.
+ *  to give the user a better level of adjustability
  */
-static const char gain_map[] = {
+static char const gain_map[] = {
 	-15,
 	-13,
 	-10,
@@ -1010,10 +879,10 @@ static const char gain_map[] = {
 };
 
 
-static int admin_exec(struct ast_channel *chan, const char *data);
+static int admin_exec(struct ast_channel *chan, void *data);
 static void *recordthread(void *args);
 
-static const char *istalking(int x)
+static char *istalking(int x)
 {
 	if (x > 0)
 		return "(talking)";
@@ -1213,15 +1082,11 @@ static int user_max_cmp(void *obj, void *arg, int flags)
  * \return A pointer to the conference struct, or NULL if it wasn't found and
  *         make or dynamic were not set.
  */
-static struct ast_conference *build_conf(const char *confno, const char *pin,
-	const char *pinadmin, int make, int dynamic, int refcount,
-	const struct ast_channel *chan, struct ast_test *test)
+static struct ast_conference *build_conf(char *confno, char *pin, char *pinadmin, int make, int dynamic, int refcount, const struct ast_channel *chan)
 {
 	struct ast_conference *cnf;
 	struct dahdi_confinfo dahdic = { 0, };
 	int confno_int = 0;
-	struct ast_format_cap *cap_slin = ast_format_cap_alloc_nolock();
-	struct ast_format tmp_fmt;
 
 	AST_LIST_LOCK(&confs);
 
@@ -1230,10 +1095,9 @@ static struct ast_conference *build_conf(const char *confno, const char *pin,
 			break;
 	}
 
-	if (cnf || (!make && !dynamic) || !cap_slin)
+	if (cnf || (!make && !dynamic))
 		goto cnfout;
 
-	ast_format_cap_add(cap_slin, ast_format_set(&tmp_fmt, AST_FORMAT_SLINEAR, 0));
 	/* Make a new one */
 	if (!(cnf = ast_calloc(1, sizeof(*cnf))) ||
 		!(cnf->usercontainer = ao2_container_alloc(1, NULL, user_no_cmp))) {
@@ -1256,40 +1120,30 @@ static struct ast_conference *build_conf(const char *confno, const char *pin,
 	dahdic.confmode = DAHDI_CONF_CONFANN | DAHDI_CONF_CONFANNMON;
 	cnf->fd = open("/dev/dahdi/pseudo", O_RDWR);
 	if (cnf->fd < 0 || ioctl(cnf->fd, DAHDI_SETCONF, &dahdic)) {
-		if (test) {
-			/* if we are creating a conference for a unit test, it is not neccesary
-			 * to open a pseudo channel, so, if we fail continue creating
-			 * the conference. */
-			ast_test_status_update(test, "Unable to open DAHDI pseudo device\n");
-		} else {
-			ast_log(LOG_WARNING, "Unable to open DAHDI pseudo device\n");
-			if (cnf->fd >= 0)
-				close(cnf->fd);
-			ao2_ref(cnf->usercontainer, -1);
-			ast_mutex_destroy(&cnf->playlock);
-			ast_mutex_destroy(&cnf->listenlock);
-			ast_mutex_destroy(&cnf->recordthreadlock);
-			ast_mutex_destroy(&cnf->announcethreadlock);
-			ast_free(cnf);
-			cnf = NULL;
-			goto cnfout;
-		}
+		ast_log(LOG_WARNING, "Unable to open DAHDI pseudo device\n");
+		if (cnf->fd >= 0)
+			close(cnf->fd);
+		ao2_ref(cnf->usercontainer, -1);
+		ast_mutex_destroy(&cnf->playlock);
+		ast_mutex_destroy(&cnf->listenlock);
+		ast_mutex_destroy(&cnf->recordthreadlock);
+		ast_mutex_destroy(&cnf->announcethreadlock);
+		ast_free(cnf);
+		cnf = NULL;
+		goto cnfout;
 	}
 
 	cnf->dahdiconf = dahdic.confno;
 
 	/* Setup a new channel for playback of audio files */
-	cnf->chan = ast_request("DAHDI", cap_slin, chan, "pseudo", NULL);
+	cnf->chan = ast_request("DAHDI", AST_FORMAT_SLINEAR, "pseudo", NULL);
 	if (cnf->chan) {
-		ast_set_read_format_by_id(cnf->chan, AST_FORMAT_SLINEAR);
-		ast_set_write_format_by_id(cnf->chan, AST_FORMAT_SLINEAR);
+		ast_set_read_format(cnf->chan, AST_FORMAT_SLINEAR);
+		ast_set_write_format(cnf->chan, AST_FORMAT_SLINEAR);
 		dahdic.chan = 0;
 		dahdic.confno = cnf->dahdiconf;
 		dahdic.confmode = DAHDI_CONF_CONFANN | DAHDI_CONF_CONFANNMON;
 		if (ioctl(cnf->chan->fds[0], DAHDI_SETCONF, &dahdic)) {
-			if (test) {
-				ast_test_status_update(test, "Error setting conference on pseudo channel\n");
-			}
 			ast_log(LOG_WARNING, "Error setting conference\n");
 			if (cnf->chan)
 				ast_hangup(cnf->chan);
@@ -1318,7 +1172,6 @@ static struct ast_conference *build_conf(const char *confno, const char *pin,
 		conf_map[confno_int] = 1;
 	
 cnfout:
-	cap_slin = ast_format_cap_destroy(cap_slin);
 	if (cnf)
 		ast_atomic_fetchadd_int(&cnf->refcount, refcount);
 
@@ -1329,7 +1182,7 @@ cnfout:
 
 static char *complete_meetmecmd(const char *line, const char *word, int pos, int state)
 {
-	static const char * const cmds[] = {"concise", "lock", "unlock", "mute", "unmute", "kick", "list", NULL};
+	static char *cmds[] = {"concise", "lock", "unlock", "mute", "unmute", "kick", "list", NULL};
 
 	int len = strlen(word);
 	int which = 0;
@@ -1375,7 +1228,7 @@ static char *complete_meetmecmd(const char *line, const char *word, int pos, int
 			if (cnf) {
 				struct ao2_iterator user_iter;
 				user_iter = ao2_iterator_init(cnf->usercontainer, 0);
-
+				/* Search for the user */
 				while((usr = ao2_iterator_next(&user_iter))) {
 					snprintf(usrno, sizeof(usrno), "%d", usr->user_no);
 					if (!strncasecmp(word, usrno, len) && ++which > state) {
@@ -1509,22 +1362,22 @@ static char *meetme_show_cmd(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 			if (!concise) {
 				ast_cli(a->fd, "User #: %-2.2d %12.12s %-20.20s Channel: %s %s %s %s %s %s %02d:%02d:%02d\n",
 					user->user_no,
-					S_COR(user->chan->caller.id.number.valid, user->chan->caller.id.number.str, "<unknown>"),
-					S_COR(user->chan->caller.id.name.valid, user->chan->caller.id.name.str, "<no name>"),
+					S_OR(user->chan->cid.cid_num, "<unknown>"),
+					S_OR(user->chan->cid.cid_name, "<no name>"),
 					user->chan->name,
-					ast_test_flag64(&user->userflags, CONFFLAG_ADMIN) ? "(Admin)" : "",
-					ast_test_flag64(&user->userflags, CONFFLAG_MONITOR) ? "(Listen only)" : "",
+					user->userflags & CONFFLAG_ADMIN ? "(Admin)" : "",
+					user->userflags & CONFFLAG_MONITOR ? "(Listen only)" : "",
 					user->adminflags & ADMINFLAG_MUTED ? "(Admin Muted)" : user->adminflags & ADMINFLAG_SELFMUTED ? "(Muted)" : "",
 					user->adminflags & ADMINFLAG_T_REQUEST ? "(Request to Talk)" : "",
 					istalking(user->talking), hr, min, sec); 
 			} else {
 				ast_cli(a->fd, "%d!%s!%s!%s!%s!%s!%s!%s!%d!%02d:%02d:%02d\n",
 					user->user_no,
-					S_COR(user->chan->caller.id.number.valid, user->chan->caller.id.number.str, ""),
-					S_COR(user->chan->caller.id.name.valid, user->chan->caller.id.name.str, ""),
+					S_OR(user->chan->cid.cid_num, ""),
+					S_OR(user->chan->cid.cid_name, ""),
 					user->chan->name,
-					ast_test_flag64(&user->userflags, CONFFLAG_ADMIN) ? "1" : "",
-					ast_test_flag64(&user->userflags, CONFFLAG_MONITOR) ? "1" : "",
+					user->userflags  & CONFFLAG_ADMIN   ? "1" : "",
+					user->userflags  & CONFFLAG_MONITOR ? "1" : "",
 					user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED) ? "1" : "",
 					user->adminflags & ADMINFLAG_T_REQUEST ? "1" : "",
 					user->talking, hr, min, sec);
@@ -1836,8 +1689,7 @@ static void conf_flush(int fd, struct ast_channel *chan)
 
 }
 
-/*! \brief Remove the conference from the list and free it.
-
+/* Remove the conference from the list and free it.
    We assume that this was called while holding conflock. */
 static int conf_free(struct ast_conference *conf)
 {
@@ -1874,15 +1726,11 @@ static int conf_free(struct ast_conference *conf)
 		pthread_join(conf->announcethread, NULL);
 	
 		while ((item = AST_LIST_REMOVE_HEAD(&conf->announcelist, entry))) {
-			/* If it's a voicemail greeting file we don't want to remove it */
-			if (!item->vmrec){
-				ast_filedelete(item->namerecloc, NULL);
-			}
+			ast_filedelete(item->namerecloc, NULL);
 			ao2_ref(item, -1);
 		}
 		ast_mutex_destroy(&conf->announcelistlock);
 	}
-
 	if (conf->origframe)
 		ast_frfree(conf->origframe);
 	if (conf->lchan)
@@ -1894,11 +1742,11 @@ static int conf_free(struct ast_conference *conf)
 	if (conf->recordingfilename) {
 		ast_free(conf->recordingfilename);
 	}
-	if (conf->usercontainer) {
-		ao2_ref(conf->usercontainer, -1);
-	}
 	if (conf->recordingformat) {
 		ast_free(conf->recordingformat);
+	}
+	if (conf->usercontainer) {
+		ao2_ref(conf->usercontainer, -1);
 	}
 	ast_mutex_destroy(&conf->playlock);
 	ast_mutex_destroy(&conf->listenlock);
@@ -1999,7 +1847,7 @@ static void sla_queue_event_conf(enum sla_event_type type, struct ast_channel *c
 	sla_queue_event_full(type, trunk_ref, station, 1);
 }
 
-/*! \brief Decrement reference counts, as incremented by find_conf() */
+/* Decrement reference counts, as incremented by find_conf() */
 static int dispose_conf(struct ast_conference *conf)
 {
 	int res = 0;
@@ -2019,7 +1867,7 @@ static int dispose_conf(struct ast_conference *conf)
 	return res;
 }
 
-static int rt_extend_conf(const char *confno)
+static int rt_extend_conf(char *confno)
 {
 	char currenttime[32];
 	char endtime[32];
@@ -2083,7 +1931,7 @@ static int rt_extend_conf(const char *confno)
 
 static void conf_start_moh(struct ast_channel *chan, const char *musicclass)
 {
-	char *original_moh;
+  	char *original_moh;
 
 	ast_channel_lock(chan);
 	original_moh = ast_strdupa(chan->musicclass);
@@ -2138,7 +1986,7 @@ static void *announce_thread(void *data)
 		}
 
 		for (res = 1; !conf->announcethread_stop && (current = AST_LIST_REMOVE_HEAD(&local_list, entry)); ao2_ref(current, -1)) {
-			ast_debug(1, "About to play %s\n", current->namerecloc);
+			ast_log(LOG_DEBUG, "About to play %s\n", current->namerecloc);
 			if (!ast_fileexists(current->namerecloc, NULL, NULL))
 				continue;
 			if ((current->confchan) && (current->confusers > 1) && !ast_check_hangup(current->confchan)) {
@@ -2150,8 +1998,7 @@ static void *announce_thread(void *data)
 						ast_waitstream(current->confchan, "");
 				}
 			}
-			if (current->announcetype == CONF_HASLEFT && current->announcetype && !current->vmrec) {
-				/* only remove it if it isn't a VM recording file */
+			if (current->announcetype == CONF_HASLEFT) {
 				ast_filedelete(current->namerecloc, NULL);
 			}
 		}
@@ -2159,18 +2006,15 @@ static void *announce_thread(void *data)
 
 	/* thread marked to stop, clean up */
 	while ((current = AST_LIST_REMOVE_HEAD(&local_list, entry))) {
-		/* only delete if it's a vm rec */
-		if (!current->vmrec) {
-			ast_filedelete(current->namerecloc, NULL);
-		}
+		ast_filedelete(current->namerecloc, NULL);
 		ao2_ref(current, -1);
 	}
 	return NULL;
 }
 
-static int can_write(struct ast_channel *chan, struct ast_flags64 *confflags)
+static int can_write(struct ast_channel *chan, int confflags)
 {
-	if (!ast_test_flag64(confflags, CONFFLAG_NO_AUDIO_UNTIL_UP)) {
+	if (!(confflags & CONFFLAG_NO_AUDIO_UNTIL_UP)) {
 		return 1;
 	}
 
@@ -2179,7 +2023,7 @@ static int can_write(struct ast_channel *chan, struct ast_flags64 *confflags)
 
 static void send_talking_event(struct ast_channel *chan, struct ast_conference *conf, struct ast_conf_user *user, int talking)
 {
-	ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeTalking",
+	manager_event(EVENT_FLAG_CALL, "MeetmeTalking",
 	      "Channel: %s\r\n"
 	      "Uniqueid: %s\r\n"
 	      "Meetme: %s\r\n"
@@ -2206,51 +2050,7 @@ static void set_user_talking(struct ast_channel *chan, struct ast_conference *co
 	}
 }
 
-static int user_set_hangup_cb(void *obj, void *check_admin_arg, int flags)
-{
-	struct ast_conf_user *user = obj;
-	/* actual pointer contents of check_admin_arg is irrelevant */
-
-	if (!check_admin_arg || (check_admin_arg && !ast_test_flag64(&user->userflags, CONFFLAG_ADMIN))) {
-		user->adminflags |= ADMINFLAG_HANGUP;
-	}
-	return 0;
-}
-
-static int user_set_kickme_cb(void *obj, void *check_admin_arg, int flags)
-{
-	struct ast_conf_user *user = obj;
-	/* actual pointer contents of check_admin_arg is irrelevant */
-
-	if (!check_admin_arg || (check_admin_arg && !ast_test_flag64(&user->userflags, CONFFLAG_ADMIN))) {
-		user->adminflags |= ADMINFLAG_KICKME;
-	}
-	return 0;
-}
-
-static int user_set_unmuted_cb(void *obj, void *check_admin_arg, int flags)
-{
-	struct ast_conf_user *user = obj;
-	/* actual pointer contents of check_admin_arg is irrelevant */
-
-	if (!check_admin_arg || !ast_test_flag64(&user->userflags, CONFFLAG_ADMIN)) {
-		user->adminflags &= ~(ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED | ADMINFLAG_T_REQUEST);
-	}
-	return 0;
-}
-
-static int user_set_muted_cb(void *obj, void *check_admin_arg, int flags)
-{
-	struct ast_conf_user *user = obj;
-	/* actual pointer contents of check_admin_arg is irrelevant */
-
-	if (!check_admin_arg || !ast_test_flag64(&user->userflags, CONFFLAG_ADMIN)) {
-		user->adminflags |= ADMINFLAG_MUTED;
-	}
-	return 0;
-}
-
-static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struct ast_flags64 *confflags, char *optargs[])
+static int conf_run(struct ast_channel *chan, struct ast_conference *conf, int confflags, char *optargs[])
 {
 	struct ast_conf_user *user = NULL;
 	int fd;
@@ -2271,17 +2071,17 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	int ret = -1;
 	int x;
 	int menu_active = 0;
-	int menu8_active = 0;
 	int talkreq_manager = 0;
 	int using_pseudo = 0;
 	int duration = 20;
+	int hr, min, sec;
 	int sent_event = 0;
 	int checked = 0;
 	int announcement_played = 0;
 	struct timeval now;
 	struct ast_dsp *dsp = NULL;
 	struct ast_app *agi_app;
-	char *agifile, *mod_speex;
+	char *agifile;
 	const char *agifiledefault = "conf-background.agi", *tmpvar;
 	char meetmesecs[30] = "";
 	char exitcontext[AST_MAX_CONTEXT] = "";
@@ -2293,72 +2093,64 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	char __buf[CONF_SIZE + AST_FRIENDLY_OFFSET];
 	char *buf = __buf + AST_FRIENDLY_OFFSET;
 	char *exitkeys = NULL;
-	unsigned int calldurationlimit = 0;
-	long timelimit = 0;
-	long play_warning = 0;
-	long warning_freq = 0;
-	const char *warning_sound = NULL;
-	const char *end_sound = NULL;
-	char *parse;
-	long time_left_ms = 0;
-	struct timeval nexteventts = { 0, };
-	int to;
+ 	unsigned int calldurationlimit = 0;
+ 	long timelimit = 0;
+ 	long play_warning = 0;
+ 	long warning_freq = 0;
+ 	const char *warning_sound = NULL;
+ 	const char *end_sound = NULL;
+ 	char *parse;	
+ 	long time_left_ms = 0;
+ 	struct timeval nexteventts = { 0, };
+ 	int to;
 	int setusercount = 0;
 	int confsilence = 0, totalsilence = 0;
-	char *mailbox, *context;
-	struct ast_format_cap *cap_slin = ast_format_cap_alloc_nolock();
-	struct ast_format tmpfmt;
-
-	if (!cap_slin) {
-		goto conf_run_cleanup;
-	}
-	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
 
 	if (!(user = ao2_alloc(sizeof(*user), NULL))) {
-		goto conf_run_cleanup;
+		return ret;
 	}
 
 	/* Possible timeout waiting for marked user */
-	if (ast_test_flag64(confflags, CONFFLAG_WAITMARKED) &&
+	if ((confflags & CONFFLAG_WAITMARKED) &&
 		!ast_strlen_zero(optargs[OPT_ARG_WAITMARKED]) &&
 		(sscanf(optargs[OPT_ARG_WAITMARKED], "%30d", &opt_waitmarked_timeout) == 1) &&
 		(opt_waitmarked_timeout > 0)) {
 		timeout = time(NULL) + opt_waitmarked_timeout;
 	}
-
-	if (ast_test_flag64(confflags, CONFFLAG_DURATION_STOP) && !ast_strlen_zero(optargs[OPT_ARG_DURATION_STOP])) {
-		calldurationlimit = atoi(optargs[OPT_ARG_DURATION_STOP]);
-		ast_verb(3, "Setting call duration limit to %d seconds.\n", calldurationlimit);
-	}
-
-	if (ast_test_flag64(confflags, CONFFLAG_DURATION_LIMIT) && !ast_strlen_zero(optargs[OPT_ARG_DURATION_LIMIT])) {
-		char *limit_str, *warning_str, *warnfreq_str;
+	 	
+ 	if ((confflags & CONFFLAG_DURATION_STOP) && !ast_strlen_zero(optargs[OPT_ARG_DURATION_STOP])) {
+ 		calldurationlimit = atoi(optargs[OPT_ARG_DURATION_STOP]);
+ 		ast_verb(3, "Setting call duration limit to %d seconds.\n", calldurationlimit);
+ 	}
+ 	
+ 	if ((confflags & CONFFLAG_DURATION_LIMIT) && !ast_strlen_zero(optargs[OPT_ARG_DURATION_LIMIT])) {
+ 		char *limit_str, *warning_str, *warnfreq_str;
 		const char *var;
-
-		parse = optargs[OPT_ARG_DURATION_LIMIT];
-		limit_str = strsep(&parse, ":");
-		warning_str = strsep(&parse, ":");
-		warnfreq_str = parse;
-
-		timelimit = atol(limit_str);
-		if (warning_str)
-			play_warning = atol(warning_str);
-		if (warnfreq_str)
-			warning_freq = atol(warnfreq_str);
-
-		if (!timelimit) {
-			timelimit = play_warning = warning_freq = 0;
-			warning_sound = NULL;
-		} else if (play_warning > timelimit) {
-			if (!warning_freq) {
-				play_warning = 0;
-			} else {
-				while (play_warning > timelimit)
-					play_warning -= warning_freq;
-				if (play_warning < 1)
-					play_warning = warning_freq = 0;
-			}
-		}
+ 
+ 		parse = optargs[OPT_ARG_DURATION_LIMIT];
+ 		limit_str = strsep(&parse, ":");
+ 		warning_str = strsep(&parse, ":");
+ 		warnfreq_str = parse;
+ 
+ 		timelimit = atol(limit_str);
+ 		if (warning_str)
+ 			play_warning = atol(warning_str);
+ 		if (warnfreq_str)
+ 			warning_freq = atol(warnfreq_str);
+ 
+ 		if (!timelimit) {
+ 			timelimit = play_warning = warning_freq = 0;
+ 			warning_sound = NULL;
+ 		} else if (play_warning > timelimit) {			
+ 			if (!warning_freq) {
+ 				play_warning = 0;
+ 			} else {
+ 				while (play_warning > timelimit)
+ 					play_warning -= warning_freq;
+ 				if (play_warning < 1)
+ 					play_warning = warning_freq = 0;
+ 			}
+ 		}
 
 		ast_verb(3, "Setting conference duration limit to: %ldms.\n", timelimit);
 		if (play_warning) {
@@ -2374,41 +2166,41 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		}
 		ast_channel_unlock(chan);
 
-		warning_sound = var ? var : "timeleft";
-
+ 		warning_sound = var ? var : "timeleft";
+ 		
 		ast_channel_lock(chan);
 		if ((var = pbx_builtin_getvar_helper(chan, "CONF_LIMIT_TIMEOUT_FILE"))) {
 			var = ast_strdupa(var);
 		}
 		ast_channel_unlock(chan);
-
+ 		
 		end_sound = var ? var : NULL;
-
-		/* undo effect of S(x) in case they are both used */
-		calldurationlimit = 0;
-		/* more efficient do it like S(x) does since no advanced opts */
-		if (!play_warning && !end_sound && timelimit) {
-			calldurationlimit = timelimit / 1000;
-			timelimit = play_warning = warning_freq = 0;
-		} else {
-			ast_debug(2, "Limit Data for this call:\n");
+ 			
+ 		/* undo effect of S(x) in case they are both used */
+ 		calldurationlimit = 0;
+ 		/* more efficient do it like S(x) does since no advanced opts */
+ 		if (!play_warning && !end_sound && timelimit) { 
+ 			calldurationlimit = timelimit / 1000;
+ 			timelimit = play_warning = warning_freq = 0;
+ 		} else {
+ 			ast_debug(2, "Limit Data for this call:\n");
 			ast_debug(2, "- timelimit     = %ld\n", timelimit);
-			ast_debug(2, "- play_warning  = %ld\n", play_warning);
-			ast_debug(2, "- warning_freq  = %ld\n", warning_freq);
-			ast_debug(2, "- warning_sound = %s\n", warning_sound ? warning_sound : "UNDEF");
-			ast_debug(2, "- end_sound     = %s\n", end_sound ? end_sound : "UNDEF");
-		}
-	}
+ 			ast_debug(2, "- play_warning  = %ld\n", play_warning);
+ 			ast_debug(2, "- warning_freq  = %ld\n", warning_freq);
+ 			ast_debug(2, "- warning_sound = %s\n", warning_sound ? warning_sound : "UNDEF");
+ 			ast_debug(2, "- end_sound     = %s\n", end_sound ? end_sound : "UNDEF");
+ 		}
+ 	}
 
 	/* Get exit keys */
-	if (ast_test_flag64(confflags, CONFFLAG_KEYEXIT)) {
+	if ((confflags & CONFFLAG_KEYEXIT)) {
 		if (!ast_strlen_zero(optargs[OPT_ARG_EXITKEYS]))
 			exitkeys = ast_strdupa(optargs[OPT_ARG_EXITKEYS]);
 		else
 			exitkeys = ast_strdupa("#"); /* Default */
 	}
 	
-	if (ast_test_flag64(confflags, CONFFLAG_RECORDCONF)) {
+	if (confflags & CONFFLAG_RECORDCONF) {
 		if (!conf->recordingfilename) {
 			const char *var;
 			ast_channel_lock(chan);
@@ -2432,10 +2224,9 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	}
 
 	ast_mutex_lock(&conf->recordthreadlock);
-	if ((conf->recordthread == AST_PTHREADT_NULL) && ast_test_flag64(confflags, CONFFLAG_RECORDCONF) &&
-		((conf->lchan = ast_request("DAHDI", cap_slin, chan, "pseudo", NULL)))) {
-		ast_set_read_format_by_id(conf->lchan, AST_FORMAT_SLINEAR);
-		ast_set_write_format_by_id(conf->lchan, AST_FORMAT_SLINEAR);
+	if ((conf->recordthread == AST_PTHREADT_NULL) && (confflags & CONFFLAG_RECORDCONF) && ((conf->lchan = ast_request("DAHDI", AST_FORMAT_SLINEAR, "pseudo", NULL)))) {
+		ast_set_read_format(conf->lchan, AST_FORMAT_SLINEAR);
+		ast_set_write_format(conf->lchan, AST_FORMAT_SLINEAR);
 		dahdic.chan = 0;
 		dahdic.confno = conf->dahdiconf;
 		dahdic.confmode = DAHDI_CONF_CONFANN | DAHDI_CONF_CONFANNMON;
@@ -2450,8 +2241,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	ast_mutex_unlock(&conf->recordthreadlock);
 
 	ast_mutex_lock(&conf->announcethreadlock);
-	if ((conf->announcethread == AST_PTHREADT_NULL) && !ast_test_flag64(confflags, CONFFLAG_QUIET) &&
-		ast_test_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW | CONFFLAG_INTROUSER_VMREC)) {
+	if ((conf->announcethread == AST_PTHREADT_NULL) && !(confflags & CONFFLAG_QUIET) && ((confflags & CONFFLAG_INTROUSER) || (confflags & CONFFLAG_INTROUSERNOREVIEW))) {
 		ast_mutex_init(&conf->announcelistlock);
 		AST_LIST_HEAD_INIT_NOLOCK(&conf->announcelist);
 		ast_pthread_create_background(&conf->announcethread, NULL, announce_thread, conf);
@@ -2480,7 +2270,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		nexteventts = ast_tvsub(nexteventts, ast_samp2tv(user->play_warning, 1000));
 	}
 
-	if (conf->locked && (!ast_test_flag64(confflags, CONFFLAG_ADMIN))) {
+	if (conf->locked && (!(confflags & CONFFLAG_ADMIN))) {
 		/* Sorry, but this conference is locked! */	
 		if (!ast_streamfile(chan, "conf-locked", chan->language))
 			ast_waitstream(chan, "");
@@ -2506,14 +2296,13 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	ao2_unlock(conf->usercontainer);
 
 	user->chan = chan;
-	user->userflags = *confflags;
-	user->adminflags = ast_test_flag64(confflags, CONFFLAG_STARTMUTED) ? ADMINFLAG_SELFMUTED : 0;
-	user->adminflags |= (conf->gmuted) ? ADMINFLAG_MUTED : 0;
+	user->userflags = confflags;
+	user->adminflags = (confflags & CONFFLAG_STARTMUTED) ? ADMINFLAG_SELFMUTED : 0;
 	user->talking = -1;
 
 	ast_mutex_unlock(&conf->playlock);
 
-	if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && (ast_test_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW | CONFFLAG_INTROUSER_VMREC))) {
+	if (!(confflags & CONFFLAG_QUIET) && ((confflags & CONFFLAG_INTROUSER) || (confflags & CONFFLAG_INTROUSERNOREVIEW))) {
 		char destdir[PATH_MAX];
 
 		snprintf(destdir, sizeof(destdir), "%s/meetme", ast_config_AST_SPOOL_DIR);
@@ -2523,49 +2312,20 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			goto outrun;
 		}
 
-		if (ast_test_flag64(confflags, CONFFLAG_INTROUSER_VMREC)){
-			context = ast_strdupa(optargs[OPT_ARG_INTROUSER_VMREC]);
-			mailbox = strsep(&context, "@");
-
-			if (ast_strlen_zero(mailbox)) {
-				/* invalid input, clear the v flag*/
-				ast_clear_flag64(confflags,CONFFLAG_INTROUSER_VMREC);
-				ast_log(LOG_WARNING,"You must specify a mailbox in the v() option\n");
-			} else {
-				if (ast_strlen_zero(context)) {
-				    context = "default";
-				}
-				/* if there is no mailbox we don't need to do this logic  */
-				snprintf(user->namerecloc, sizeof(user->namerecloc),
-					 "%s/voicemail/%s/%s/greet",ast_config_AST_SPOOL_DIR,context,mailbox);
-
-				/* if the greeting doesn't exist then use the temp file method instead, clear flag v */
-				if (!ast_fileexists(user->namerecloc, NULL, NULL)){
-					snprintf(user->namerecloc, sizeof(user->namerecloc),
-						 "%s/meetme-username-%s-%d", destdir,
-						 conf->confno, user->user_no);
-					ast_clear_flag64(confflags, CONFFLAG_INTROUSER_VMREC);
-				}
-			}
-		} else {
-			snprintf(user->namerecloc, sizeof(user->namerecloc),
-				 "%s/meetme-username-%s-%d", destdir,
-				 conf->confno, user->user_no);
-		}
-
-		res = 0;
-		if (ast_test_flag64(confflags, CONFFLAG_INTROUSERNOREVIEW) && !ast_fileexists(user->namerecloc, NULL, NULL))
-			res = ast_play_and_record(chan, "vm-rec-name", user->namerecloc, 10, "sln", &duration, NULL, ast_dsp_get_threshold_from_settings(THRESHOLD_SILENCE), 0, NULL);
-		else if (ast_test_flag64(confflags, CONFFLAG_INTROUSER) && !ast_fileexists(user->namerecloc, NULL, NULL))
+		snprintf(user->namerecloc, sizeof(user->namerecloc),
+			 "%s/meetme-username-%s-%d", destdir,
+			 conf->confno, user->user_no);
+		if (confflags & CONFFLAG_INTROUSERNOREVIEW)
+			res = ast_play_and_record(chan, "vm-rec-name", user->namerecloc, 10, "sln", &duration, ast_dsp_get_threshold_from_settings(THRESHOLD_SILENCE), 0, NULL);
+		else
 			res = ast_record_review(chan, "vm-rec-name", user->namerecloc, 10, "sln", &duration, NULL);
 		if (res == -1)
 			goto outrun;
-
 	}
 
 	ast_mutex_lock(&conf->playlock);
 
-	if (ast_test_flag64(confflags, CONFFLAG_MARKEDUSER))
+	if (confflags & CONFFLAG_MARKEDUSER)
 		conf->markedusers++;
 	conf->users++;
 	if (rt_log_members) {
@@ -2588,7 +2348,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	/* return the unique ID of the conference */
 	pbx_builtin_setvar_helper(chan, "MEETMEUNIQUEID", conf->uniqueid);
 
-	if (ast_test_flag64(confflags, CONFFLAG_EXIT_CONTEXT)) {
+	if (confflags & CONFFLAG_EXIT_CONTEXT) {
 		ast_channel_lock(chan);
 		if ((tmpvar = pbx_builtin_getvar_helper(chan, "MEETME_EXIT_CONTEXT"))) {
 			ast_copy_string(exitcontext, tmpvar, sizeof(exitcontext));
@@ -2600,25 +2360,16 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		ast_channel_unlock(chan);
 	}
 
-	/* Play an arbitrary intro message */
-	if (ast_test_flag64(confflags, CONFFLAG_INTROMSG) &&
-			!ast_strlen_zero(optargs[OPT_ARG_INTROMSG])) {
-		if (!ast_streamfile(chan, optargs[OPT_ARG_INTROMSG], chan->language)) {
-			ast_waitstream(chan, "");
-		}
-	}
-
-	if (!ast_test_flag64(confflags, (CONFFLAG_QUIET | CONFFLAG_NOONLYPERSON))) {
-		if (conf->users == 1 && !ast_test_flag64(confflags, CONFFLAG_WAITMARKED))
+	if (!(confflags & (CONFFLAG_QUIET | CONFFLAG_NOONLYPERSON))) {
+		if (conf->users == 1 && !(confflags & CONFFLAG_WAITMARKED))
 			if (!ast_streamfile(chan, "conf-onlyperson", chan->language))
 				ast_waitstream(chan, "");
-		if (ast_test_flag64(confflags, CONFFLAG_WAITMARKED) && conf->markedusers == 0)
+		if ((confflags & CONFFLAG_WAITMARKED) && conf->markedusers == 0)
 			if (!ast_streamfile(chan, "conf-waitforleader", chan->language))
 				ast_waitstream(chan, "");
 	}
 
-	if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && ast_test_flag64(confflags, CONFFLAG_ANNOUNCEUSERCOUNT) &&
-		conf->users > 1) {
+	if (!(confflags & CONFFLAG_QUIET) && (confflags & CONFFLAG_ANNOUNCEUSERCOUNT) && conf->users > 1) {
 		int keepplaying = 1;
 
 		if (conf->users == 2) { 
@@ -2657,25 +2408,19 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		}
 	}
 
-	if (!ast_test_flag64(confflags, CONFFLAG_NO_AUDIO_UNTIL_UP)) {
+	if (!(confflags & CONFFLAG_NO_AUDIO_UNTIL_UP)) {
 		/* We're leaving this alone until the state gets changed to up */
 		ast_indicate(chan, -1);
 	}
 
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to write linear mode\n", chan->name);
 		goto outrun;
 	}
 
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
+	if (ast_set_read_format(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to read linear mode\n", chan->name);
 		goto outrun;
-	}
-
-	/* Reduce background noise from each participant */
-	if ((mod_speex = ast_module_helper("", "codec_speex", 0, 0, 0, 0))) {
-		ast_free(mod_speex);
-		ast_func_write(chan, "DENOISE(rx)", "on");
 	}
 
 	retrydahdi = (strcasecmp(chan->tech->type, "DAHDI") || (chan->audiohooks || chan->monitor) ? 1 : 0);
@@ -2717,7 +2462,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	memset(&dahdic, 0, sizeof(dahdic));
 	memset(&dahdic_empty, 0, sizeof(dahdic_empty));
 	/* Check to see if we're in a conference... */
-	dahdic.chan = 0;
+	dahdic.chan = 0;	
 	if (ioctl(fd, DAHDI_GETCONF, &dahdic)) {
 		ast_log(LOG_WARNING, "Error getting conference\n");
 		close(fd);
@@ -2733,11 +2478,10 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	}
 	memset(&dahdic, 0, sizeof(dahdic));
 	/* Add us to the conference */
-	dahdic.chan = 0;
+	dahdic.chan = 0;	
 	dahdic.confno = conf->dahdiconf;
 
-	if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && (ast_test_flag64(confflags, CONFFLAG_INTROUSER) ||
-			ast_test_flag64(confflags, CONFFLAG_INTROUSERNOREVIEW) || ast_test_flag64(confflags, CONFFLAG_INTROUSER_VMREC)) && conf->users > 1) {
+	if (!(confflags & CONFFLAG_QUIET) && ((confflags & CONFFLAG_INTROUSER) || (confflags & CONFFLAG_INTROUSERNOREVIEW)) && conf->users > 1) {
 		struct announce_listitem *item;
 		if (!(item = ao2_alloc(sizeof(*item), NULL)))
 			goto outrun;
@@ -2745,9 +2489,6 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		ast_copy_string(item->language, chan->language, sizeof(item->language));
 		item->confchan = conf->chan;
 		item->confusers = conf->users;
-		if (ast_test_flag64(confflags, CONFFLAG_INTROUSER_VMREC)){
-			item->vmrec = 1;
-		}
 		item->announcetype = CONF_HASJOIN;
 		ast_mutex_lock(&conf->announcelistlock);
 		ao2_ref(item, +1); /* add one more so we can determine when announce_thread is done playing it */
@@ -2761,13 +2502,13 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		ao2_ref(item, -1);
 	}
 
-	if (ast_test_flag64(confflags, CONFFLAG_WAITMARKED) && !conf->markedusers)
+	if (confflags & CONFFLAG_WAITMARKED && !conf->markedusers)
 		dahdic.confmode = DAHDI_CONF_CONF;
-	else if (ast_test_flag64(confflags, CONFFLAG_MONITOR))
+	else if (confflags & CONFFLAG_MONITOR)
 		dahdic.confmode = DAHDI_CONF_CONFMON | DAHDI_CONF_LISTENER;
-	else if (ast_test_flag64(confflags, CONFFLAG_TALKER))
+	else if (confflags & CONFFLAG_TALKER)
 		dahdic.confmode = DAHDI_CONF_CONF | DAHDI_CONF_TALKER;
-	else
+	else 
 		dahdic.confmode = DAHDI_CONF_CONF | DAHDI_CONF_TALKER | DAHDI_CONF_LISTENER;
 
 	if (ioctl(fd, DAHDI_SETCONF, &dahdic)) {
@@ -2778,33 +2519,26 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 	ast_debug(1, "Placed channel %s in DAHDI conf %d\n", chan->name, conf->dahdiconf);
 
 	if (!sent_event) {
-		ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeJoin",
-			"Channel: %s\r\n"
-			"Uniqueid: %s\r\n"
-			"Meetme: %s\r\n"
-			"Usernum: %d\r\n"
-			"CallerIDnum: %s\r\n"
-			"CallerIDname: %s\r\n"
-			"ConnectedLineNum: %s\r\n"
-			"ConnectedLineName: %s\r\n",
-			chan->name, chan->uniqueid, conf->confno,
-			user->user_no,
-			S_COR(user->chan->caller.id.number.valid, user->chan->caller.id.number.str, "<unknown>"),
-			S_COR(user->chan->caller.id.name.valid, user->chan->caller.id.name.str, "<unknown>"),
-			S_COR(user->chan->connected.id.number.valid, user->chan->connected.id.number.str, "<unknown>"),
-			S_COR(user->chan->connected.id.name.valid, user->chan->connected.id.name.str, "<unknown>")
-			);
+		manager_event(EVENT_FLAG_CALL, "MeetmeJoin", 
+			        "Channel: %s\r\n"
+			        "Uniqueid: %s\r\n"
+				"Meetme: %s\r\n"
+				"Usernum: %d\r\n"
+				"CallerIDnum: %s\r\n"
+			      	"CallerIDname: %s\r\n",
+			      	chan->name, chan->uniqueid, conf->confno, 
+				user->user_no,
+				S_OR(user->chan->cid.cid_num, "<unknown>"),
+				S_OR(user->chan->cid.cid_name, "<unknown>")
+				);
 		sent_event = 1;
 	}
 
-	if (!firstpass && !ast_test_flag64(confflags, CONFFLAG_MONITOR) &&
-		!ast_test_flag64(confflags, CONFFLAG_ADMIN)) {
+	if (!firstpass && !(confflags & CONFFLAG_MONITOR) && !(confflags & CONFFLAG_ADMIN)) {
 		firstpass = 1;
-		if (!ast_test_flag64(confflags, CONFFLAG_QUIET))
-			if (!ast_test_flag64(confflags, CONFFLAG_WAITMARKED) || (ast_test_flag64(confflags, CONFFLAG_MARKEDUSER) &&
-				(conf->markedusers >= 1))) {
+		if (!(confflags & CONFFLAG_QUIET))
+			if (!(confflags & CONFFLAG_WAITMARKED) || ((confflags & CONFFLAG_MARKEDUSER) && (conf->markedusers >= 1)))
 				conf_play(chan, conf, ENTER);
-			}
 	}
 
 	conf_flush(fd, chan);
@@ -2817,7 +2551,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 		res = -1;
 	}
 
-	if (ast_test_flag64(confflags, CONFFLAG_AGI)) {
+	if (confflags & CONFFLAG_AGI) {
 		/* Get name of AGI file to run from $(MEETME_AGI_BACKGROUND)
 		   or use default filename of conf-background.agi */
 
@@ -2848,7 +2582,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			ast_channel_setoption(chan, AST_OPTION_TONE_VERIFY, &x, sizeof(char), 0);
 		}
 	} else {
-		if (user->dahdichannel && ast_test_flag64(confflags, CONFFLAG_STARMENU)) {
+		if (user->dahdichannel && (confflags & CONFFLAG_STARMENU)) {
 			/*  Set CONFMUTE mode on DAHDI channel to mute DTMF tones when the menu is enabled */
 			x = 1;
 			ast_channel_setoption(chan, AST_OPTION_TONE_VERIFY, &x, sizeof(char), 0);
@@ -2924,7 +2658,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			}
 
  			if (user->kicktime && (user->kicktime <= now.tv_sec)) {
-				if (ast_test_flag64(confflags, CONFFLAG_KICK_CONTINUE)) {
+				if (confflags & CONFFLAG_KICK_CONTINUE) {
 					ret = 0;
 				} else {
 					ret = -1;
@@ -2950,7 +2684,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
  						res = ast_streamfile(chan, user->end_sound, chan->language);
  						res = ast_waitstream(chan, "");
  					}
-					if (ast_test_flag64(confflags, CONFFLAG_KICK_CONTINUE)) {
+					if (confflags & CONFFLAG_KICK_CONTINUE) {
 						ret = 0;
 					} else {
 						ret = -1;
@@ -3004,7 +2738,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 
 			now = ast_tvnow();
 			if (timeout && now.tv_sec >= timeout) {
-				if (ast_test_flag64(confflags, CONFFLAG_KICK_CONTINUE)) {
+				if (confflags & CONFFLAG_KICK_CONTINUE) {
 					ret = 0;
 				} else {
 					ret = -1;
@@ -3022,9 +2756,9 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			menu_was_active = menu_active;
 
 			currentmarked = conf->markedusers;
-			if (!ast_test_flag64(confflags, CONFFLAG_QUIET) &&
-			    ast_test_flag64(confflags, CONFFLAG_MARKEDUSER) &&
-			    ast_test_flag64(confflags, CONFFLAG_WAITMARKED) &&
+			if (!(confflags & CONFFLAG_QUIET) &&
+			    (confflags & CONFFLAG_MARKEDUSER) &&
+			    (confflags & CONFFLAG_WAITMARKED) &&
 			    lastmarked == 0) {
 				if (currentmarked == 1 && conf->users > 1) {
 					ast_say_number(chan, conf->users - 1, AST_DIGIT_ANY, chan->language, (char *) NULL);
@@ -3038,7 +2772,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 						}
 					}
 				}
-				if (conf->users == 1 && !ast_test_flag64(confflags, CONFFLAG_MARKEDUSER)) {
+				if (conf->users == 1 && ! (confflags & CONFFLAG_MARKEDUSER)) {
 					if (!ast_streamfile(chan, "conf-onlyperson", chan->language)) {
 						ast_waitstream(chan, "");
 					}
@@ -3046,18 +2780,18 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			}
 
 			/* Update the struct with the actual confflags */
-			user->userflags = *confflags;
+			user->userflags = confflags;
 
-			if (ast_test_flag64(confflags, CONFFLAG_WAITMARKED)) {
+			if (confflags & CONFFLAG_WAITMARKED) {
 				if (currentmarked == 0) {
 					if (lastmarked != 0) {
-						if (!ast_test_flag64(confflags, CONFFLAG_QUIET)) {
+						if (!(confflags & CONFFLAG_QUIET)) {
 							if (!ast_streamfile(chan, "conf-leaderhasleft", chan->language)) {
 								ast_waitstream(chan, "");
 							}
 						}
-						if (ast_test_flag64(confflags, CONFFLAG_MARKEDEXIT)) {
-							if (ast_test_flag64(confflags, CONFFLAG_KICK_CONTINUE)) {
+						if (confflags & CONFFLAG_MARKEDEXIT) {
+							if (confflags & CONFFLAG_KICK_CONTINUE) {
 								ret = 0;
 							}
 							break;
@@ -3070,16 +2804,16 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 							}
 						}
 					}
-					if (!musiconhold && (ast_test_flag64(confflags, CONFFLAG_MOH))) {
+					if (!musiconhold && (confflags & CONFFLAG_MOH)) {
 						conf_start_moh(chan, optargs[OPT_ARG_MOH_CLASS]);
 						musiconhold = 1;
 					}
 				} else if (currentmarked >= 1 && lastmarked == 0) {
 					/* Marked user entered, so cancel timeout */
 					timeout = 0;
-					if (ast_test_flag64(confflags, CONFFLAG_MONITOR)) {
+					if (confflags & CONFFLAG_MONITOR) {
 						dahdic.confmode = DAHDI_CONF_CONFMON | DAHDI_CONF_LISTENER;
-					} else if (ast_test_flag64(confflags, CONFFLAG_TALKER)) {
+					} else if (confflags & CONFFLAG_TALKER) {
 						dahdic.confmode = DAHDI_CONF_CONF | DAHDI_CONF_TALKER;
 					} else {
 						dahdic.confmode = DAHDI_CONF_CONF | DAHDI_CONF_TALKER | DAHDI_CONF_LISTENER;
@@ -3089,12 +2823,11 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 						close(fd);
 						goto outrun;
 					}
-					if (musiconhold && (ast_test_flag64(confflags, CONFFLAG_MOH))) {
+					if (musiconhold && (confflags & CONFFLAG_MOH)) {
 						ast_moh_stop(chan);
 						musiconhold = 0;
 					}
-					if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && 
-						!ast_test_flag64(confflags, CONFFLAG_MARKEDUSER)) {
+					if (!(confflags & CONFFLAG_QUIET) && !(confflags & CONFFLAG_MARKEDUSER)) {
 						if (!ast_streamfile(chan, "conf-placeintoconf", chan->language)) {
 							ast_waitstream(chan, "");
 						}
@@ -3104,7 +2837,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			}
 
 			/* trying to add moh for single person conf */
-			if (ast_test_flag64(confflags, CONFFLAG_MOH) && !ast_test_flag64(confflags, CONFFLAG_WAITMARKED)) {
+			if ((confflags & CONFFLAG_MOH) && !(confflags & CONFFLAG_WAITMARKED)) {
 				if (conf->users == 1) {
 					if (!musiconhold) {
 						conf_start_moh(chan, optargs[OPT_ARG_MOH_CLASS]);
@@ -3119,8 +2852,8 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			}
 			
 			/* Leave if the last marked user left */
-			if (currentmarked == 0 && lastmarked != 0 && ast_test_flag64(confflags, CONFFLAG_MARKEDEXIT)) {
-				if (ast_test_flag64(confflags, CONFFLAG_KICK_CONTINUE)) {
+			if (currentmarked == 0 && lastmarked != 0 && (confflags & CONFFLAG_MARKEDEXIT)) {
+				if (confflags & CONFFLAG_KICK_CONTINUE) {
 					ret = 0;
 				} else {
 					ret = -1;
@@ -3140,11 +2873,11 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 				}
 
 				/* Indicate user is not talking anymore - change him to unmonitored state */
-				if (ast_test_flag64(confflags,  (CONFFLAG_MONITORTALKER | CONFFLAG_OPTIMIZETALKER))) {
-					set_user_talking(chan, conf, user, -1, ast_test_flag64(confflags, CONFFLAG_MONITORTALKER));
+				if ((confflags & (CONFFLAG_MONITORTALKER | CONFFLAG_OPTIMIZETALKER))) {
+					set_user_talking(chan, conf, user, -1, confflags & CONFFLAG_MONITORTALKER);
 				}
 
-				ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeMute",
+				manager_event(EVENT_FLAG_CALL, "MeetmeMute", 
 						"Channel: %s\r\n"
 						"Uniqueid: %s\r\n"
 						"Meetme: %s\r\n"
@@ -3154,7 +2887,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			}
 
 			/* If I should be un-muted but am not talker, un-mute me */
-			if (!(user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED)) && !ast_test_flag64(confflags, CONFFLAG_MONITOR) && !(dahdic.confmode & DAHDI_CONF_TALKER)) {
+			if (!(user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED)) && !(confflags & CONFFLAG_MONITOR) && !(dahdic.confmode & DAHDI_CONF_TALKER)) {
 				dahdic.confmode |= DAHDI_CONF_TALKER;
 				if (ioctl(fd, DAHDI_SETCONF, &dahdic)) {
 					ast_log(LOG_WARNING, "Error setting conference - Un/Mute \n");
@@ -3162,7 +2895,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					break;
 				}
 
-				ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeMute",
+				manager_event(EVENT_FLAG_CALL, "MeetmeMute", 
 						"Channel: %s\r\n"
 						"Uniqueid: %s\r\n"
 						"Meetme: %s\r\n"
@@ -3175,7 +2908,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 				(user->adminflags & ADMINFLAG_T_REQUEST) && !(talkreq_manager)) {
 				talkreq_manager = 1;
 
-				ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeTalkRequest",
+				manager_event(EVENT_FLAG_CALL, "MeetmeTalkRequest", 
 					      "Channel: %s\r\n"
 							      "Uniqueid: %s\r\n"
 							      "Meetme: %s\r\n"
@@ -3188,7 +2921,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 			if (!(user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED)) && 
 				!(user->adminflags & ADMINFLAG_T_REQUEST) && (talkreq_manager)) {
 				talkreq_manager = 0;
-				ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeTalkRequest",
+				manager_event(EVENT_FLAG_CALL, "MeetmeTalkRequest", 
 					      "Channel: %s\r\n"
 							      "Uniqueid: %s\r\n"
 							      "Meetme: %s\r\n"
@@ -3196,17 +2929,11 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 							      "Status: off\r\n",
 							     chan->name, chan->uniqueid, conf->confno, user->user_no);
 			}
-
-			/* If user have been hung up, exit the conference */
-			if (user->adminflags & ADMINFLAG_HANGUP) {
-				ret = 0;
-				break;
-			}
-
+			
 			/* If I have been kicked, exit the conference */
 			if (user->adminflags & ADMINFLAG_KICKME) {
 				/* You have been kicked. */
-				if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && 
+				if (!(confflags & CONFFLAG_QUIET) && 
 					!ast_streamfile(chan, "conf-kicked", chan->language)) {
 					ast_waitstream(chan, "");
 				}
@@ -3230,7 +2957,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					user->dahdichannel = !retrydahdi;
 					goto dahdiretry;
 				}
-				if (ast_test_flag64(confflags, CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
+				if ((confflags & CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
 					f = ast_read_noaudio(c);
 				} else {
 					f = ast_read(c);
@@ -3239,27 +2966,26 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					break;
 				}
 				if (f->frametype == AST_FRAME_DTMF) {
-					dtmfstr[0] = f->subclass.integer;
+					dtmfstr[0] = f->subclass;
 					dtmfstr[1] = '\0';
 				}
 
-				if ((f->frametype == AST_FRAME_VOICE) && (f->subclass.format.id == AST_FORMAT_SLINEAR)) {
+				if ((f->frametype == AST_FRAME_VOICE) && (f->subclass == AST_FORMAT_SLINEAR)) {
 					if (user->talk.actual) {
 						ast_frame_adjust_volume(f, user->talk.actual);
 					}
 
-					if (ast_test_flag64(confflags, (CONFFLAG_OPTIMIZETALKER | CONFFLAG_MONITORTALKER))) {
+					if (confflags & (CONFFLAG_OPTIMIZETALKER | CONFFLAG_MONITORTALKER)) {
 						if (user->talking == -1) {
 							user->talking = 0;
 						}
 
 						res = ast_dsp_silence(dsp, f, &totalsilence);
-						if (!user->talking && totalsilence < MEETME_DELAYDETECTTALK) {
-							set_user_talking(chan, conf, user, 1, ast_test_flag64(confflags, CONFFLAG_MONITORTALKER));
+						if (totalsilence < MEETME_DELAYDETECTTALK) {
+							set_user_talking(chan, conf, user, 1, confflags & CONFFLAG_MONITORTALKER);
 						}
-
-						if (user->talking && totalsilence > MEETME_DELAYDETECTENDTALK) {
-							set_user_talking(chan, conf, user, 0, ast_test_flag64(confflags, CONFFLAG_MONITORTALKER));
+						if (totalsilence > MEETME_DELAYDETECTENDTALK) {
+							set_user_talking(chan, conf, user, 0, confflags & CONFFLAG_MONITORTALKER);
 						}
 					}
 					if (using_pseudo) {
@@ -3275,12 +3001,12 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 						   don't want to block, but we do want to at least *try*
 						   to write out all the samples.
 						 */
-						if (user->talking || !ast_test_flag64(confflags, CONFFLAG_OPTIMIZETALKER)) {
+						if (user->talking || !(confflags & CONFFLAG_OPTIMIZETALKER)) {
 							careful_write(fd, f->data.ptr, f->datalen, 0);
 						}
 					}
-				} else if (((f->frametype == AST_FRAME_DTMF) && (f->subclass.integer == '*') && ast_test_flag64(confflags, CONFFLAG_STARMENU)) || ((f->frametype == AST_FRAME_DTMF) && menu_active)) {
-					if (ast_test_flag64(confflags, CONFFLAG_PASS_DTMF)) {
+				} else if (((f->frametype == AST_FRAME_DTMF) && (f->subclass == '*') && (confflags & CONFFLAG_STARMENU)) || ((f->frametype == AST_FRAME_DTMF) && menu_active)) {
+					if (confflags & CONFFLAG_PASS_DTMF) {
 						conf_queue_dtmf(conf, user, f);
 					}
 					if (ioctl(fd, DAHDI_SETCONF, &dahdic_empty)) {
@@ -3300,155 +3026,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					if (musiconhold) {
 			   			ast_moh_stop(chan);
 					}
-					if (menu8_active) {
-						/* *8 Submenu */
-						dtmf = f->subclass.integer;
-						if (dtmf) {
-							int keepplaying;
-							int playednamerec;
-							struct ao2_iterator user_iter;
-							struct ast_conf_user *usr = NULL;
-							switch(dtmf) {
-							case '1': /* *81 Roll call */
-								keepplaying = 1;
-								playednamerec = 0;
-								if (conf->users == 1) {
-									if (keepplaying && !ast_streamfile(chan, "conf-onlyperson", chan->language)) {
-										res = ast_waitstream(chan, AST_DIGIT_ANY);
-										ast_stopstream(chan);
-										if (res > 0)
-											keepplaying = 0;
-									}
-								} else if (conf->users == 2) {
-									if (keepplaying && !ast_streamfile(chan, "conf-onlyone", chan->language)) {
-										res = ast_waitstream(chan, AST_DIGIT_ANY);
-										ast_stopstream(chan);
-										if (res > 0)
-											keepplaying = 0;
-									}
-								} else {
-									if (keepplaying && !ast_streamfile(chan, "conf-thereare", chan->language)) {
-										res = ast_waitstream(chan, AST_DIGIT_ANY);
-										ast_stopstream(chan);
-										if (res > 0)
-											keepplaying = 0;
-									}
-									if (keepplaying) {
-										res = ast_say_number(chan, conf->users - 1, AST_DIGIT_ANY, chan->language, (char *) NULL);
-										if (res > 0)
-											keepplaying = 0;
-									}
-									if (keepplaying && !ast_streamfile(chan, "conf-otherinparty", chan->language)) {
-										res = ast_waitstream(chan, AST_DIGIT_ANY);
-										ast_stopstream(chan);
-										if (res > 0)
-											keepplaying = 0;
-									}
-								}
-								user_iter = ao2_iterator_init(conf->usercontainer, 0);
-								while((usr = ao2_iterator_next(&user_iter))) {
-									if (ast_fileexists(usr->namerecloc, NULL, NULL)) {
-										if (keepplaying && !ast_streamfile(chan, usr->namerecloc, chan->language)) {
-											res = ast_waitstream(chan, AST_DIGIT_ANY);
-											ast_stopstream(chan);
-											if (res > 0)
-												keepplaying = 0;
-										}
-										playednamerec = 1;
-									}
-									ao2_ref(usr, -1);
-								}
-								ao2_iterator_destroy(&user_iter);
-								if (keepplaying && playednamerec && !ast_streamfile(chan, "conf-roll-callcomplete", chan->language)) {
-									res = ast_waitstream(chan, AST_DIGIT_ANY);
-									ast_stopstream(chan);
-									if (res > 0)
-										keepplaying = 0;
-								}
-								break;
-							case '2': /* *82 Eject all non-admins */
-								if (conf->users == 1) {
-									if(!ast_streamfile(chan, "conf-errormenu", chan->language))
-										ast_waitstream(chan, "");
-								} else {
-									ao2_callback(conf->usercontainer, OBJ_NODATA, user_set_kickme_cb, &conf);
-								}
-								ast_stopstream(chan);
-								break;
-							case '3': /* *83 (Admin) mute/unmute all non-admins */
-								if(conf->gmuted) {
-									conf->gmuted = 0;
-									ao2_callback(conf->usercontainer, OBJ_NODATA, user_set_unmuted_cb, &conf);
-									if (!ast_streamfile(chan, "conf-now-unmuted", chan->language))
-										ast_waitstream(chan, "");
-								} else {
-									conf->gmuted = 1;
-									ao2_callback(conf->usercontainer, OBJ_NODATA, user_set_muted_cb, &conf);
-									if (!ast_streamfile(chan, "conf-now-muted", chan->language))
-										ast_waitstream(chan, "");
-								}
-								ast_stopstream(chan);
-								break;
-							case '4': /* *84 Record conference */
-								if (conf->recording != MEETME_RECORD_ACTIVE) {
-									ast_set_flag64(confflags, CONFFLAG_RECORDCONF);
-
-									if (!conf->recordingfilename) {
-										const char *var;
-										ast_channel_lock(chan);
-										if ((var = pbx_builtin_getvar_helper(chan, "MEETME_RECORDINGFILE"))) {
-											conf->recordingfilename = ast_strdup(var);
-										}
-										if ((var = pbx_builtin_getvar_helper(chan, "MEETME_RECORDINGFORMAT"))) {
-											conf->recordingformat = ast_strdup(var);
-										}
-										ast_channel_unlock(chan);
-										if (!conf->recordingfilename) {
-											snprintf(recordingtmp, sizeof(recordingtmp), "meetme-conf-rec-%s-%s", conf->confno, chan->uniqueid);
-											conf->recordingfilename = ast_strdup(recordingtmp);
-										}
-										if (!conf->recordingformat) {
-											conf->recordingformat = ast_strdup("wav");
-										}
-										ast_verb(4, "Starting recording of MeetMe Conference %s into file %s.%s.\n",
-				    							conf->confno, conf->recordingfilename, conf->recordingformat);
-									}
-
-									ast_mutex_lock(&conf->recordthreadlock);
-									if ((conf->recordthread == AST_PTHREADT_NULL) && ast_test_flag64(confflags, CONFFLAG_RECORDCONF) && ((conf->lchan = ast_request("DAHDI", cap_slin, chan, "pseudo", NULL)))) {
-										ast_set_read_format_by_id(conf->lchan, AST_FORMAT_SLINEAR);
-										ast_set_write_format_by_id(conf->lchan, AST_FORMAT_SLINEAR);
-										dahdic.chan = 0;
-										dahdic.confno = conf->dahdiconf;
-										dahdic.confmode = DAHDI_CONF_CONFANN | DAHDI_CONF_CONFANNMON;
-										if (ioctl(conf->lchan->fds[0], DAHDI_SETCONF, &dahdic)) {
-											ast_log(LOG_WARNING, "Error starting listen channel\n");
-											ast_hangup(conf->lchan);
-											conf->lchan = NULL;
-										} else {
-											ast_pthread_create_detached_background(&conf->recordthread, NULL, recordthread, conf);
-										}
-									}
-									ast_mutex_unlock(&conf->recordthreadlock);
-
-									if (!ast_streamfile(chan, "conf-now-recording", chan->language))
-										ast_waitstream(chan, "");
-
-								}
-
-								ast_stopstream(chan);
-								break;
-							default:
-								if (!ast_streamfile(chan, "conf-errormenu", chan->language))
-									ast_waitstream(chan, "");
-								ast_stopstream(chan);
-								break;
-							}
-						}
-
-						menu8_active = 0;
-						menu_active = 0;
-					} else if (ast_test_flag64(confflags, CONFFLAG_ADMIN)) {
+					if ((confflags & CONFFLAG_ADMIN)) {
 						/* Admin menu */
 						if (!menu_active) {
 							menu_active = 1;
@@ -3460,7 +3038,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 								dtmf = 0;
 							}
 						} else {
-							dtmf = f->subclass.integer;
+							dtmf = f->subclass;
 						}
 						if (dtmf) {
 							switch(dtmf) {
@@ -3474,7 +3052,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 									user->adminflags |= (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED);
 								}
 
-								if (ast_test_flag64(confflags, CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
+								if ((confflags & CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
 									if (!ast_streamfile(chan, "conf-muted", chan->language)) {
 										ast_waitstream(chan, "");
 									}
@@ -3502,19 +3080,18 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 							{
 								struct ast_conf_user *usr = NULL;
 								int max_no = 0;
-								ao2_callback(conf->usercontainer, OBJ_NODATA, user_max_cmp, &max_no);
 								menu_active = 0;
+								ao2_callback(conf->usercontainer, OBJ_NODATA, user_max_cmp, &max_no);
 								usr = ao2_find(conf->usercontainer, &max_no, 0);
-								if ((usr->chan->name == chan->name) || ast_test_flag64(&usr->userflags, CONFFLAG_ADMIN)) {
-									if (!ast_streamfile(chan, "conf-errormenu", chan->language)) {
+								if ((usr->chan->name == chan->name)||(usr->userflags & CONFFLAG_ADMIN)) {
+									if(!ast_streamfile(chan, "conf-errormenu", chan->language))
 										ast_waitstream(chan, "");
-									}
 								} else {
 									usr->adminflags |= ADMINFLAG_KICKME;
 								}
 								ao2_ref(usr, -1);
 								ast_stopstream(chan);
-								break;	
+								break;
 							}
 							case '4':
 								tweak_listen_volume(user, VOL_DOWN);
@@ -3542,7 +3119,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 								tweak_talk_volume(user, VOL_DOWN);
 								break;
 							case '8':
-								menu8_active = 1;
+								menu_active = 0;
 								break;
 							case '9':
 								tweak_talk_volume(user, VOL_UP);
@@ -3567,7 +3144,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 								dtmf = 0;
 							}
 						} else {
-							dtmf = f->subclass.integer;
+							dtmf = f->subclass;
 						}
 						if (dtmf) {
 							switch (dtmf) {
@@ -3578,7 +3155,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 								user->adminflags ^= ADMINFLAG_SELFMUTED;
 
 								/* they can't override the admin mute state */
-								if (ast_test_flag64(confflags, CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
+								if ((confflags & CONFFLAG_MONITOR) || (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED))) {
 									if (!ast_streamfile(chan, "conf-muted", chan->language)) {
 										ast_waitstream(chan, "");
 									}
@@ -3631,7 +3208,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 							}
 						}
 					}
-					if (musiconhold && !menu_active) {
+					if (musiconhold) {
 						conf_start_moh(chan, optargs[OPT_ARG_MOH_CLASS]);
 					}
 
@@ -3643,12 +3220,9 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					}
 
 					conf_flush(fd, chan);
-				/*
-				 * Since options using DTMF could absorb DTMF meant for the
-				 * conference menu, we have to check them after the menu.
-				 */
-				} else if ((f->frametype == AST_FRAME_DTMF) && ast_test_flag64(confflags, CONFFLAG_EXIT_CONTEXT) && ast_exists_extension(chan, exitcontext, dtmfstr, 1, "")) {
-					if (ast_test_flag64(confflags, CONFFLAG_PASS_DTMF)) {
+				/* Since this option could absorb DTMF meant for the previous (menu), we have to check this one last */
+				} else if ((f->frametype == AST_FRAME_DTMF) && (confflags & CONFFLAG_EXIT_CONTEXT) && ast_exists_extension(chan, exitcontext, dtmfstr, 1, "")) {
+					if (confflags & CONFFLAG_PASS_DTMF) {
 						conf_queue_dtmf(conf, user, f);
 					}
 
@@ -3660,21 +3234,20 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 					} else {
 						ast_debug(2, "Exit by single digit did not work in meetme. Extension %s does not exist in context %s\n", dtmfstr, exitcontext);
 					}
-				} else if ((f->frametype == AST_FRAME_DTMF) && ast_test_flag64(confflags, CONFFLAG_KEYEXIT) &&
-					(strchr(exitkeys, f->subclass.integer))) {
+				} else if ((f->frametype == AST_FRAME_DTMF) && (confflags & CONFFLAG_KEYEXIT) && (strchr(exitkeys, f->subclass))) {
 					pbx_builtin_setvar_helper(chan, "MEETME_EXIT_KEY", dtmfstr);
-
-					if (ast_test_flag64(confflags, CONFFLAG_PASS_DTMF)) {
+						
+					if (confflags & CONFFLAG_PASS_DTMF) {
 						conf_queue_dtmf(conf, user, f);
 					}
 					ret = 0;
 					ast_frfree(f);
 					break;
 				} else if ((f->frametype == AST_FRAME_DTMF_BEGIN || f->frametype == AST_FRAME_DTMF_END)
-					&& ast_test_flag64(confflags, CONFFLAG_PASS_DTMF)) {
+					&& confflags & CONFFLAG_PASS_DTMF) {
 					conf_queue_dtmf(conf, user, f);
-				} else if (ast_test_flag64(confflags, CONFFLAG_SLA_STATION) && f->frametype == AST_FRAME_CONTROL) {
-					switch (f->subclass.integer) {
+				} else if ((confflags & CONFFLAG_SLA_STATION) && f->frametype == AST_FRAME_CONTROL) {
+					switch (f->subclass) {
 					case AST_CONTROL_HOLD:
 						sla_queue_event_conf(SLA_EVENT_HOLD, chan, conf);
 						break;
@@ -3684,21 +3257,21 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 				} else if (f->frametype == AST_FRAME_NULL) {
 					/* Ignore NULL frames. It is perfectly normal to get these if the person is muted. */
 				} else if (f->frametype == AST_FRAME_CONTROL) {
-					switch (f->subclass.integer) {
+					switch (f->subclass) {
 					case AST_CONTROL_BUSY:
 					case AST_CONTROL_CONGESTION:
 						ast_frfree(f);
 						goto outrun;
 						break;
 					default:
-						ast_debug(1,
+						ast_debug(1, 
 							"Got ignored control frame on channel %s, f->frametype=%d,f->subclass=%d\n",
-							chan->name, f->frametype, f->subclass.integer);
+							chan->name, f->frametype, f->subclass);
 					}
 				} else {
-					ast_debug(1,
+					ast_debug(1, 
 						"Got unrecognized frame on channel %s, f->frametype=%d,f->subclass=%d\n",
-						chan->name, f->frametype, f->subclass.integer);
+						chan->name, f->frametype, f->subclass);
 				}
 				ast_frfree(f);
 			} else if (outfd > -1) {
@@ -3706,19 +3279,19 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 				if (res > 0) {
 					memset(&fr, 0, sizeof(fr));
 					fr.frametype = AST_FRAME_VOICE;
-					ast_format_set(&fr.subclass.format, AST_FORMAT_SLINEAR, 0);
+					fr.subclass = AST_FORMAT_SLINEAR;
 					fr.datalen = res;
 					fr.samples = res / 2;
 					fr.data.ptr = buf;
 					fr.offset = AST_FRIENDLY_OFFSET;
 					if (!user->listen.actual &&
-						(ast_test_flag64(confflags, CONFFLAG_MONITOR) ||
+						((confflags & CONFFLAG_MONITOR) ||
 						 (user->adminflags & (ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED)) ||
-						 (!user->talking && ast_test_flag64(confflags, CONFFLAG_OPTIMIZETALKER))
+						 (!user->talking && (confflags & CONFFLAG_OPTIMIZETALKER))
 						 )) {
 						int idx;
 						for (idx = 0; idx < AST_FRAME_BITS; idx++) {
-							if (ast_format_to_old_bitfield(&chan->rawwriteformat) & (1 << idx)) {
+							if (chan->rawwriteformat & (1 << idx)) {
 								break;
 							}
 						}
@@ -3733,11 +3306,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 									mohtempstopped = 1;
 								}
 								if (!conf->transpath[idx]) {
-									struct ast_format src;
-									struct ast_format dst;
-									ast_format_set(&src, AST_FORMAT_SLINEAR, 0);
-									ast_format_from_old_bitfield(&dst, (1 << idx));
-									conf->transpath[idx] = ast_translator_build_path(&dst, &src);
+									conf->transpath[idx] = ast_translator_build_path((1 << idx), AST_FORMAT_SLINEAR);
 								}
 								if (conf->transpath[idx]) {
 									conf->transframe[idx] = ast_translate(conf->transpath[idx], conf->origframe, 0);
@@ -3813,12 +3382,11 @@ bailoutandtrynormal:
 
 	reset_volumes(user);
 
-	if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && !ast_test_flag64(confflags, CONFFLAG_MONITOR) &&
-		!ast_test_flag64(confflags, CONFFLAG_ADMIN)) {
+	if (!(confflags & CONFFLAG_QUIET) && !(confflags & CONFFLAG_MONITOR) && !(confflags & CONFFLAG_ADMIN)) {
 		conf_play(chan, conf, LEAVE);
 	}
 
-	if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && ast_test_flag64(confflags, CONFFLAG_INTROUSER |CONFFLAG_INTROUSERNOREVIEW | CONFFLAG_INTROUSER_VMREC) && conf->users > 1) {
+	if (!(confflags & CONFFLAG_QUIET) && ((confflags & CONFFLAG_INTROUSER) || (confflags & CONFFLAG_INTROUSERNOREVIEW)) && conf->users > 1) {
 		struct announce_listitem *item;
 		if (!(item = ao2_alloc(sizeof(*item), NULL)))
 			goto outrun;
@@ -3827,14 +3395,11 @@ bailoutandtrynormal:
 		item->confchan = conf->chan;
 		item->confusers = conf->users;
 		item->announcetype = CONF_HASLEFT;
-		if (ast_test_flag64(confflags, CONFFLAG_INTROUSER_VMREC)){
-			item->vmrec = 1;
-		}
 		ast_mutex_lock(&conf->announcelistlock);
 		AST_LIST_INSERT_TAIL(&conf->announcelist, item, entry);
 		ast_cond_signal(&conf->announcelist_addition);
 		ast_mutex_unlock(&conf->announcelistlock);
-	} else if (!ast_test_flag64(confflags, CONFFLAG_QUIET) && ast_test_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW) && !ast_test_flag64(confflags, CONFFLAG_INTROUSER_VMREC) && conf->users == 1) {
+	} else if (!(confflags & CONFFLAG_QUIET) && ((confflags & CONFFLAG_INTROUSER) || (confflags & CONFFLAG_INTROUSERNOREVIEW)) && conf->users == 1) {
 		/* Last person is leaving, so no reason to try and announce, but should delete the name recording */
 		ast_filedelete(user->namerecloc, NULL);
 	}
@@ -3849,25 +3414,24 @@ bailoutandtrynormal:
 	if (user->user_no) {
 		/* Only cleanup users who really joined! */
 		now = ast_tvnow();
+		hr = (now.tv_sec - user->jointime) / 3600;
+		min = ((now.tv_sec - user->jointime) % 3600) / 60;
+		sec = (now.tv_sec - user->jointime) % 60;
 
 		if (sent_event) {
-			ast_manager_event(chan, EVENT_FLAG_CALL, "MeetmeLeave",
-				"Channel: %s\r\n"
-				"Uniqueid: %s\r\n"
-				"Meetme: %s\r\n"
-				"Usernum: %d\r\n"
-				"CallerIDNum: %s\r\n"
-				"CallerIDName: %s\r\n"
-				"ConnectedLineNum: %s\r\n"
-				"ConnectedLineName: %s\r\n"
-				"Duration: %ld\r\n",
-				chan->name, chan->uniqueid, conf->confno,
-				user->user_no,
-				S_COR(user->chan->caller.id.number.valid, user->chan->caller.id.number.str, "<unknown>"),
-				S_COR(user->chan->caller.id.name.valid, user->chan->caller.id.name.str, "<unknown>"),
-				S_COR(user->chan->connected.id.number.valid, user->chan->connected.id.number.str, "<unknown>"),
-				S_COR(user->chan->connected.id.name.valid, user->chan->connected.id.name.str, "<unknown>"),
-				(long)(now.tv_sec - user->jointime));
+			manager_event(EVENT_FLAG_CALL, "MeetmeLeave",
+				      "Channel: %s\r\n"
+				      "Uniqueid: %s\r\n"
+				      "Meetme: %s\r\n"
+				      "Usernum: %d\r\n"
+				      "CallerIDNum: %s\r\n"
+				      "CallerIDName: %s\r\n"
+				      "Duration: %ld\r\n",
+				      chan->name, chan->uniqueid, conf->confno, 
+				      user->user_no,
+				      S_OR(user->chan->cid.cid_num, "<unknown>"),
+				      S_OR(user->chan->cid.cid_name, "<unknown>"),
+				      (long)(now.tv_sec - user->jointime));
 		}
 
 		if (setusercount) {
@@ -3881,7 +3445,7 @@ bailoutandtrynormal:
 					NULL);
 				ast_update_realtime("meetme", "confno", conf->confno, "members", members, NULL);
 			}
-			if (ast_test_flag64(confflags, CONFFLAG_MARKEDUSER)) {
+			if (confflags & CONFFLAG_MARKEDUSER) {
 				conf->markedusers--;
 			}
 		}
@@ -3892,11 +3456,6 @@ bailoutandtrynormal:
 		if (!conf->users) {
 			ast_devstate_changed(AST_DEVICE_NOT_INUSE, "meetme:%s", conf->confno);
 		}
-
- 		/* This flag is meant to kill a conference with only one participant remaining.  */
-		if (conf->users == 1 && ast_test_flag64(confflags, CONFFLAG_KILL_LAST_MAN_STANDING)) {
- 			ao2_callback(conf->usercontainer, 0, user_set_hangup_cb, NULL);
- 		}
 
 		/* Return the number of seconds the user was in the conf */
 		snprintf(meetmesecs, sizeof(meetmesecs), "%d", (int) (time(NULL) - user->jointime));
@@ -3910,15 +3469,11 @@ bailoutandtrynormal:
 	ao2_ref(user, -1);
 	AST_LIST_UNLOCK(&confs);
 
-
-conf_run_cleanup:
-	cap_slin = ast_format_cap_destroy(cap_slin);
-
 	return ret;
 }
 
 static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char *confno, int make, int dynamic,
-				char *dynamic_pin, size_t pin_buf_len, int refcount, struct ast_flags64 *confflags, int *too_early, char **optargs)
+				char *dynamic_pin, size_t pin_buf_len, int refcount, struct ast_flags *confflags, int *too_early, char **optargs)
 {
 	struct ast_variable *var, *origvar;
 	struct ast_conference *cnf;
@@ -3959,7 +3514,7 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 			ast_localtime(&now, &tm, NULL);
 			ast_strftime(currenttime, sizeof(currenttime), DATE_FORMAT, &tm);
 
-			ast_debug(1, "Looking for conference %s that starts after %s\n", confno, currenttime);
+			ast_debug(1, "Looking for conference %s that starts after %s\n", confno, eatime);
 
 			var = ast_load_realtime("meetme", "confno",
 				confno, "starttime <= ", currenttime, "endtime >= ",
@@ -4032,10 +3587,10 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 
 		ast_variables_destroy(origvar);
 
-		cnf = build_conf(confno, pin ? pin : "", pinadmin ? pinadmin : "", make, dynamic, refcount, chan, NULL);
+		cnf = build_conf(confno, pin ? pin : "", pinadmin ? pinadmin : "", make, dynamic, refcount, chan);
 
 		if (cnf) {
-			struct ast_flags64 tmp_flags;
+			struct ast_flags tmp_flags;
 
 			cnf->maxusers = maxusers;
 			cnf->endalert = endalert;
@@ -4048,8 +3603,8 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 
 			/* Parse the other options into confflags -- need to do this in two
 			 * steps, because the parse_options routine zeroes the buffer. */
-			ast_app_parse_options64(meetme_opts, &tmp_flags, optargs, useropts);
-			ast_copy_flags64(confflags, &tmp_flags, tmp_flags.flags);
+			ast_app_parse_options(meetme_opts, &tmp_flags, optargs, useropts);
+			ast_copy_flags(confflags, &tmp_flags, tmp_flags.flags);
 
 			if (strchr(cnf->useropts, 'r')) {
 				if (ast_strlen_zero(recordingfilename)) { /* If the recordingfilename in the database is empty, use the channel definition or use the default. */
@@ -4083,17 +3638,17 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 	}
 
 	if (cnf) {
-		if (confflags->flags && !cnf->chan &&
-		    !ast_test_flag64(confflags, CONFFLAG_QUIET) &&
-		    ast_test_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW) | CONFFLAG_INTROUSER_VMREC) {
+		if (confflags && !cnf->chan &&
+		    !ast_test_flag(confflags, CONFFLAG_QUIET) &&
+		    ast_test_flag(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW)) {
 			ast_log(LOG_WARNING, "No DAHDI channel available for conference, user introduction disabled (is chan_dahdi loaded?)\n");
-			ast_clear_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW | CONFFLAG_INTROUSER_VMREC);
+			ast_clear_flag(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW);
 		}
 
 		if (confflags && !cnf->chan &&
-		    ast_test_flag64(confflags, CONFFLAG_RECORDCONF)) {
+		    ast_test_flag(confflags, CONFFLAG_RECORDCONF)) {
 			ast_log(LOG_WARNING, "No DAHDI channel available for conference, conference recording disabled (is chan_dahdi loaded?)\n");
-			ast_clear_flag64(confflags, CONFFLAG_RECORDCONF);
+			ast_clear_flag(confflags, CONFFLAG_RECORDCONF);
 		}
 	}
 
@@ -4102,7 +3657,7 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 
 
 static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, int make, int dynamic,
-					char *dynamic_pin, size_t pin_buf_len, int refcount, struct ast_flags64 *confflags)
+					char *dynamic_pin, size_t pin_buf_len, int refcount, struct ast_flags *confflags)
 {
 	struct ast_config *cfg;
 	struct ast_variable *var;
@@ -4120,7 +3675,7 @@ static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, 
 	AST_LIST_LOCK(&confs);
 	AST_LIST_TRAVERSE(&confs, cnf, list) {
 		ast_debug(3, "Does conf %s match %s?\n", confno, cnf->confno);
-		if (!strcmp(confno, cnf->confno))
+		if (!strcmp(confno, cnf->confno)) 
 			break;
 	}
 	if (cnf) {
@@ -4138,9 +3693,9 @@ static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, 
 					if (ast_app_getdata(chan, "conf-getpin", dynamic_pin, pin_buf_len - 1, 0) < 0)
 						return NULL;
 				}
-				cnf = build_conf(confno, dynamic_pin, "", make, dynamic, refcount, chan, NULL);
+				cnf = build_conf(confno, dynamic_pin, "", make, dynamic, refcount, chan);
 			} else {
-				cnf = build_conf(confno, "", "", make, dynamic, refcount, chan, NULL);
+				cnf = build_conf(confno, "", "", make, dynamic, refcount, chan);
 			}
 		} else {
 			/* Check the config */
@@ -4168,7 +3723,7 @@ static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, 
 					cnf = build_conf(args.confno,
 							S_OR(args.pin, ""),
 							S_OR(args.pinadmin, ""),
-							make, dynamic, refcount, chan, NULL);
+							make, dynamic, refcount, chan);
 					break;
 				}
 			}
@@ -4188,16 +3743,16 @@ static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, 
 
 	if (cnf) {
 		if (confflags && !cnf->chan &&
-		    !ast_test_flag64(confflags, CONFFLAG_QUIET) &&
-		    ast_test_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW  | CONFFLAG_INTROUSER_VMREC)) {
+		    !ast_test_flag(confflags, CONFFLAG_QUIET) &&
+		    ast_test_flag(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW)) {
 			ast_log(LOG_WARNING, "No DAHDI channel available for conference, user introduction disabled (is chan_dahdi loaded?)\n");
-			ast_clear_flag64(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW | CONFFLAG_INTROUSER_VMREC);
+			ast_clear_flag(confflags, CONFFLAG_INTROUSER | CONFFLAG_INTROUSERNOREVIEW);
 		}
 		
 		if (confflags && !cnf->chan &&
-		    ast_test_flag64(confflags, CONFFLAG_RECORDCONF)) {
+		    ast_test_flag(confflags, CONFFLAG_RECORDCONF)) {
 			ast_log(LOG_WARNING, "No DAHDI channel available for conference, conference recording disabled (is chan_dahdi loaded?)\n");
-			ast_clear_flag64(confflags, CONFFLAG_RECORDCONF);
+			ast_clear_flag(confflags, CONFFLAG_RECORDCONF);
 		}
 	}
 
@@ -4205,7 +3760,7 @@ static struct ast_conference *find_conf(struct ast_channel *chan, char *confno, 
 }
 
 /*! \brief The MeetmeCount application */
-static int count_exec(struct ast_channel *chan, const char *data)
+static int count_exec(struct ast_channel *chan, void *data)
 {
 	int res = 0;
 	struct ast_conference *conf;
@@ -4251,20 +3806,18 @@ static int count_exec(struct ast_channel *chan, const char *data)
 }
 
 /*! \brief The meetme() application */
-static int conf_exec(struct ast_channel *chan, const char *data)
+static int conf_exec(struct ast_channel *chan, void *data)
 {
 	int res = -1;
 	char confno[MAX_CONFNUM] = "";
 	int allowretry = 0;
 	int retrycnt = 0;
 	struct ast_conference *cnf = NULL;
-	struct ast_flags64 confflags = {0};
-	struct ast_flags config_flags = { 0 };
+	struct ast_flags confflags = {0}, config_flags = { 0 };
 	int dynamic = 0;
 	int empty = 0, empty_no_pin = 0;
 	int always_prompt = 0;
-	const char *notdata;
-	char *info, the_pin[MAX_PIN] = "";
+	char *notdata, *info, the_pin[MAX_PIN] = "";
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(confno);
 		AST_APP_ARG(options);
@@ -4297,14 +3850,14 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 		ast_copy_string(the_pin, args.pin, sizeof(the_pin));
 
 	if (args.options) {
-		ast_app_parse_options64(meetme_opts, &confflags, optargs, args.options);
-		dynamic = ast_test_flag64(&confflags, CONFFLAG_DYNAMIC | CONFFLAG_DYNAMICPIN);
-		if (ast_test_flag64(&confflags, CONFFLAG_DYNAMICPIN) && ast_strlen_zero(args.pin))
+		ast_app_parse_options(meetme_opts, &confflags, optargs, args.options);
+		dynamic = ast_test_flag(&confflags, CONFFLAG_DYNAMIC | CONFFLAG_DYNAMICPIN);
+		if (ast_test_flag(&confflags, CONFFLAG_DYNAMICPIN) && ast_strlen_zero(args.pin))
 			strcpy(the_pin, "q");
 
-		empty = ast_test_flag64(&confflags, CONFFLAG_EMPTY | CONFFLAG_EMPTYNOPIN);
-		empty_no_pin = ast_test_flag64(&confflags, CONFFLAG_EMPTYNOPIN);
-		always_prompt = ast_test_flag64(&confflags, CONFFLAG_ALWAYSPROMPT | CONFFLAG_DYNAMICPIN);
+		empty = ast_test_flag(&confflags, CONFFLAG_EMPTY | CONFFLAG_EMPTYNOPIN);
+		empty_no_pin = ast_test_flag(&confflags, CONFFLAG_EMPTYNOPIN);
+		always_prompt = ast_test_flag(&confflags, CONFFLAG_ALWAYSPROMPT | CONFFLAG_DYNAMICPIN);
 	}
 
 	do {
@@ -4413,7 +3966,7 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 					ast_waitstream(chan, "");
 			} else {
 				if (sscanf(confno, "%30d", &confno_int) == 1) {
-					if (!ast_test_flag64(&confflags, CONFFLAG_QUIET)) {
+					if (!ast_test_flag(&confflags, CONFFLAG_QUIET)) {
 						res = ast_streamfile(chan, "conf-enteringno", chan->language);
 						if (!res) {
 							ast_waitstream(chan, "");
@@ -4458,13 +4011,14 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 					res = -1;
 				}
 			} else {
-				/* Check to see if the conference requires a pin
-				 * and we ALWAYS prompt or no pin was provided */
-				if ((!ast_strlen_zero(cnf->pin) ||
-					(!ast_strlen_zero(cnf->pinadmin) &&
-						ast_test_flag64(&confflags, CONFFLAG_ADMIN))) &&
-				    (ast_test_flag64(&confflags, CONFFLAG_ALWAYSPROMPT) ||
-						ast_strlen_zero(args.pin))) {
+				if (((!ast_strlen_zero(cnf->pin)       &&
+					!ast_test_flag(&confflags, CONFFLAG_ADMIN)) ||
+				     (!ast_strlen_zero(cnf->pinadmin)  &&
+				     	 ast_test_flag(&confflags, CONFFLAG_ADMIN)) ||
+			    	     (!ast_strlen_zero(cnf->pin) &&
+			    	     	 ast_strlen_zero(cnf->pinadmin) &&
+			    	     	 ast_test_flag(&confflags, CONFFLAG_ADMIN))) &&
+				    (!(cnf->users == 0 && cnf->isdynamic))) {
 					char pin[MAX_PIN] = "";
 					int j;
 
@@ -4480,7 +4034,7 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 						if (res >= 0) {
 							if ((!strcasecmp(pin, cnf->pin) &&
 							     (ast_strlen_zero(cnf->pinadmin) ||
-							      !ast_test_flag64(&confflags, CONFFLAG_ADMIN))) ||
+							      !ast_test_flag(&confflags, CONFFLAG_ADMIN))) ||
 							     (!ast_strlen_zero(cnf->pinadmin) &&
 							      !strcasecmp(pin, cnf->pinadmin))) {
 								/* Pin correct */
@@ -4488,17 +4042,17 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 								if (!ast_strlen_zero(cnf->pinadmin) && !strcasecmp(pin, cnf->pinadmin)) {
 									if (!ast_strlen_zero(cnf->adminopts)) {
 										char *opts = ast_strdupa(cnf->adminopts);
-										ast_app_parse_options64(meetme_opts, &confflags, optargs, opts);
+										ast_app_parse_options(meetme_opts, &confflags, optargs, opts);
 									}
 								} else {
 									if (!ast_strlen_zero(cnf->useropts)) {
 										char *opts = ast_strdupa(cnf->useropts);
-										ast_app_parse_options64(meetme_opts, &confflags, optargs, opts);
+										ast_app_parse_options(meetme_opts, &confflags, optargs, opts);
 									}
 								}
 								/* Run the conference */
 								ast_verb(4, "Starting recording of MeetMe Conference %s into file %s.%s.\n", cnf->confno, cnf->recordingfilename, cnf->recordingformat);
-								res = conf_run(chan, cnf, &confflags, optargs);
+								res = conf_run(chan, cnf, confflags.flags, optargs);
 								break;
 							} else {
 								/* Pin invalid */
@@ -4539,11 +4093,11 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 					 */
 					if (!ast_strlen_zero(cnf->useropts)) {
 						char *opts = ast_strdupa(cnf->useropts);
-						ast_app_parse_options64(meetme_opts, &confflags, optargs, opts);
+						ast_app_parse_options(meetme_opts, &confflags, optargs, opts);
 					}
 
 					/* Run the conference */
-					res = conf_run(chan, cnf, &confflags, optargs);
+					res = conf_run(chan, cnf, confflags.flags, optargs);
 				}
 				dispose_conf(cnf);
 				cnf = NULL;
@@ -4557,7 +4111,7 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 	return res;
 }
 
-static struct ast_conf_user *find_user(struct ast_conference *conf, const char *callerident)
+static struct ast_conf_user *find_user(struct ast_conference *conf, char *callerident) 
 {
 	struct ast_conf_user *user = NULL;
 	int cid;
@@ -4569,6 +4123,29 @@ static struct ast_conf_user *find_user(struct ast_conference *conf, const char *
 		return user;
 	}
 	return NULL;
+}
+
+static int user_set_kickme_cb(void *obj, void *unused, int flags)
+{
+	struct ast_conf_user *user = obj;
+	user->adminflags |= ADMINFLAG_KICKME;
+	return 0;
+}
+
+static int user_set_muted_cb(void *obj, void *unused, int flags)
+{
+	struct ast_conf_user *user = obj;
+	if (!(user->userflags & CONFFLAG_ADMIN)) {
+		user->adminflags |= ADMINFLAG_MUTED;
+	}
+	return 0;
+}
+
+static int user_set_unmuted_cb(void *obj, void *unused, int flags)
+{
+	struct ast_conf_user *user = obj;
+	user->adminflags &= ~(ADMINFLAG_MUTED | ADMINFLAG_SELFMUTED);
+	return 0;
 }
 
 static int user_listen_volup_cb(void *obj, void *unused, int flags)
@@ -4618,10 +4195,9 @@ static int user_chan_cb(void *obj, void *args, int flags)
 	return 0;
 }
 
-/*! \brief The MeetMeadmin application 
-
-  MeetMeAdmin(confno, command, caller) */
-static int admin_exec(struct ast_channel *chan, const char *data) {
+/*! \brief The MeetMeadmin application */
+/* MeetMeAdmin(confno, command, caller) */
+static int admin_exec(struct ast_channel *chan, void *data) {
 	char *params;
 	struct ast_conference *cnf;
 	struct ast_conf_user *user = NULL;
@@ -4686,7 +4262,7 @@ static int admin_exec(struct ast_channel *chan, const char *data) {
 		int max_no = 0;
 		ao2_callback(cnf->usercontainer, OBJ_NODATA, user_max_cmp, &max_no);
 		user = ao2_find(cnf->usercontainer, &max_no, 0);
-		if (!ast_test_flag64(&user->userflags, CONFFLAG_ADMIN))
+		if (!(user->userflags & CONFFLAG_ADMIN))
 			user->adminflags |= ADMINFLAG_KICKME;
 		else {
 			res = -1;
@@ -4696,7 +4272,12 @@ static int admin_exec(struct ast_channel *chan, const char *data) {
 		break;
 	}
 	case 77: /* M: Mute */ 
-		user->adminflags |= ADMINFLAG_MUTED;
+		if (user) {
+			user->adminflags |= ADMINFLAG_MUTED;
+		} else {
+			res = -2;
+			ast_log(LOG_NOTICE, "Specified User not found!\n");
+		}
 		break;
 	case 78: /* N: Mute all (non-admin) users */
 		ao2_callback(cnf->usercontainer, OBJ_NODATA, user_set_muted_cb, NULL);
@@ -4760,9 +4341,9 @@ usernotfound:
 	return 0;
 }
 
-/*! \brief The MeetMeChannelAdmin application 
-	MeetMeChannelAdmin(channel, command) */
-static int channel_admin_exec(struct ast_channel *chan, const char *data) {
+/*--- channel_admin_exec: The MeetMeChannelAdmin application */
+/* MeetMeChannelAdmin(channel, command) */
+static int channel_admin_exec(struct ast_channel *chan, void *data) {
 	char *params;
 	struct ast_conference *conf = NULL;
 	struct ast_conf_user *user = NULL;
@@ -4893,6 +4474,14 @@ static int action_meetmeunmute(struct mansession *s, const struct message *m)
 	return meetmemute(s, m, 0);
 }
 
+static char mandescr_meetmelist[] =
+"Description: Lists all users in a particular MeetMe conference.\n"
+"MeetmeList will follow as separate events, followed by a final event called\n"
+"MeetmeListComplete.\n"
+"Variables:\n"
+"    *ActionId: <id>\n"
+"    *Conference: <confno>\n";
+
 static int action_meetmelist(struct mansession *s, const struct message *m)
 {
 	const char *actionid = astman_get_header(m, "ActionID");
@@ -4925,35 +4514,31 @@ static int action_meetmelist(struct mansession *s, const struct message *m)
 		while ((user = ao2_iterator_next(&user_iter))) {
 			total++;
 			astman_append(s,
-				"Event: MeetmeList\r\n"
-				"%s"
-				"Conference: %s\r\n"
-				"UserNumber: %d\r\n"
-				"CallerIDNum: %s\r\n"
-				"CallerIDName: %s\r\n"
-				"ConnectedLineNum: %s\r\n"
-				"ConnectedLineName: %s\r\n"
-				"Channel: %s\r\n"
-				"Admin: %s\r\n"
-				"Role: %s\r\n"
-				"MarkedUser: %s\r\n"
-				"Muted: %s\r\n"
-				"Talking: %s\r\n"
-				"\r\n",
-				idText,
-				cnf->confno,
-				user->user_no,
-				S_COR(user->chan->caller.id.number.valid, user->chan->caller.id.number.str, "<unknown>"),
-				S_COR(user->chan->caller.id.name.valid, user->chan->caller.id.name.str, "<no name>"),
-				S_COR(user->chan->connected.id.number.valid, user->chan->connected.id.number.str, "<unknown>"),
-				S_COR(user->chan->connected.id.name.valid, user->chan->connected.id.name.str, "<no name>"),
-				user->chan->name,
-				ast_test_flag64(&user->userflags, CONFFLAG_ADMIN) ? "Yes" : "No",
-				ast_test_flag64(&user->userflags, CONFFLAG_MONITOR) ? "Listen only" : ast_test_flag64(&user->userflags, CONFFLAG_TALKER) ? "Talk only" : "Talk and listen",
-				ast_test_flag64(&user->userflags, CONFFLAG_MARKEDUSER) ? "Yes" : "No",
-				user->adminflags & ADMINFLAG_MUTED ? "By admin" : user->adminflags & ADMINFLAG_SELFMUTED ? "By self" : "No",
-				user->talking > 0 ? "Yes" : user->talking == 0 ? "No" : "Not monitored");
-			ao2_ref(user, -1);
+			"Event: MeetmeList\r\n"
+			"%s"
+			"Conference: %s\r\n"
+			"UserNumber: %d\r\n"
+			"CallerIDNum: %s\r\n"
+			"CallerIDName: %s\r\n"
+			"Channel: %s\r\n"
+			"Admin: %s\r\n"
+			"Role: %s\r\n"
+			"MarkedUser: %s\r\n"
+			"Muted: %s\r\n"
+			"Talking: %s\r\n"
+			"\r\n",
+			idText,
+			cnf->confno,
+			user->user_no,
+			S_OR(user->chan->cid.cid_num, "<unknown>"),
+			S_OR(user->chan->cid.cid_name, "<no name>"),
+			user->chan->name,
+			user->userflags & CONFFLAG_ADMIN ? "Yes" : "No",
+			user->userflags & CONFFLAG_MONITOR ? "Listen only" : user->userflags & CONFFLAG_TALKER ? "Talk only" : "Talk and listen",
+			user->userflags & CONFFLAG_MARKEDUSER ? "Yes" : "No",
+			user->adminflags & ADMINFLAG_MUTED ? "By admin" : user->adminflags & ADMINFLAG_SELFMUTED ? "By self" : "No",
+			user->talking > 0 ? "Yes" : user->talking == 0 ? "No" : "Not monitored");
+			ao2_ref(user, -1); 
 		}
 		ao2_iterator_destroy(&user_iter);
 	}
@@ -4965,73 +4550,6 @@ static int action_meetmelist(struct mansession *s, const struct message *m)
 	"ListItems: %d\r\n"
 	"%s"
 	"\r\n", total, idText);
-	return 0;
-}
-
-static int action_meetmelistrooms(struct mansession *s, const struct message *m)
-{
-	const char *actionid = astman_get_header(m, "ActionID");
-	char idText[80] = "";
-	struct ast_conference *cnf;
-	int totalitems = 0;
-	int hr, min, sec;
-	time_t now;
-	char markedusers[5];
-
-	if (!ast_strlen_zero(actionid)) {
-		snprintf(idText, sizeof(idText), "ActionID: %s\r\n", actionid);
-	}
-
-	if (AST_LIST_EMPTY(&confs)) {
-		astman_send_error(s, m, "No active conferences.");
-		return 0;
-	}
-
-	astman_send_listack(s, m, "Meetme conferences will follow", "start");
-
-	now = time(NULL);
-
-	/* Traverse the conference list */
-	AST_LIST_LOCK(&confs);
-	AST_LIST_TRAVERSE(&confs, cnf, list) {
-		totalitems++;
-
-		if (cnf->markedusers == 0) {
-			strcpy(markedusers, "N/A");
-		} else {
-			sprintf(markedusers, "%.4d", cnf->markedusers);
-		}
-		hr = (now - cnf->start) / 3600;
-		min = ((now - cnf->start) % 3600) / 60;
-		sec = (now - cnf->start) % 60;
-
-		astman_append(s,
-		"Event: MeetmeListRooms\r\n"
-		"%s"
-		"Conference: %s\r\n"
-		"Parties: %d\r\n"
-		"Marked: %s\r\n"
-		"Activity: %2.2d:%2.2d:%2.2d\r\n"
-		"Creation: %s\r\n"
-		"Locked: %s\r\n"
-		"\r\n",
-		idText,
-		cnf->confno,
-		cnf->users,
-		markedusers,
-		hr,  min, sec,
-		cnf->isdynamic ? "Dynamic" : "Static",
-		cnf->locked ? "Yes" : "No"); 
-	}
-	AST_LIST_UNLOCK(&confs);
-
-	/* Send final confirmation */
-	astman_append(s,
-	"Event: MeetmeListRoomsComplete\r\n"
-	"EventList: Complete\r\n"
-	"ListItems: %d\r\n"
-	"%s"
-	"\r\n", totalitems, idText);
 	return 0;
 }
 
@@ -5354,7 +4872,7 @@ static void *run_station(void *data)
 	struct sla_station *station;
 	struct sla_trunk_ref *trunk_ref;
 	struct ast_str *conf_name = ast_str_create(16);
-	struct ast_flags64 conf_flags = { 0 };
+	struct ast_flags conf_flags = { 0 };
 	struct ast_conference *conf;
 
 	{
@@ -5369,12 +4887,12 @@ static void *run_station(void *data)
 
 	ast_atomic_fetchadd_int((int *) &trunk_ref->trunk->active_stations, 1);
 	ast_str_set(&conf_name, 0, "SLA_%s", trunk_ref->trunk->name);
-	ast_set_flag64(&conf_flags, 
+	ast_set_flag(&conf_flags, 
 		CONFFLAG_QUIET | CONFFLAG_MARKEDEXIT | CONFFLAG_PASS_DTMF | CONFFLAG_SLA_STATION);
 	answer_trunk_chan(trunk_ref->chan);
-	conf = build_conf(ast_str_buffer(conf_name), "", "", 0, 0, 1, trunk_ref->chan, NULL);
+	conf = build_conf(ast_str_buffer(conf_name), "", "", 0, 0, 1, trunk_ref->chan);
 	if (conf) {
-		conf_run(trunk_ref->chan, conf, &conf_flags, NULL);
+		conf_run(trunk_ref->chan, conf, conf_flags.flags, NULL);
 		dispose_conf(conf);
 		conf = NULL;
 	}
@@ -5468,7 +4986,7 @@ static int sla_check_timed_out_station(const struct sla_ringing_trunk *ringing_t
 
 /*! \brief Choose the highest priority ringing trunk for a station
  * \param station the station
- * \param rm remove the ringing trunk once selected
+ * \param remove remove the ringing trunk once selected
  * \param trunk_ref a place to store the pointer to this stations reference to
  *        the selected trunk
  * \return a pointer to the selected ringing trunk, or NULL if none found
@@ -5625,9 +5143,8 @@ static int sla_ring_station(struct sla_ringing_trunk *ringing_trunk, struct sla_
 	char *tech, *tech_data;
 	struct ast_dial *dial;
 	struct sla_ringing_station *ringing_station;
+	const char *cid_name = NULL, *cid_num = NULL;
 	enum ast_dial_result res;
-	int caller_is_saved;
-	struct ast_party_caller caller;
 
 	if (!(dial = ast_dial_create()))
 		return -1;
@@ -5641,21 +5158,23 @@ static int sla_ring_station(struct sla_ringing_trunk *ringing_trunk, struct sla_
 		return -1;
 	}
 
-	/* Do we need to save off the caller ID data? */
-	caller_is_saved = 0;
-	if (!sla.attempt_callerid) {
-		caller_is_saved = 1;
-		caller = ringing_trunk->trunk->chan->caller;
-		ast_party_caller_init(&ringing_trunk->trunk->chan->caller);
+	if (!sla.attempt_callerid && !ast_strlen_zero(ringing_trunk->trunk->chan->cid.cid_name)) {
+		cid_name = ast_strdupa(ringing_trunk->trunk->chan->cid.cid_name);
+		ast_free(ringing_trunk->trunk->chan->cid.cid_name);
+		ringing_trunk->trunk->chan->cid.cid_name = NULL;
+	}
+	if (!sla.attempt_callerid && !ast_strlen_zero(ringing_trunk->trunk->chan->cid.cid_num)) {
+		cid_num = ast_strdupa(ringing_trunk->trunk->chan->cid.cid_num);
+		ast_free(ringing_trunk->trunk->chan->cid.cid_num);
+		ringing_trunk->trunk->chan->cid.cid_num = NULL;
 	}
 
 	res = ast_dial_run(dial, ringing_trunk->trunk->chan, 1);
 	
-	/* Restore saved caller ID */
-	if (caller_is_saved) {
-		ast_party_caller_free(&ringing_trunk->trunk->chan->caller);
-		ringing_trunk->trunk->chan->caller = caller;
-	}
+	if (cid_name)
+		ringing_trunk->trunk->chan->cid.cid_name = ast_strdup(cid_name);
+	if (cid_num)
+		ringing_trunk->trunk->chan->cid.cid_num = ast_strdup(cid_num);
 	
 	if (res != AST_DIAL_RESULT_TRYING) {
 		struct sla_failed_station *failed_station;
@@ -6171,10 +5690,9 @@ static void *dial_trunk(void *data)
 	enum ast_dial_result dial_res;
 	char conf_name[MAX_CONFNUM];
 	struct ast_conference *conf;
-	struct ast_flags64 conf_flags = { 0 };
+	struct ast_flags conf_flags = { 0 };
 	struct sla_trunk_ref *trunk_ref = args->trunk_ref;
-	int caller_is_saved;
-	struct ast_party_caller caller;
+	const char *cid_name = NULL, *cid_num = NULL;
 
 	if (!(dial = ast_dial_create())) {
 		ast_mutex_lock(args->cond_lock);
@@ -6193,21 +5711,23 @@ static void *dial_trunk(void *data)
 		return NULL;
 	}
 
-	/* Do we need to save of the caller ID data? */
-	caller_is_saved = 0;
-	if (!sla.attempt_callerid) {
-		caller_is_saved = 1;
-		caller = trunk_ref->chan->caller;
-		ast_party_caller_init(&trunk_ref->chan->caller);
+	if (!sla.attempt_callerid && !ast_strlen_zero(trunk_ref->chan->cid.cid_name)) {
+		cid_name = ast_strdupa(trunk_ref->chan->cid.cid_name);
+		ast_free(trunk_ref->chan->cid.cid_name);
+		trunk_ref->chan->cid.cid_name = NULL;
+	}
+	if (!sla.attempt_callerid && !ast_strlen_zero(trunk_ref->chan->cid.cid_num)) {
+		cid_num = ast_strdupa(trunk_ref->chan->cid.cid_num);
+		ast_free(trunk_ref->chan->cid.cid_num);
+		trunk_ref->chan->cid.cid_num = NULL;
 	}
 
 	dial_res = ast_dial_run(dial, trunk_ref->chan, 1);
 
-	/* Restore saved caller ID */
-	if (caller_is_saved) {
-		ast_party_caller_free(&trunk_ref->chan->caller);
-		trunk_ref->chan->caller = caller;
-	}
+	if (cid_name)
+		trunk_ref->chan->cid.cid_name = ast_strdup(cid_name);
+	if (cid_num)
+		trunk_ref->chan->cid.cid_num = ast_strdup(cid_num);
 
 	if (dial_res != AST_DIAL_RESULT_TRYING) {
 		ast_mutex_lock(args->cond_lock);
@@ -6248,17 +5768,17 @@ static void *dial_trunk(void *data)
 	}
 
 	snprintf(conf_name, sizeof(conf_name), "SLA_%s", trunk_ref->trunk->name);
-	ast_set_flag64(&conf_flags, 
+	ast_set_flag(&conf_flags, 
 		CONFFLAG_QUIET | CONFFLAG_MARKEDEXIT | CONFFLAG_MARKEDUSER | 
 		CONFFLAG_PASS_DTMF | CONFFLAG_SLA_TRUNK);
-	conf = build_conf(conf_name, "", "", 1, 1, 1, trunk_ref->trunk->chan, NULL);
+	conf = build_conf(conf_name, "", "", 1, 1, 1, trunk_ref->trunk->chan);
 
 	ast_mutex_lock(args->cond_lock);
 	ast_cond_signal(args->cond);
 	ast_mutex_unlock(args->cond_lock);
 
 	if (conf) {
-		conf_run(trunk_ref->trunk->chan, conf, &conf_flags, NULL);
+		conf_run(trunk_ref->trunk->chan, conf, conf_flags.flags, NULL);
 		dispose_conf(conf);
 		conf = NULL;
 	}
@@ -6289,13 +5809,13 @@ static struct sla_trunk_ref *sla_choose_idle_trunk(const struct sla_station *sta
 	return trunk_ref;
 }
 
-static int sla_station_exec(struct ast_channel *chan, const char *data)
+static int sla_station_exec(struct ast_channel *chan, void *data)
 {
 	char *station_name, *trunk_name;
 	struct sla_station *station;
 	struct sla_trunk_ref *trunk_ref = NULL;
 	char conf_name[MAX_CONFNUM];
-	struct ast_flags64 conf_flags = { 0 };
+	struct ast_flags conf_flags = { 0 };
 	struct ast_conference *conf;
 
 	if (ast_strlen_zero(data)) {
@@ -6424,12 +5944,12 @@ static int sla_station_exec(struct ast_channel *chan, const char *data)
 	}
 
 	snprintf(conf_name, sizeof(conf_name), "SLA_%s", trunk_ref->trunk->name);
-	ast_set_flag64(&conf_flags,
+	ast_set_flag(&conf_flags, 
 		CONFFLAG_QUIET | CONFFLAG_MARKEDEXIT | CONFFLAG_PASS_DTMF | CONFFLAG_SLA_STATION);
 	ast_answer(chan);
-	conf = build_conf(conf_name, "", "", 0, 0, 1, chan, NULL);
+	conf = build_conf(conf_name, "", "", 0, 0, 1, chan);
 	if (conf) {
-		conf_run(chan, conf, &conf_flags, NULL);
+		conf_run(chan, conf, conf_flags.flags, NULL);
 		dispose_conf(conf);
 		conf = NULL;
 	}
@@ -6496,11 +6016,11 @@ AST_APP_OPTIONS(sla_trunk_opts, BEGIN_OPTIONS
 	AST_APP_OPTION_ARG('M', SLA_TRUNK_OPT_MOH, SLA_TRUNK_OPT_ARG_MOH_CLASS),
 END_OPTIONS );
 
-static int sla_trunk_exec(struct ast_channel *chan, const char *data)
+static int sla_trunk_exec(struct ast_channel *chan, void *data)
 {
 	char conf_name[MAX_CONFNUM];
 	struct ast_conference *conf;
-	struct ast_flags64 conf_flags = { 0 };
+	struct ast_flags conf_flags = { 0 };
 	struct sla_trunk *trunk;
 	struct sla_ringing_trunk *ringing_trunk;
 	AST_DECLARE_APP_ARGS(args,
@@ -6508,6 +6028,7 @@ static int sla_trunk_exec(struct ast_channel *chan, const char *data)
 		AST_APP_ARG(options);
 	);
 	char *opts[SLA_TRUNK_OPT_ARG_ARRAY_SIZE] = { NULL, };
+	char *conf_opt_args[OPT_ARG_ARRAY_SIZE] = { NULL, };
 	struct ast_flags opt_flags = { 0 };
 	char *parse;
 
@@ -6557,23 +6078,24 @@ static int sla_trunk_exec(struct ast_channel *chan, const char *data)
 	}
 
 	snprintf(conf_name, sizeof(conf_name), "SLA_%s", args.trunk_name);
-	conf = build_conf(conf_name, "", "", 1, 1, 1, chan, NULL);
+	conf = build_conf(conf_name, "", "", 1, 1, 1, chan);
 	if (!conf) {
 		pbx_builtin_setvar_helper(chan, "SLATRUNK_STATUS", "FAILURE");
 		ast_atomic_fetchadd_int((int *) &trunk->ref_count, -1);
 		sla_queue_event(SLA_EVENT_CHECK_RELOAD);	
 		return 0;
 	}
-	ast_set_flag64(&conf_flags, 
+	ast_set_flag(&conf_flags, 
 		CONFFLAG_QUIET | CONFFLAG_MARKEDEXIT | CONFFLAG_MARKEDUSER | CONFFLAG_PASS_DTMF | CONFFLAG_NO_AUDIO_UNTIL_UP);
 
 	if (ast_test_flag(&opt_flags, SLA_TRUNK_OPT_MOH)) {
 		ast_indicate(chan, -1);
-		ast_set_flag64(&conf_flags, CONFFLAG_MOH);
+		ast_set_flag(&conf_flags, CONFFLAG_MOH);
+		conf_opt_args[OPT_ARG_MOH_CLASS] = opts[SLA_TRUNK_OPT_ARG_MOH_CLASS];
 	} else
 		ast_indicate(chan, AST_CONTROL_RINGING);
 
-	conf_run(chan, conf, &conf_flags, opts);
+	conf_run(chan, conf, conf_flags.flags, opts);
 	dispose_conf(conf);
 	conf = NULL;
 	trunk->chan = NULL;
@@ -6744,7 +6266,10 @@ static int sla_build_trunk(struct ast_config *cfg, const char *cat)
 		return -1;
 	}
 
-	if (!(trunk = ast_calloc_with_stringfields(1, struct sla_trunk, 32))) {
+	if (!(trunk = ast_calloc(1, sizeof(*trunk))))
+		return -1;
+	if (ast_string_field_init(trunk, 32)) {
+		ast_free(trunk);
 		return -1;
 	}
 
@@ -6870,7 +6395,10 @@ static int sla_build_station(struct ast_config *cfg, const char *cat)
 		return -1;
 	}
 
-	if (!(station = ast_calloc_with_stringfields(1, struct sla_station, 32))) {
+	if (!(station = ast_calloc(1, sizeof(*station))))
+		return -1;
+	if (ast_string_field_init(station, 32)) {
+		ast_free(station);
 		return -1;
 	}
 
@@ -7019,7 +6547,7 @@ static int sla_load_config(int reload)
 	return res;
 }
 
-static int acf_meetme_info_eval(const char *keyword, const struct ast_conference *conf)
+static int acf_meetme_info_eval(char *keyword, struct ast_conference *conf)
 {
 	if (!strcasecmp("lock", keyword)) {
 		return conf->locked;
@@ -7090,7 +6618,16 @@ static int acf_meetme_info(struct ast_channel *chan, const char *cmd, char *data
 
 static struct ast_custom_function meetme_info_acf = {
 	.name = "MEETME_INFO",
+	.synopsis = "Query a given conference of various properties.",
+	.syntax = "MEETME_INFO(<keyword>,<confno>)",
 	.read = acf_meetme_info,
+	.desc =
+"Returns information from a given keyword. (For booleans 1-true, 0-false)\n"
+"  Options:\n"
+"    lock     - boolean of whether the corresponding conference is locked\n" 
+"    parties  - number of parties in a given conference\n"
+"    activity - duration of conference in seconds\n"
+"    dynamic  - boolean of whether the corresponding coference is dynamic\n",
 };
 
 
@@ -7108,184 +6645,6 @@ static int load_config(int reload)
 	return sla_load_config(0);
 }
 
-#define MEETME_DATA_EXPORT(MEMBER)					\
-	MEMBER(ast_conference, confno, AST_DATA_STRING)			\
-	MEMBER(ast_conference, dahdiconf, AST_DATA_INTEGER)		\
-	MEMBER(ast_conference, users, AST_DATA_INTEGER)			\
-	MEMBER(ast_conference, markedusers, AST_DATA_INTEGER)		\
-	MEMBER(ast_conference, maxusers, AST_DATA_INTEGER)		\
-	MEMBER(ast_conference, isdynamic, AST_DATA_BOOLEAN)		\
-	MEMBER(ast_conference, locked, AST_DATA_BOOLEAN)		\
-	MEMBER(ast_conference, recordingfilename, AST_DATA_STRING)	\
-	MEMBER(ast_conference, recordingformat, AST_DATA_STRING)	\
-	MEMBER(ast_conference, pin, AST_DATA_PASSWORD)			\
-	MEMBER(ast_conference, pinadmin, AST_DATA_PASSWORD)		\
-	MEMBER(ast_conference, start, AST_DATA_TIMESTAMP)		\
-	MEMBER(ast_conference, endtime, AST_DATA_TIMESTAMP)
-
-AST_DATA_STRUCTURE(ast_conference, MEETME_DATA_EXPORT);
-
-#define MEETME_USER_DATA_EXPORT(MEMBER)					\
-	MEMBER(ast_conf_user, user_no, AST_DATA_INTEGER)		\
-	MEMBER(ast_conf_user, talking, AST_DATA_BOOLEAN)		\
-	MEMBER(ast_conf_user, dahdichannel, AST_DATA_BOOLEAN)		\
-	MEMBER(ast_conf_user, jointime, AST_DATA_TIMESTAMP)		\
-	MEMBER(ast_conf_user, kicktime, AST_DATA_TIMESTAMP)		\
-	MEMBER(ast_conf_user, timelimit, AST_DATA_MILLISECONDS)		\
-	MEMBER(ast_conf_user, play_warning, AST_DATA_MILLISECONDS)	\
-	MEMBER(ast_conf_user, warning_freq, AST_DATA_MILLISECONDS)
-
-AST_DATA_STRUCTURE(ast_conf_user, MEETME_USER_DATA_EXPORT);
-
-static int user_add_provider_cb(void *obj, void *arg, int flags)
-{
-	struct ast_data *data_meetme_user;
-	struct ast_data *data_meetme_user_channel;
-	struct ast_data *data_meetme_user_volume;
-
-	struct ast_conf_user *user = obj;
-	struct ast_data *data_meetme_users = arg;
-
-	data_meetme_user = ast_data_add_node(data_meetme_users, "user");
-	if (!data_meetme_user) {
-		return 0;
-	}
-	/* user structure */
-	ast_data_add_structure(ast_conf_user, data_meetme_user, user);
-
-	/* user's channel */
-	data_meetme_user_channel = ast_data_add_node(data_meetme_user, "channel");
-	if (!data_meetme_user_channel) {
-		return 0;
-	}
-
-	ast_channel_data_add_structure(data_meetme_user_channel, user->chan, 1);
-
-	/* volume structure */
-	data_meetme_user_volume = ast_data_add_node(data_meetme_user, "listen-volume");
-	if (!data_meetme_user_volume) {
-		return 0;
-	}
-	ast_data_add_int(data_meetme_user_volume, "desired", user->listen.desired);
-	ast_data_add_int(data_meetme_user_volume, "actual", user->listen.actual);
-
-	data_meetme_user_volume = ast_data_add_node(data_meetme_user, "talk-volume");
-	if (!data_meetme_user_volume) {
-		return 0;
-	}
-	ast_data_add_int(data_meetme_user_volume, "desired", user->talk.desired);
-	ast_data_add_int(data_meetme_user_volume, "actual", user->talk.actual);
-
-	return 0;
-}
-
-/*!
- * \internal
- * \brief Implements the meetme data provider.
- */
-static int meetme_data_provider_get(const struct ast_data_search *search,
-	struct ast_data *data_root)
-{
-	struct ast_conference *cnf;
-	struct ast_data *data_meetme, *data_meetme_users;
-
-	AST_LIST_LOCK(&confs);
-	AST_LIST_TRAVERSE(&confs, cnf, list) {
-		data_meetme = ast_data_add_node(data_root, "meetme");
-		if (!data_meetme) {
-			continue;
-		}
-
-		ast_data_add_structure(ast_conference, data_meetme, cnf);
-
-		if (ao2_container_count(cnf->usercontainer)) {
-			data_meetme_users = ast_data_add_node(data_meetme, "users");
-			if (!data_meetme_users) {
-				ast_data_remove_node(data_root, data_meetme);
-				continue;
-			}
-
-			ao2_callback(cnf->usercontainer, OBJ_NODATA, user_add_provider_cb, data_meetme_users); 
-		}
-
-		if (!ast_data_search_match(search, data_meetme)) {
-			ast_data_remove_node(data_root, data_meetme);
-		}
-	}
-	AST_LIST_UNLOCK(&confs);
-
-	return 0;
-}
-
-static const struct ast_data_handler meetme_data_provider = {
-	.version = AST_DATA_HANDLER_VERSION,
-	.get = meetme_data_provider_get
-};
-
-static const struct ast_data_entry meetme_data_providers[] = {
-	AST_DATA_ENTRY("asterisk/application/meetme/list", &meetme_data_provider),
-};
-
-#ifdef TEST_FRAMEWORK
-AST_TEST_DEFINE(test_meetme_data_provider)
-{
-	struct ast_channel *chan;
-	struct ast_conference *cnf;
-	struct ast_data *node;
-	struct ast_data_query query = {
-		.path = "/asterisk/application/meetme/list",
-		.search = "list/meetme/confno=9898"
-	};
-
-	switch (cmd) {
-	case TEST_INIT:
-		info->name = "meetme_get_data_test";
-		info->category = "/main/data/app_meetme/list/";
-		info->summary = "Meetme data provider unit test";
-		info->description =
-			"Tests whether the Meetme data provider implementation works as expected.";
-		return AST_TEST_NOT_RUN;
-	case TEST_EXECUTE:
-		break;
-	}
-
-	chan = ast_channel_alloc(0, AST_STATE_DOWN, NULL, NULL, NULL, NULL, NULL, 0, 0, "MeetMeTest");
-	if (!chan) {
-		ast_test_status_update(test, "Channel allocation failed\n");
-		return AST_TEST_FAIL;
-	}
-
-	cnf = build_conf("9898", "", "1234", 1, 1, 1, chan, test);
-	if (!cnf) {
-		ast_test_status_update(test, "Build of test conference 9898 failed\n");
-		ast_hangup(chan);
-		return AST_TEST_FAIL;
-	}
-
-	node = ast_data_get(&query);
-	if (!node) {
-		ast_test_status_update(test, "Data query for test conference 9898 failed\n");
-		dispose_conf(cnf);
-		ast_hangup(chan);
-		return AST_TEST_FAIL;
-	}
-
-	if (strcmp(ast_data_retrieve_string(node, "meetme/confno"), "9898")) {
-		ast_test_status_update(test, "Query returned the wrong conference\n");
-		dispose_conf(cnf);
-		ast_hangup(chan);
-		ast_data_free(node);
-		return AST_TEST_FAIL;
-	}
-
-	ast_data_free(node);
-	dispose_conf(cnf);
-	ast_hangup(chan);
-
-	return AST_TEST_PASS;
-}
-#endif
-
 static int unload_module(void)
 {
 	int res = 0;
@@ -7294,18 +6653,12 @@ static int unload_module(void)
 	res = ast_manager_unregister("MeetmeMute");
 	res |= ast_manager_unregister("MeetmeUnmute");
 	res |= ast_manager_unregister("MeetmeList");
-	res |= ast_manager_unregister("MeetmeListRooms");
 	res |= ast_unregister_application(app4);
 	res |= ast_unregister_application(app3);
 	res |= ast_unregister_application(app2);
 	res |= ast_unregister_application(app);
 	res |= ast_unregister_application(slastation_app);
 	res |= ast_unregister_application(slatrunk_app);
-
-#ifdef TEST_FRAMEWORK
-	AST_TEST_UNREGISTER(test_meetme_data_provider);
-#endif
-	ast_data_unregister(NULL);
 
 	ast_devstate_prov_del("Meetme");
 	ast_devstate_prov_del("SLA");
@@ -7318,8 +6671,6 @@ static int unload_module(void)
 	return res;
 }
 
-
-
 static int load_module(void)
 {
 	int res = 0;
@@ -7327,21 +6678,18 @@ static int load_module(void)
 	res |= load_config(0);
 
 	ast_cli_register_multiple(cli_meetme, ARRAY_LEN(cli_meetme));
-	res |= ast_manager_register_xml("MeetmeMute", EVENT_FLAG_CALL, action_meetmemute);
-	res |= ast_manager_register_xml("MeetmeUnmute", EVENT_FLAG_CALL, action_meetmeunmute);
-	res |= ast_manager_register_xml("MeetmeList", EVENT_FLAG_REPORTING, action_meetmelist);
-	res |= ast_manager_register_xml("MeetmeListRooms", EVENT_FLAG_REPORTING, action_meetmelistrooms);
+	res |= ast_manager_register("MeetmeMute", EVENT_FLAG_CALL, 
+				    action_meetmemute, "Mute a Meetme user");
+	res |= ast_manager_register("MeetmeUnmute", EVENT_FLAG_CALL, 
+				    action_meetmeunmute, "Unmute a Meetme user");
+	res |= ast_manager_register2("MeetmeList", EVENT_FLAG_REPORTING, 
+				    action_meetmelist, "List participants in a conference", mandescr_meetmelist);
 	res |= ast_register_application_xml(app4, channel_admin_exec);
 	res |= ast_register_application_xml(app3, admin_exec);
 	res |= ast_register_application_xml(app2, count_exec);
 	res |= ast_register_application_xml(app, conf_exec);
 	res |= ast_register_application_xml(slastation_app, sla_station_exec);
 	res |= ast_register_application_xml(slatrunk_app, sla_trunk_exec);
-
-#ifdef TEST_FRAMEWORK
-	AST_TEST_REGISTER(test_meetme_data_provider);
-#endif
-	ast_data_register_multiple(meetme_data_providers, ARRAY_LEN(meetme_data_providers));
 
 	res |= ast_devstate_prov_add("Meetme", meetmestate);
 	res |= ast_devstate_prov_add("SLA", sla_state);
@@ -7358,10 +6706,9 @@ static int reload(void)
 	return load_config(1);
 }
 
-AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "MeetMe conference bridge",
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_DEFAULT, "MeetMe conference bridge",
 		.load = load_module,
 		.unload = unload_module,
 		.reload = reload,
-		.load_pri = AST_MODPRI_DEVSTATE_PROVIDER,
 	       );
 
