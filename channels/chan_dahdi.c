@@ -12198,7 +12198,7 @@ next:
 	return tmp;
 }
 
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
 static int dahdi_setlaw(int dfd, int law)
 {
 	return ioctl(dfd, DAHDI_SETLAW, &law);
@@ -15193,7 +15193,7 @@ static int start_pri(struct dahdi_pri *pri)
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 static char *complete_span_helper(const char *line, const char *word, int pos, int state, int rpos)
 {
 	int which, span;
@@ -15203,18 +15203,28 @@ static char *complete_span_helper(const char *line, const char *word, int pos, i
 		return ret;
 
 	for (which = span = 0; span < NUM_SPANS; span++) {
+#if defined(HAVE_PRI)
 		if (pris[span].pri && ++which > state) {
 			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
 				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
 			}
 			break;
 		}
+#endif
+#if defined(HAVE_WAT)		
+		if (wats[span].sigchannel && ++which > state) {
+			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
+				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+			}
+			break;
+		}
+#endif
 	}
 	return ret;
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 static char *complete_span_4(const char *line, const char *word, int pos, int state)
 {
 	return complete_span_helper(line,word,pos,state,3);
@@ -15895,8 +15905,11 @@ retry:
 static int setup_dahdi(int reload);
 static int dahdi_restart(void)
 {
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+	int i;
+#endif
 #if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int i, j;
+	int j;
 #endif
 	int cancel_code;
 	struct dahdi_pvt *p;
@@ -19072,9 +19085,13 @@ static struct ast_cli_entry dahdi_wat_cli[] = {
 static int load_module(void)
 {
 	int res;
-#if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int y, i;
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+	int y;
 #endif
+#if defined(HAVE_PRI) || defined(HAVE_SS7)
+	int i;
+#endif
+
 
 #ifdef HAVE_PRI
 	memset(pris, 0, sizeof(pris));

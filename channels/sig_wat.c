@@ -1009,7 +1009,9 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_dtmf_response)
 {
 	struct sig_wat_span *wat = NULL;
 	int i = 0;
+#if ASTERISK_VERSION_NUM >= 10800
 	char x = 0;
+#endif
 	while (tokens[i]) {
 		i++;
 	}
@@ -1109,7 +1111,6 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms
 int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char digit)
 {
 	struct sig_wat_span *wat;
-	char x = 0;
 	int count = 0;
 	char dtmf[2] = { digit, '\0' };
 
@@ -1125,7 +1126,7 @@ int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char di
 #if ASTERISK_VERSION_NUM >= 10800
 	/* Disable DTMF detection while we play DTMF because the GSM module will play back some sort of feedback tone */
 	if (count == 1) {
-		x = 0;
+		int x = 0;
 		ast_channel_setoption(wat->pvt->owner, AST_OPTION_DIGIT_DETECT, &x, sizeof(char), 0);
 	}	
 #endif /* ASTERISK_VERSION_NUM >= 10800 */
