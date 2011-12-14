@@ -250,7 +250,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 	wat->pvt->remotehangup = 0;
 
-#if ASTERISK_VERSION_NUM >= 10800	
+#if ASTERISK_VERSION_NUM >= 10800
 	if (wat->pvt->use_callerid) {
 #else
 	if (wat->pvt->calls->get_use_callerid(wat->pvt->chan_pvt)) {
@@ -258,7 +258,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 		/* TODO: Set plan etc.. properly */
 		strcpy(cid_num, con_event->calling_num.digits);
 	}
-	
+
 	if (ast_exists_extension(NULL, context, "s", 1, cid_num)) {
 		sig_wat_unlock_private(wat->pvt);
 		chan = sig_wat_new_ast_channel(wat->pvt, AST_STATE_RING, 0, con_event->sub, NULL);
