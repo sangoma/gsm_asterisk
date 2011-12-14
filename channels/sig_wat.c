@@ -50,6 +50,11 @@
 
 #define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
 
+#if defined(USING_TRUNK)
+#undef ASTERISK_VERSION_NUM
+#define ASTERISK_VERSION_NUM 999999
+#endif
+
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm);
 void *sig_wat_malloc(size_t size);
 void *sig_wat_calloc(size_t nmemb, size_t size);
@@ -1134,5 +1139,9 @@ int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char di
 
 	return 0;
 }
+
+#if defined(USING_TRUNK)
+#undef ASTERISK_VERSION_NUM
+#endif
 
 #endif /* HAVE_WAT */
