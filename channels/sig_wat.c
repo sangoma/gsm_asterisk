@@ -208,10 +208,21 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	struct sig_wat_span *wat;
 	struct ast_channel *chan;
 
+	char *cid_num = NULL;
+	char *context = NULL;
 
 	wat = wat_spans[span_id];
 	ast_assert(wat != NULL);
 	ast_assert(con_event->sub < WAT_CALL_SUB_INVALID);
+
+
+#if ASTERISK_VERSION_NUM >= 10800
+	cid_num = wat->pvt->cid_num;
+	context = wat->pvt->context;
+#else
+	cid_num = wat->pvt->calls->get_cid_num(wat->pvt->chan_pvt);
+	context = wat->pvt->calls->get_context(wat->pvt->chan_pvt);
+#endif /* ASTERISK_VERSION_NUM >= 10800 */
 
 	ast_verb(3, "Span %d: Call Incoming (%s)\n",
 									wat->span + 1,
@@ -236,17 +247,21 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 	wat->pvt->remotehangup = 0;
 
+#if ASTERISK_VERSION_NUM >= 10800
 	if (wat->pvt->use_callerid) {
+#else
+	if (wat->pvt->calls->get_use_callerid(wat->pvt->chan_pvt)) {
+#endif
 		/* TODO: Set plan etc.. properly */
-		strcpy(wat->pvt->cid_num, con_event->calling_num.digits);
+		strcpy(cid_num, con_event->calling_num.digits);
 	}
 
-	if (ast_exists_extension(NULL, wat->pvt->context, "s", 1, wat->pvt->cid_num)) {
+	if (ast_exists_extension(NULL, context, "s", 1, cid_num)) {
 		sig_wat_unlock_private(wat->pvt);
 		chan = sig_wat_new_ast_channel(wat->pvt, AST_STATE_RING, 0, con_event->sub, NULL);
 		sig_wat_lock_private(wat->pvt);
 		if (chan && !ast_pbx_start(chan)) {
-			ast_verb(3, "Accepting call from '%s', span %d\n", wat->pvt->cid_num, wat->span);
+			ast_verb(3, "Accepting call from '%s', span %d\n", cid_num, wat->span);
 			sig_wat_set_echocanceller(wat->pvt, 1);
 			sig_wat_unlock_private(wat->pvt);
 		} else {
@@ -261,7 +276,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 			}
 		}
 	} else {
-		ast_verb(3, "No \'s' extension in context '%s'\n", wat->pvt->context);
+		ast_verb(3, "No \'s' extension in context '%s'\n", context);
 		/* Do not clear the call yet, as we will get a wat_rel_cfm as a response */
 		wat_rel_req(span_id, call_id);
 		
@@ -619,7 +634,12 @@ static void wat_queue_control(struct sig_wat_span *wat, int subclass)
 		p->calls->queue_control(p->chan_pvt, subclass);
 	}
 
+#if ASTERISK_VERSION_NUM > 10800
 	f.subclass.integer = subclass;
+#else
+	f.subclass = subclass;
+#endif
+
 	wat_queue_frame(wat, &f);
 }
 
@@ -740,7 +760,7 @@ static void wat_set_new_owner(struct sig_wat_chan *p, struct ast_channel *new_ow
 
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor)
 {
-	struct ast_channel *c;
+	struct ast_channel *c = NULL;
 	if (p->calls->new_ast_channel) {
 		c = p->calls->new_ast_channel(p->chan_pvt, state, startpbx, sub, requestor);
 	} else {
@@ -984,7 +1004,9 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_dtmf_response)
 {
 	struct sig_wat_span *wat = NULL;
 	int i = 0;
+#if ASTERISK_VERSION_NUM >= 10800
 	char x = 0;
+#endif
 	while (tokens[i]) {
 		i++;
 	}
@@ -1007,14 +1029,14 @@ WAT_AT_CMD_RESPONSE_FUNC(sig_wat_dtmf_response)
 		/* DTMF still pending, do not enable digit detection back again just yet */
 		goto done;
 	}
-
+#if ASTERISK_VERSION_NUM >= 10800
 	sig_wat_lock_owner(wat);
 
 	x = 1;
 	ast_channel_setoption(wat->pvt->owner, AST_OPTION_DIGIT_DETECT, &x, sizeof(char), 0);
 
 	ast_channel_unlock(wat->pvt->owner);
-
+#endif /* ASTERISK_VERSION_NUM >= 10800 */
 done:
 	sig_wat_unlock_private(wat->pvt);
 
@@ -1083,8 +1105,7 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms
 
 int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char digit)
 {
-	struct sig_wat_span *wat;
-	char x = 0;
+	struct sig_wat_span *wat;	
 	int count = 0;
 	char dtmf[2] = { digit, '\0' };
 
@@ -1097,11 +1118,13 @@ int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char di
 	count = wat->dtmf_count;
 	ast_mutex_unlock(&wat->lock);
 
+#if ASTERISK_VERSION_NUM >= 10800
 	/* Disable DTMF detection while we play DTMF because the GSM module will play back some sort of feedback tone */
 	if (count == 1) {
-		x = 0;
+		char x = 0;
 		ast_channel_setoption(wat->pvt->owner, AST_OPTION_DIGIT_DETECT, &x, sizeof(char), 0);
 	}
+#endif /* ASTERISK_VERSION_NUM >= 10800 */
 	wat_send_dtmf(wat->wat_span_id, wat->pvt->subs[WAT_CALL_SUB_REAL].wat_call_id, dtmf, sig_wat_dtmf_response, wat);
 
 	return 0;
