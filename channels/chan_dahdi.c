@@ -16975,7 +16975,7 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 {
 	int span;	
 	const char *span_string = astman_get_header(m, "Span");
-	const char *destination = astman_get_header(m, "CalledNumber");
+	const char *destination = astman_get_header(m, "To");
 	const char *message = astman_get_header(m, "Message");
 
 	if (ast_strlen_zero(span_string)) {
