@@ -19079,8 +19079,6 @@ static int setup_dahdi(int reload)
 	return 0;
 }
 
-#endif	/* defined(HAVE_WAT) */
-
 static int load_module(void)
 {
 	int res;
