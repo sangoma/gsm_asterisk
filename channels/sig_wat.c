@@ -1124,7 +1124,7 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms
 
 int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char digit)
 {
-	struct sig_wat_span *wat;
+	struct sig_wat_span *wat;	
 	int count = 0;
 	char dtmf[2] = { digit, '\0' };
 

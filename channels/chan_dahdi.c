@@ -17434,6 +17434,292 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 };
 #endif	/* defined(HAVE_SS7) */
 
+#if defined(HAVE_WAT)
+static int wat_action_send_sms(struct mansession *s, const struct message *m)
+{
+	int span;	
+	const char *span_string = astman_get_header(m, "Span");
+	const char *destination = astman_get_header(m, "To");
+	const char *message = astman_get_header(m, "Message");
+
+	if (ast_strlen_zero(span_string)) {
+		astman_send_error(s, m, "No span specified");
+		return 0;
+	}
+	
+	span = atoi(span_string);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		astman_send_error(s, m, "No such span");
+		return 0;
+	}
+
+	if (sig_wat_send_sms(&wats[span-1].wat, destination, message) != 0) {
+		astman_send_error(s, m, "Failed to send SMS");
+	} else {
+		astman_send_ack(s, m, "SMS request sent");
+	}
+	return 0;
+}
+
+static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat send sms";
+			e->usage =
+					"Usage: wat send sms <span> <number> <sms>\n"
+					"       Send a sms on <span> <number> <sms>\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc < 6)
+		return CLI_SHOWUSAGE;
+
+	span = atoi(a->argv[3]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], a->argv[5]);
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show spans";
+			e->usage =
+					"Usage: wat show spans\n"
+					"       Displays WAT span information\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc != 3)
+		return CLI_SHOWUSAGE;
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			sig_wat_cli_show_spans(a->fd, span + 1, &wats[span].wat);
+		}
+	}
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show span";
+			e->usage =
+					"Usage: wat show span <span>\n"
+					"       Displays GSM Information on a given WAT span\n";
+			return NULL;
+		case CLI_GENERATE:
+			return complete_span_4(a->line, a->word, a->pos, a->n);
+	}
+
+	if (a->argc < 4)
+		return CLI_SHOWUSAGE;
+	span = atoi(a->argv[3]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_cli_show_span(a->fd, &wats[span-1].wat);
+
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	unsigned char current = 0;
+	unsigned char revision = 0;
+	unsigned char age = 0;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat show version";
+			e->usage =
+					"Usage: wat show version\n"
+					"	Show the libwat version\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	wat_version(&current, &revision, &age);
+	ast_cli(a->fd, "libwat version: %d.%d.%d\n", current, revision, age);
+
+	return CLI_SUCCESS;
+}
+
+static char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	int span = 0;
+
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat exec";
+			e->usage =
+					"Usage: wat exec <span> <AT command>\n"
+					"       Executes an arbitrary AT command in the given WAT span\n";
+			return NULL;
+		case CLI_GENERATE:
+			return complete_span_4(a->line, a->word, a->pos, a->n);
+	}
+
+	if (a->argc < 4)
+		return CLI_SHOWUSAGE;
+	span = atoi(a->argv[2]);
+	if ((span < 1) || (span > NUM_SPANS)) {
+		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[2], 1, NUM_SPANS);
+		return CLI_SUCCESS;
+	}
+	if (!wats[span-1].wat.wat_span_id) {
+		ast_cli(a->fd, "No WAT running on span %d\n", span);
+		return CLI_SUCCESS;
+	}
+
+	sig_wat_exec_at(&wats[span-1].wat, a->argv[3]);
+
+	return CLI_SUCCESS;
+}
+
+static struct ast_cli_entry dahdi_wat_cli[] = {
+	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
+	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
+	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
+	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
+	AST_CLI_DEFINE(handle_wat_exec_at, "Executes an arbitrary AT command"),
+	AST_CLI_DEFINE(handle_wat_version, "Displays libwat version"),
+};
+#endif	/* defined(HAVE_WAT) */
+
+#if defined(HAVE_PRI)
+#if defined(HAVE_PRI_CCSS)
+/*!
+ * \internal
+ * \brief CC agent initialization.
+ * \since 1.8
+ *
+ * \param agent CC core agent control.
+ * \param chan Original channel the agent will attempt to recall.
+ *
+ * \details
+ * This callback is called when the CC core is initialized.  Agents should allocate
+ * any private data necessary for the call and assign it to the private_data
+ * on the agent.  Additionally, if any ast_cc_agent_flags are pertinent to the
+ * specific agent type, they should be set in this function as well.
+ *
+ * \retval 0 on success.
+ * \retval -1 on error.
+ */
+static int dahdi_pri_cc_agent_init(struct ast_cc_agent *agent, struct ast_channel *chan)
+{
+	struct dahdi_pvt *pvt;
+	struct sig_pri_chan *pvt_chan;
+	int res;
+
+	ast_assert(!strcmp(chan->tech->type, "DAHDI"));
+
+	pvt = chan->tech_pvt;
+	if (dahdi_sig_pri_lib_handles(pvt->sig)) {
+		pvt_chan = pvt->sig_pvt;
+	} else {
+		pvt_chan = NULL;
+	}
+	if (!pvt_chan) {
+		return -1;
+	}
+
+	ast_module_ref(ast_module_info->self);
+
+	res = sig_pri_cc_agent_init(agent, pvt_chan);
+	if (res) {
+		ast_module_unref(ast_module_info->self);
+	}
+	return res;
+}
+#endif	/* defined(HAVE_PRI_CCSS) */
+#endif	/* defined(HAVE_PRI) */
+
+#if defined(HAVE_PRI)
+#if defined(HAVE_PRI_CCSS)
+/*!
+ * \internal
+ * \brief Destroy private data on the agent.
+ * \since 1.8
+ *
+ * \param agent CC core agent control.
+ *
+ * \details
+ * The core will call this function upon completion
+ * or failure of CC.
+ *
+ * \return Nothing
+ */
+static void dahdi_pri_cc_agent_destructor(struct ast_cc_agent *agent)
+{
+	sig_pri_cc_agent_destructor(agent);
+
+	ast_module_unref(ast_module_info->self);
+}
+#endif	/* defined(HAVE_PRI_CCSS) */
+#endif	/* defined(HAVE_PRI) */
+
+#if defined(HAVE_PRI)
+#if defined(HAVE_PRI_CCSS)
+static struct ast_cc_agent_callbacks dahdi_pri_cc_agent_callbacks = {
+	.type = dahdi_pri_cc_type,
+	.init = dahdi_pri_cc_agent_init,
+	.start_offer_timer = sig_pri_cc_agent_start_offer_timer,
+	.stop_offer_timer = sig_pri_cc_agent_stop_offer_timer,
+	.respond = sig_pri_cc_agent_req_rsp,
+	.status_request = sig_pri_cc_agent_status_req,
+	.stop_ringing = sig_pri_cc_agent_stop_ringing,
+	.party_b_free = sig_pri_cc_agent_party_b_free,
+	.start_monitoring = sig_pri_cc_agent_start_monitoring,
+	.callee_available = sig_pri_cc_agent_callee_available,
+	.destructor = dahdi_pri_cc_agent_destructor,
+};
+#endif	/* defined(HAVE_PRI_CCSS) */
+#endif	/* defined(HAVE_PRI) */
+
+#if defined(HAVE_PRI)
+#if defined(HAVE_PRI_CCSS)
+static struct ast_cc_monitor_callbacks dahdi_pri_cc_monitor_callbacks = {
+	.type = dahdi_pri_cc_type,
+	.request_cc = sig_pri_cc_monitor_req_cc,
+	.suspend = sig_pri_cc_monitor_suspend,
+	.unsuspend = sig_pri_cc_monitor_unsuspend,
+	.status_response = sig_pri_cc_monitor_status_rsp,
+	.cancel_available_timer = sig_pri_cc_monitor_cancel_available_timer,
+	.destructor = sig_pri_cc_monitor_destructor,
+};
+#endif	/* defined(HAVE_SS7) */
+
 static int __unload_module(void)
 {
 	struct dahdi_pvt *p;
