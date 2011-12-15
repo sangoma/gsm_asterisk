@@ -11,5 +11,5 @@ if [ $? -ne 0 ];then
 fi
 
 git checkout $to
-git pull .${from}_tmp
+git pull . ${from}_tmp
 git branch -d ${from}_tmp
