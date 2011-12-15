@@ -8,6 +8,11 @@ if test ! -f .flavor ; then
 #define ASTERISK_VERSION "${ASTERISKVERSION}"
 #define ASTERISK_VERSION_NUM ${ASTERISKVERSIONNUM}
 
+#if 1
+/* Do not add commit this back to Asterisk SVN" */
+#define ASTERISK_COMPILING_TRUNK 1
+#endif
+
 END
 elif test ! -f .version ; then
     aadkflavor=`cat .flavor`
