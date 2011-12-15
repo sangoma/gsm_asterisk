@@ -19183,34 +19183,6 @@ static int setup_dahdi(int reload)
 }
 
 
-#if defined(HAVE_WAT)
-/* TODO: move these to sig_wat.c so we do not need to patch chan_dahdi as much */
-static int wat_action_send_sms(struct mansession *s, const struct message *m)
-{
-	int span;
-	const char *span_string = astman_get_header(m, "Span");
-	const char *destination = astman_get_header(m, "CalledNumber");
-	const char *message = astman_get_header(m, "Message");
-
-	if (ast_strlen_zero(span_string)) {
-		astman_send_error(s, m, "No span specified");
-		return 0;
-	}
-	
-	span = atoi(span_string);
-	if ((span < 1) || (span > NUM_SPANS)) {
-		astman_send_error(s, m, "No such span");
-		return 0;
-	}
-
-	if (sig_wat_send_sms(&wats[span-1].wat, destination, message) != 0) {
-		astman_send_error(s, m, "Failed to send SMS");
-	} else {
-		astman_send_ack(s, m, "SMS request sent");
-	}
-	return 0;
-}
-
 static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	int span;
