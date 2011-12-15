@@ -200,6 +200,8 @@ static const char *lbostr[] = {
 
 
 static int dahdi_setlaw(int dfd, int law);
+static int __unload_module(void);
+static int unload_module(void);
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
