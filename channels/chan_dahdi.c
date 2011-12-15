@@ -200,8 +200,6 @@ static const char *lbostr[] = {
 
 
 static int dahdi_setlaw(int dfd, int law);
-static int __unload_module(void);
-static int unload_module(void);
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
@@ -17618,109 +17616,6 @@ static struct ast_cli_entry dahdi_wat_cli[] = {
 	AST_CLI_DEFINE(handle_wat_version, "Displays libwat version"),
 };
 #endif	/* defined(HAVE_WAT) */
-
-#if defined(HAVE_PRI)
-#if defined(HAVE_PRI_CCSS)
-/*!
- * \internal
- * \brief CC agent initialization.
- * \since 1.8
- *
- * \param agent CC core agent control.
- * \param chan Original channel the agent will attempt to recall.
- *
- * \details
- * This callback is called when the CC core is initialized.  Agents should allocate
- * any private data necessary for the call and assign it to the private_data
- * on the agent.  Additionally, if any ast_cc_agent_flags are pertinent to the
- * specific agent type, they should be set in this function as well.
- *
- * \retval 0 on success.
- * \retval -1 on error.
- */
-static int dahdi_pri_cc_agent_init(struct ast_cc_agent *agent, struct ast_channel *chan)
-{
-	struct dahdi_pvt *pvt;
-	struct sig_pri_chan *pvt_chan;
-	int res;
-
-	ast_assert(!strcmp(chan->tech->type, "DAHDI"));
-
-	pvt = chan->tech_pvt;
-	if (dahdi_sig_pri_lib_handles(pvt->sig)) {
-		pvt_chan = pvt->sig_pvt;
-	} else {
-		pvt_chan = NULL;
-	}
-	if (!pvt_chan) {
-		return -1;
-	}
-
-	ast_module_ref(ast_module_info->self);
-
-	res = sig_pri_cc_agent_init(agent, pvt_chan);
-	if (res) {
-		ast_module_unref(ast_module_info->self);
-	}
-	return res;
-}
-#endif	/* defined(HAVE_PRI_CCSS) */
-#endif	/* defined(HAVE_PRI) */
-
-#if defined(HAVE_PRI)
-#if defined(HAVE_PRI_CCSS)
-/*!
- * \internal
- * \brief Destroy private data on the agent.
- * \since 1.8
- *
- * \param agent CC core agent control.
- *
- * \details
- * The core will call this function upon completion
- * or failure of CC.
- *
- * \return Nothing
- */
-static void dahdi_pri_cc_agent_destructor(struct ast_cc_agent *agent)
-{
-	sig_pri_cc_agent_destructor(agent);
-
-	ast_module_unref(ast_module_info->self);
-}
-#endif	/* defined(HAVE_PRI_CCSS) */
-#endif	/* defined(HAVE_PRI) */
-
-#if defined(HAVE_PRI)
-#if defined(HAVE_PRI_CCSS)
-static struct ast_cc_agent_callbacks dahdi_pri_cc_agent_callbacks = {
-	.type = dahdi_pri_cc_type,
-	.init = dahdi_pri_cc_agent_init,
-	.start_offer_timer = sig_pri_cc_agent_start_offer_timer,
-	.stop_offer_timer = sig_pri_cc_agent_stop_offer_timer,
-	.respond = sig_pri_cc_agent_req_rsp,
-	.status_request = sig_pri_cc_agent_status_req,
-	.stop_ringing = sig_pri_cc_agent_stop_ringing,
-	.party_b_free = sig_pri_cc_agent_party_b_free,
-	.start_monitoring = sig_pri_cc_agent_start_monitoring,
-	.callee_available = sig_pri_cc_agent_callee_available,
-	.destructor = dahdi_pri_cc_agent_destructor,
-};
-#endif	/* defined(HAVE_PRI_CCSS) */
-#endif	/* defined(HAVE_PRI) */
-
-#if defined(HAVE_PRI)
-#if defined(HAVE_PRI_CCSS)
-static struct ast_cc_monitor_callbacks dahdi_pri_cc_monitor_callbacks = {
-	.type = dahdi_pri_cc_type,
-	.request_cc = sig_pri_cc_monitor_req_cc,
-	.suspend = sig_pri_cc_monitor_suspend,
-	.unsuspend = sig_pri_cc_monitor_unsuspend,
-	.status_response = sig_pri_cc_monitor_status_rsp,
-	.cancel_available_timer = sig_pri_cc_monitor_cancel_available_timer,
-	.destructor = sig_pri_cc_monitor_destructor,
-};
-#endif	/* defined(HAVE_SS7) */
 
 static int __unload_module(void)
 {
