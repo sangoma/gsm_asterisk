@@ -34,6 +34,7 @@
 #include "asterisk/cli.h"
 #include "asterisk/stringfields.h"
 #include "asterisk/manager.h"
+#include "asterisk/version.h"
 
 #include "sig_wat.h"
 
@@ -48,12 +49,12 @@
 } while (0)
 
 
-#define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
-
-#if defined(USING_TRUNK)
+#if defined(ASTERISK_COMPILING_TRUNK)
 #undef ASTERISK_VERSION_NUM
-#define ASTERISK_VERSION_NUM 999999
+#define ASTERISK_VERSION_NUM 20000
 #endif
+
+#define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
 
 void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm);
 void *sig_wat_malloc(size_t size);
@@ -380,6 +381,92 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 	return;
 }
 
+void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
+{
+	struct sig_wat_span *wat = wat_spans[span_id];
+	ast_assert(wat != NULL);
+	ast_verb(3, "Span %d: SMS received from %s\n %s\n", wat->span + 1, sms_event->calling_num.digits, sms_event->message);
+
+	if (sms_event->type == WAT_SMS_TXT) {
+		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
+						"Span: %d\r\n"
+						"From: %s (type:%d plan:%d)\r\n"
+						"Type: %s\r\n"
+						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+						"Message-Length: %u\r\n"
+						"Message: %s\r\n\r\n",
+						wat->span + 1,
+						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+						(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
+						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
+						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
+						sms_event->scts.timezone,
+						sms_event->len,
+						sms_event->message);
+	} else {
+		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
+						"Span: %d\r\n"
+						"From: %s (type:%d plan:%d)\r\n"
+						"Service-Centre: %s (type:%d plan:%d)\r\n"
+						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+						"Type: %s\r\n"
+						"More-Messages-To-Send: %s\r\n"
+						"Reply-Path: %s\r\n"
+						"User-Data-Header-Indicator: %s\r\n"
+						"Status-Report-Indication: %s\r\n"
+						"Message-Length: %u\r\n"
+						"Message: %s\r\n\r\n",
+						wat->span + 1,
+						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+						sms_event->pdu.smsc.digits, sms_event->pdu.smsc.type, sms_event->pdu.smsc.plan,
+						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
+						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
+						sms_event->scts.timezone,
+						(!sms_event->pdu.sms_deliver.tp_mti) ? "SMS-DELIVER" : "Unknown",
+						(sms_event->pdu.sms_deliver.tp_mms) ? "Yes" : "No",
+						(sms_event->pdu.sms_deliver.tp_rp) ? "Yes" : "No",
+						(sms_event->pdu.sms_deliver.tp_udhi) ? "Yes" : "No",
+						(sms_event->pdu.sms_deliver.tp_sri) ? "Yes" : "No",
+						sms_event->len,
+						sms_event->message);
+	}
+}
+
+void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
+{
+	struct sig_wat_span *wat = wat_spans[span_id];	
+	ast_assert(wat != NULL);
+	
+	if (sms_status->success) {
+		ast_verb(3, "Span %d: SMS sent OK (id:%d)\n", wat->span + 1, sms_id);
+	} else {
+		if (sms_status->error) {
+			ast_verb(3, "Span %d: Failed to send SMS cause:%s error:%s (id:%d)\n",
+													wat->span + 1,
+													wat_decode_sms_cause(sms_status->cause),
+													sms_status->error,
+													sms_id);
+		} else {
+			ast_verb(3, "Span %d: Failed to send SMS cause:%s (id:%d)\n",
+													wat->span + 1,
+													wat_decode_sms_cause(sms_status->cause),
+													sms_id);
+		}
+
+	}
+
+	sig_wat_lock_private(wat->pvt);
+	if (!wat->smss[sms_id]) {
+		ast_log(LOG_ERROR, "Span %d: Could not find record for transmitted SMS (id:%d)\n", wat->span + 1, sms_id);
+		sig_wat_unlock_private(wat->pvt);
+		return;
+	}	
+	ast_free(wat->smss[sms_id]);
+	wat->smss[sms_id] = NULL;
+	sig_wat_unlock_private(wat->pvt);
+	return;
+}
+
 int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
 {
 	int i,j;
@@ -479,84 +566,6 @@ int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast)
 	}
 
 	return res;
-}
-
-void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
-{
-	struct sig_wat_span *wat = wat_spans[span_id];
-	ast_assert(wat != NULL);
-	ast_verb(3, "Span %d: SMS received from %s\n %s\n", wat->span + 1, sms_event->calling_num.digits, sms_event->message);
-
-	if (sms_event->type == WAT_SMS_TXT) {
-		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
-											"Span: %d\r\n"
-											"CallingNumber: %s (type:%d plan:%d)\r\n"
-											"Type: %s\r\n"
-											"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
-											"MessageLength: %u\r\n"
-											"Message: %s\r\n\r\n",
-											wat->span + 1,
-											sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
-											(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
-											sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
-											sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
-											sms_event->scts.timezone,
-											sms_event->len,
-											sms_event->message);
-	} else {
-		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
-											"Span: %d\r\n"
-											"CallingNumber: %s (type:%d plan:%d)\r\n"
-											"ServiceCentre: %s (type:%d plan:%d)\r\n"
-											"Type: %s\r\n"
-											"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
-											"MessageLength: %u\r\n"
-											"Message: %s\r\n\r\n",
-											wat->span + 1,
-											sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
-											sms_event->pdu.smsc.digits, sms_event->pdu.smsc.type, sms_event->pdu.smsc.plan,
-											(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
-											sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
-											sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
-											sms_event->scts.timezone,
-											sms_event->len,
-											sms_event->message);
-	}
-}
-
-void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
-{
-	struct sig_wat_span *wat = wat_spans[span_id];
-	ast_assert(wat != NULL);
-
-	if (sms_status->success) {
-		ast_verb(3, "Span %d: SMS sent OK (id:%d)\n", wat->span + 1, sms_id);
-	} else {
-		if (sms_status->error) {
-			ast_verb(3, "Span %d: Failed to send SMS cause:%s error:%s (id:%d)\n",
-					 wat->span + 1,
-	  wat_decode_sms_cause(sms_status->cause),
-						   sms_status->error,
-		 sms_id);
-		} else {
-			ast_verb(3, "Span %d: Failed to send SMS cause:%s (id:%d)\n",
-					 wat->span + 1,
-	  wat_decode_sms_cause(sms_status->cause),
-						   sms_id);
-		}
-
-	}
-
-	sig_wat_lock_private(wat->pvt);
-	if (!wat->smss[sms_id]) {
-		ast_log(LOG_ERROR, "Span %d: Could not find record for transmitted SMS (id:%d)\n", wat->span + 1, sms_id);
-		sig_wat_unlock_private(wat->pvt);
-		return;
-	}
-	ast_free(wat->smss[sms_id]);
-	wat->smss[sms_id] = NULL;
-	sig_wat_unlock_private(wat->pvt);
-	return;
 }
 
 static void sig_wat_deadlock_avoidance_private(struct sig_wat_chan *p)
@@ -1140,7 +1149,7 @@ int sig_wat_digit_begin(struct sig_wat_chan *p, struct ast_channel *ast, char di
 	return 0;
 }
 
-#if defined(USING_TRUNK)
+#if defined(ASTERISK_COMPILING_TRUNK)
 #undef ASTERISK_VERSION_NUM
 #endif
 
