@@ -1412,8 +1412,22 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 			.resetinterval = -1,
 		},
 #endif
-#ifdef HAVE_SS7
-		.ss7 = {
+#ifdef HAVE_WAT
+		.wat.wat = {
+			.wat_cfg = {
+				.moduletype = WAT_MODULE_TELIT,
+				.timeout_cid_num = 500,
+				.timeout_command = 20000,
+				.cmd_interval = 20,	
+				.progress_poll_interval = 750,
+				.signal_poll_interval = 10*1000,
+				.signal_threshold = 90,
+				.codec_mask = WAT_CODEC_ALL
+			},
+		},
+#endif
+#if defined(HAVE_SS7)
+		.ss7.ss7 = {
 			.called_nai = SS7_NAI_NATIONAL,
 			.calling_nai = SS7_NAI_NATIONAL,
 			.internationalprefix = "",
