@@ -182,8 +182,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 		<description>
 			<para>Similar to the CLI command "pri show spans".</para>
 		</description>
-	</manager>
-	<manager name="WATSendSms" language="en_US">
+	</application>
+	<application name="WATSendSms" language="en_US">
 		<synopsis>
 			Send a SMS using libWAT on a given span
 		</synopsis>
@@ -205,7 +205,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 		<description>
 			<para>Equivalent to the CLI command "wat send sms".</para>
 		</description>
-	</applcation>
+	</application>
  ***/
 
 #define SMDI_MD_WAIT_TIMEOUT 1500 /* 1.5 seconds */
