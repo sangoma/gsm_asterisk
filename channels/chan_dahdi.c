@@ -180,6 +180,29 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 			</parameter>
 		</syntax>
 		<description>
+			<para>Similar to the CLI command "pri show spans".</para>
+		</description>
+	</manager>
+	<manager name="WATSendSms" language="en_US">
+		<synopsis>
+			Send a SMS using libWAT on a given span
+		</synopsis>
+		<syntax>
+		<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+		<parameter name="Span">
+			<para>Specify the specific span to send.</para>
+		</parameter>
+		<parameter name="To">
+			<para>Phone number to send SMS to.</para>
+		</parameter>
+		<parameter name="Contents">
+			<para>SMS message contents.</para>
+		</parameter>
+		<parameter name="Mode">
+			<para>Set to blocking to wait until SMS is transmitted. Defaults to non-blocking if Mode is not specified</para>
+		</parameter>
+		</syntax>
+		<description>
 			<para>Equivalent to the CLI command "wat send sms".</para>
 		</description>
 	</applcation>
@@ -17440,7 +17463,7 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 	int span;	
 	const char *span_string = astman_get_header(m, "Span");
 	const char *destination = astman_get_header(m, "To");
-	const char *message = astman_get_header(m, "Message");
+	const char *message = astman_get_header(m, "Contents");
 
 	if (ast_strlen_zero(span_string)) {
 		astman_send_error(s, m, "No span specified");
@@ -17450,6 +17473,11 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 	span = atoi(span_string);
 	if ((span < 1) || (span > NUM_SPANS)) {
 		astman_send_error(s, m, "No such span");
+		return 0;
+	}
+
+	if (ast_strlen_zero(destination)) {
+		astman_send_error(s, m, "Message destination not specified");
 		return 0;
 	}
 
@@ -17497,6 +17525,7 @@ static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cl
 static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	int span;
+	int num_spans = 0;
 
 	switch (cmd) {
 		case CLI_INIT:
@@ -17514,8 +17543,12 @@ static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_
 
 	for (span = 0; span < NUM_SPANS; span++) {
 		if (wats[span].wat.wat_span_id) {
+			num_spans++;
 			sig_wat_cli_show_spans(a->fd, span + 1, &wats[span].wat);
 		}
+	}
+	if (!num_spans) {
+		ast_cli(a->fd, "No WAT spans configured\n");
 	}
 	return CLI_SUCCESS;
 }
