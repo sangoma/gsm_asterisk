@@ -169,41 +169,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 			<parameter name="Span">
 				<para>Specify the specific span to send.</para>
 			</parameter>
-			<parameter name="CalledNumber">
+			<parameter name="To">
 				<para>Phone number to send SMS to.</para>
 			</parameter>
-			<parameter name="Message">
+			<parameter name="Contents">
 				<para>SMS message contents.</para>
-			</parameter>
-			<parameter name="Mode">
-				<para>Set to blocking to wait until SMS is transmitted. Defaults to non-blocking if Mode is not specified</para>
 			</parameter>
 		</syntax>
 		<description>
 			<para>Similar to the CLI command "pri show spans".</para>
-		</description>
-	</application>
-	<application name="WATSendSms" language="en_US">
-		<synopsis>
-			Send a SMS using libWAT on a given span
-		</synopsis>
-		<syntax>
-		<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-		<parameter name="Span">
-			<para>Specify the specific span to send.</para>
-		</parameter>
-		<parameter name="To">
-			<para>Phone number to send SMS to.</para>
-		</parameter>
-		<parameter name="Contents">
-			<para>SMS message contents.</para>
-		</parameter>
-		<parameter name="Mode">
-			<para>Set to blocking to wait until SMS is transmitted. Defaults to non-blocking if Mode is not specified</para>
-		</parameter>
-		</syntax>
-		<description>
-			<para>Equivalent to the CLI command "wat send sms".</para>
 		</description>
 	</application>
  ***/
@@ -1459,19 +1433,6 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 			.loglevel = OR2_LOG_ERROR | OR2_LOG_WARNING,
 			.category = OR2_CALLING_PARTY_CATEGORY_NATIONAL_SUBSCRIBER
 		},
-#endif
-#ifdef HAVE_WAT
-			.wat.wat = {
-				.wat_cfg = {
-					.moduletype = WAT_MODULE_TELIT,
-					.timeout_cid_num = 500,
-					.timeout_command = 20000,
-					.progress_poll_interval = 750,
-					.signal_poll_interval = 10*1000,
-					.signal_threshold = 90,
-					.codec_mask = WAT_CODEC_ALL
-				},
-			},
 #endif
 		.chan = {
 			.context = "default",
