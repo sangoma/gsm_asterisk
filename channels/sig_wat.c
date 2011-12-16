@@ -382,51 +382,61 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	ast_assert(wat != NULL);
-	ast_verb(3, "Span %d: SMS received from %s\n %s\n", wat->span + 1, sms_event->calling_num.digits, sms_event->message);
+	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->calling_num.digits);
 
-	if (sms_event->type == WAT_SMS_TXT) {
-		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
-						"Span: %d\r\n"
-						"From: %s (type:%d plan:%d)\r\n"
-						"Type: %s\r\n"
-						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
-						"Message-Length: %u\r\n"
-						"Message: %s\r\n\r\n",
-						wat->span + 1,
-						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
-						(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU",
-						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
-						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
-						sms_event->scts.timezone,
-						sms_event->len,
-						sms_event->message);
-	} else {
-		manager_event(EVENT_FLAG_CALL, "WATIncomingSms",
-						"Span: %d\r\n"
-						"From: %s (type:%d plan:%d)\r\n"
-						"Service-Centre: %s (type:%d plan:%d)\r\n"
-						"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
-						"Type: %s\r\n"
-						"More-Messages-To-Send: %s\r\n"
-						"Reply-Path: %s\r\n"
-						"User-Data-Header-Indicator: %s\r\n"
-						"Status-Report-Indication: %s\r\n"
-						"Message-Length: %u\r\n"
-						"Message: %s\r\n\r\n",
-						wat->span + 1,
-						sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
-						sms_event->pdu.smsc.digits, sms_event->pdu.smsc.type, sms_event->pdu.smsc.plan,
-						sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
-						sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
-						sms_event->scts.timezone,
-						(!sms_event->pdu.sms_deliver.tp_mti) ? "SMS-DELIVER" : "Unknown",
-						(sms_event->pdu.sms_deliver.tp_mms) ? "Yes" : "No",
-						(sms_event->pdu.sms_deliver.tp_rp) ? "Yes" : "No",
-						(sms_event->pdu.sms_deliver.tp_udhi) ? "Yes" : "No",
-						(sms_event->pdu.sms_deliver.tp_sri) ? "Yes" : "No",
-						sms_event->len,
-						sms_event->message);
+	char event [500];
+	unsigned event_len = 0;
+
+	memset(event, 0, sizeof(event));
+
+	event_len += sprintf(&event[event_len],
+									"Span: %d\r\n"
+									"From: %s (type:%d plan:%d)\r\n"
+									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+									"Type: %s\r\n",
+									(wat->span + 1),
+									sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+									sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
+									sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
+									sms_event->scts.timezone,
+									(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU");
+
+
+	if (sms_event->type == WAT_SMS_PDU) {
+		char dest [30];
+		event_len += sprintf(&event[event_len],
+									"Message-Type-Indicator: %s\r\n"
+									"More-Messages-To-Send: %s\r\n"
+									"Reply-Path: %s\r\n"
+									"User-Data-Header-Indicator: %s\r\n"
+									"Status-Report-Indication: %s\r\n"
+									"Data-Coding-Scheme: %s\r\n",
+									wat_decode_sms_pdu_mti(sms_event->pdu.sms_deliver.tp_mti),
+									(sms_event->pdu.sms_deliver.tp_mms) ? "Yes" : "No",
+									(sms_event->pdu.sms_deliver.tp_rp) ? "Yes" : "No",
+									(sms_event->pdu.sms_deliver.tp_udhi) ? "Yes" : "No",
+									(sms_event->pdu.sms_deliver.tp_sri) ? "Yes" : "No",
+									 (wat_decode_sms_pdu_dcs(dest, &sms_event->pdu.dcs)));
+
+		if (sms_event->pdu.sms_deliver.tp_udhi) {
+			event_len += sprintf(&event[event_len],
+									"IE-Identifier: %d\r\n"
+									"Reference-Number: %04x\r\n"
+									"Sequence-Number: %02d/%02d\r\n",
+									sms_event->pdu.iei,
+									sms_event->pdu.refnr,
+									sms_event->pdu.seq,
+									sms_event->pdu.total);
+		}
 	}
+
+	event_len += sprintf(&event[event_len],
+									"Contents-Length: %u\r\n"
+									"Contents: %s\r\n\r\n",
+									sms_event->len,
+									sms_event->message);
+
+	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", event);
 }
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
