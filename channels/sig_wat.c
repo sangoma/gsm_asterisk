@@ -384,11 +384,11 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
-	ast_assert(wat != NULL);
-	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->calling_num.digits);
-
 	char event [500];
 	unsigned event_len = 0;
+
+	ast_assert(wat != NULL);
+	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->calling_num.digits);
 
 	memset(event, 0, sizeof(event));
 
@@ -439,7 +439,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 									sms_event->len,
 									sms_event->message);
 
-	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", event);
+	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
 }
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
