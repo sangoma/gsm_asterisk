@@ -206,6 +206,7 @@ void sig_wat_status_change(unsigned char span_id, wat_sigstatus_t status)
 		ast_verb(2, "Span %d:Signalling down\n", wat->span + 1);
 		wat->sigchanavail &= ~SIGCHAN_UP;
 	}
+
 	if (wat->pvt->calls->set_alarm) {
 		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, (status == WAT_SIGSTATUS_UP) ? 0 : 1);
 	}
@@ -894,6 +895,24 @@ struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *c
 	p->wat = wat;
 
 	return p;
+}
+
+void wat_event_alarm(struct sig_wat_span *wat)
+{
+	wat->sigchanavail &= ~(SIGCHAN_NOTINALARM | SIGCHAN_UP);
+	if (wat->pvt->calls->set_alarm) {
+		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, 1);
+	}
+	return;
+}
+
+void wat_event_noalarm(struct sig_wat_span *wat)
+{
+	wat->sigchanavail |= SIGCHAN_NOTINALARM;
+	if (wat->pvt->calls->set_alarm) {
+		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, 0);
+	}
+	return;
 }
 
 static void build_span_status(char *s, size_t len, int sigchanavail)
