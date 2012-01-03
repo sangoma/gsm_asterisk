@@ -1029,8 +1029,8 @@ void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
 	if (chip_info == NULL) {
 		ast_cli(fd, "Span %d:Failed to get Chip information\n", wat->span +1);
 	} else {
-		ast_cli(fd, "   Manufacturer Name: %s\n", chip_info->manufacturer_name);
-		ast_cli(fd, "   Manufacturer ID: %s\n", chip_info->manufacturer_id);
+		ast_cli(fd, "   Model: %s\n", chip_info->model);
+		ast_cli(fd, "   Manufacturer: %s\n", chip_info->manufacturer);
 		ast_cli(fd, "   Revision ID: %s\n", chip_info->revision);
 		ast_cli(fd, "   Serial Number: %s\n", chip_info->serial);
 	}
