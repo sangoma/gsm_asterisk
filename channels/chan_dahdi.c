@@ -1503,7 +1503,8 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.progress_poll_interval = 750,
 				.signal_poll_interval = 10*1000,
 				.signal_threshold = 90,
-				.codec_mask = WAT_CODEC_ALL
+				.codec_mask = WAT_CODEC_ALL,
+				.band = WAT_BAND_AUTO,
 			},
 		},
 #endif
@@ -18356,6 +18357,8 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				}				
 			} else if (!strcasecmp(v->name, "wat_codecs")) {
 				confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
+			} else if (!strcasecmp(v->name, "wat_band")) {
+				confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
 #endif
 #ifdef HAVE_PRI
 			} else if (!strcasecmp(v->name, "pridialplan")) {

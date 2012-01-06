@@ -56,7 +56,7 @@
 
 #define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
 
-void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm);
+
 void *sig_wat_malloc(size_t size);
 void *sig_wat_calloc(size_t nmemb, size_t size);
 void sig_wat_free(void *ptr);
@@ -64,8 +64,7 @@ void sig_wat_log(unsigned char loglevel, char *fmt, ...);
 void sig_wat_log_span(unsigned char span_id, unsigned char loglevel, char *fmt, ...);
 void sig_wat_assert(char *message);
 int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len);
-void sig_wat_sigstatus_change(unsigned char span_id, wat_sigstatus_t status);
-void sig_wat_netstatus_change(unsigned char span_id, wat_net_stat_t status);
+void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status);
 
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event);
 void sig_wat_con_sts(unsigned char span_id, uint8_t call_id, wat_con_status_t *con_status);
@@ -87,22 +86,6 @@ static void sig_wat_open_media(struct sig_wat_chan *p);
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor);
 
 struct sig_wat_span **wat_spans;
-
-void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
-{
-	struct sig_wat_span *wat = wat_spans[span_id];
-	
-	ast_assert(wat != NULL);
-
-	if (alarm == WAT_ALARM_NONE) {
-		ast_log(LOG_NOTICE, "Span %d:Alarms cleared\n", wat->span + 1);
-	} else {
-		ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", wat->span + 1, wat_decode_alarm(alarm));
-	}
-	if (wat->pvt->calls->set_alarm) {
-		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, (alarm == WAT_ALARM_NONE) ? 0 : 1);
-	}
-}
 
 void *sig_wat_malloc(size_t size)
 {
@@ -201,32 +184,49 @@ int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
 	return res;
 }
 
-void sig_wat_sigstatus_change(unsigned char span_id, wat_sigstatus_t sigstatus)
+void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
 	ast_assert(wat != NULL);
-	
-	if (sigstatus == WAT_SIGSTATUS_UP) {
-		ast_verb(2, "Span %d:Signalling up\n", wat->span + 1);
-		wat->sigchanavail |= SIGCHAN_UP;
-	} else {
-		ast_verb(2, "Span %d:Signalling down\n", wat->span + 1);
-		wat->sigchanavail &= ~SIGCHAN_UP;
-	}
-}
 
-void sig_wat_netstatus_change(unsigned char span_id, wat_net_stat_t netstatus)
-{
-	struct sig_wat_span *wat = wat_spans[span_id];
-	
-	ast_assert(wat != NULL);
-	
-	manager_event(EVENT_FLAG_CALL, "WATNetStatus",
-									"Span: %d\r\n"
-									"Network-Status: %s\r\n\r\n",
-									wat->span + 1,
-									wat_net_stat2str(netstatus));
+	switch(status->type) {
+		case WAT_SPAN_STS_READY:			
+			/* Initialization is complete */
+			/* Do nothing for now */
+			ast_verb(2, "Span %d:Initialization complete\n", wat->span + 1);
+			break;		
+		case WAT_SPAN_STS_SIGSTATUS:
+			if (status->sts.sigstatus == WAT_SIGSTATUS_UP) {
+				ast_verb(2, "Span %d:Signalling up\n", wat->span + 1);
+				wat->sigchanavail |= SIGCHAN_UP;
+			} else {
+				ast_verb(2, "Span %d:Signalling down\n", wat->span + 1);
+				wat->sigchanavail &= ~SIGCHAN_UP;
+			}
+
+			if (wat->pvt->calls->set_alarm) {
+				wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, (status->sts.sigstatus == WAT_SIGSTATUS_UP) ? 0 : 1);
+			}
+			break;
+		case WAT_SPAN_STS_ALARM:
+			if (status->sts.alarm == WAT_ALARM_NONE) {
+				ast_log(LOG_NOTICE, "Span %d:Alarms cleared\n", span_id);
+			} else {
+				ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(status->sts.alarm));
+			}
+			break;
+		case WAT_SPAN_STS_SIM_INFO_READY:
+			{
+				ast_debug(1, "Span %d: Subscriber: %14s\n", span_id, status->sts.sim_info.subscriber.digits);
+			}
+			break;
+		default:
+			ast_log(LOG_ERROR, "Unhandled span status %d\n", status->type);
+			break;
+			
+	}
+	return;
 }
 
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event)
@@ -867,10 +867,7 @@ void sig_wat_load(int maxspans)
 	memset(&wat_intf, 0, sizeof(wat_intf));
 
 	wat_intf.wat_span_write = sig_wat_span_write;
-	wat_intf.wat_alarm = sig_wat_alarm;
-	wat_intf.wat_sigstatus_change = sig_wat_sigstatus_change;
-	wat_intf.wat_netstatus_change = sig_wat_netstatus_change;
-
+	wat_intf.wat_span_sts = sig_wat_span_sts;
 	wat_intf.wat_log = (wat_log_func_t)sig_wat_log;
 	wat_intf.wat_log_span = (wat_log_span_func_t)sig_wat_log_span;
 	wat_intf.wat_malloc = sig_wat_malloc;
@@ -878,7 +875,6 @@ void sig_wat_load(int maxspans)
 	wat_intf.wat_free = sig_wat_free;
 	wat_intf.wat_assert = sig_wat_assert;
 
-	
 	wat_intf.wat_con_ind = sig_wat_con_ind;
 	wat_intf.wat_con_sts = sig_wat_con_sts;
 	wat_intf.wat_rel_ind = sig_wat_rel_ind;
@@ -1052,10 +1048,10 @@ char *sig_wat_show_span_verbose(char *dest, struct sig_wat_span *wat)
 	if (chip_info == NULL) {
 		len += sprintf(&dest[len], "Span %d:Failed to get Chip information\n", wat->span +1);
 	} else {
-		len += sprintf(&dest[len], "   Manufacturer Name: %s\n", chip_info->manufacturer_name);
-		len += sprintf(&dest[len], "   Manufacturer ID: %s\n", chip_info->manufacturer_id);
-		len += sprintf(&dest[len], "   Revision ID: %s\n", chip_info->revision);
-		len += sprintf(&dest[len], "   Serial Number: %s\n", chip_info->serial);
+		len += sprintf(&dest[len], "   Model: %s\n", chip_info->model);
+		len += sprintf(&dest[len], "   Manufacturer: %s\n", chip_info->manufacturer_id);
+		len += sprintf(&dest[len], "   Revision: %s\n", chip_info->revision);
+		len += sprintf(&dest[len], "   Serial: %s\n", chip_info->serial);
 	}
 
 	return dest;
