@@ -1049,7 +1049,7 @@ char *sig_wat_show_span_verbose(char *dest, struct sig_wat_span *wat)
 		len += sprintf(&dest[len], "Span %d:Failed to get Chip information\n", wat->span +1);
 	} else {
 		len += sprintf(&dest[len], "   Model: %s\n", chip_info->model);
-		len += sprintf(&dest[len], "   Manufacturer: %s\n", chip_info->manufacturer_id);
+		len += sprintf(&dest[len], "   Manufacturer: %s\n", chip_info->manufacturer);
 		len += sprintf(&dest[len], "   Revision: %s\n", chip_info->revision);
 		len += sprintf(&dest[len], "   Serial: %s\n", chip_info->serial);
 	}
