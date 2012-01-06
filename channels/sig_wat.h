@@ -174,23 +174,24 @@ int sig_wat_start_wat(struct sig_wat_span *wat);
 void sig_wat_stop_wat(struct sig_wat_span *wat);
 void sig_wat_init_wat(struct sig_wat_span *wat);
 
+void wat_event_alarm(struct sig_wat_span *wat);
+void wat_event_noalarm(struct sig_wat_span *wat);
 
 int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest);
 int sig_wat_answer(struct sig_wat_chan *p, struct ast_channel *ast);
 int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast);
-
-void wat_event_alarm(struct sig_wat_span *wat);
-void wat_event_noalarm(struct sig_wat_span *wat);
 
 void sig_wat_load(int maxspans);
 void sig_wat_unload(void);
 
 struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *callback, struct sig_wat_span *wat, int channo);
 
-void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat);
-void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat);
-int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms);
+int sig_wat_send_sms(struct sig_wat_span *wat, const char *to, const char *smsc, const char *content_type, const char *encoding, const char *content);
+
 void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd);
 int sig_wat_digit_begin(struct sig_wat_chan *pvt, struct ast_channel *ast, char digit);
+
+char *sig_wat_show_span(char *dest, struct sig_wat_span *wat);
+char *sig_wat_show_span_verbose(char *dest, struct sig_wat_span *wat);
 
 #endif /* _SIG_WAT_H */

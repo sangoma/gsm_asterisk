@@ -289,6 +289,48 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335853 $")
 			<para>Similar to the CLI command "pri show spans".</para>
 		</description>
 	</manager>
+	<manager name="WATShowSpans" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+		<para>Similar to the CLI command "wat send sms".</para>
+		</description>
+	</manager>
+	<manager name="WATShowSpans" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Similar to the CLI command "wat show spans".</para>
+		</description>
+	</manager>
+	<manager name="WATShowSpan" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Similar to the CLI command "wat show span".</para>
+		</description>
+	</manager>
 	<manager name="WATSendSms" language="en_US">
 		<synopsis>
 			Send a SMS using libWAT on a given span
@@ -301,11 +343,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335853 $")
 		<parameter name="To">
 			<para>Phone number to send SMS to.</para>
 		</parameter>
-		<parameter name="Contents">
+		<parameter name="Content">
 			<para>SMS message contents.</para>
-		</parameter>
-		<parameter name="Mode">
-			<para>Set to blocking to wait until SMS is transmitted. Defaults to non-blocking if Mode is not specified</para>
 		</parameter>
 		</syntax>
 		<description>
@@ -16972,12 +17011,127 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 #endif	/* defined(HAVE_SS7) */
 
 #if defined(HAVE_WAT)
-static int wat_action_send_sms(struct mansession *s, const struct message *m)
+static int action_watshowspans(struct mansession *s, const struct message *m)
 {
-	int span;	
+	int span = 0;
+	int num_spans = 0;
+	char action_id[256];
+
 	const char *span_string = astman_get_header(m, "Span");
-	const char *destination = astman_get_header(m, "To");
-	const char *message = astman_get_header(m, "Contents");
+	const char *id = astman_get_header(m, "ActionID");
+	
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+	
+	if (!ast_strlen_zero(span_string)) {
+		char dest[30];
+		span = atoi(span_string);
+		if ((span < 1) || (span > NUM_SPANS)) {
+			astman_send_error(s, m, "No such span");
+			goto done;
+		}
+		num_spans = 1;
+		astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
+		goto done;
+	}
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			char dest[30];
+			num_spans++;
+
+			astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
+		}
+	}
+
+	if (!num_spans) {
+		astman_send_error(s, m, "No WAT spans configured\n");
+	}
+	
+done:
+	astman_append(s, "Event: %sComplete\r\n"
+						"Items: %d\r\n"
+						"%s"
+						"\r\n",
+						"WATShowSpans",
+						num_spans,
+						action_id);
+	return 0;	
+}
+
+static int action_watshowspan(struct mansession *s, const struct message *m)
+{
+	int span = 0;
+	int num_spans = 0;
+	char action_id[256];
+
+	const char *span_string = astman_get_header(m, "Span");
+	const char *id = astman_get_header(m, "ActionID");
+
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+	
+	if (!ast_strlen_zero(span_string)) {
+		char dest[200];
+		span = atoi(span_string);
+		if ((span < 1) || (span > NUM_SPANS)) {
+			astman_send_error(s, m, "No such span");
+			goto done;
+		}
+		num_spans = 1;
+		astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
+		goto done;
+	}
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			char dest[200];
+			num_spans++;
+
+			astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
+		}
+	}
+	if (!num_spans) {
+		astman_send_error(s, m, "No WAT spans configured\n");
+	}
+
+done:
+	astman_append(s, "Event: %sComplete\r\n"
+						"Items: %d\r\n"
+						"%s"
+						"\r\n",
+						"WATShowSpan",
+						num_spans,
+						action_id);
+	return 0;
+}
+
+static int action_watsendsms(struct mansession *s, const struct message *m)
+{
+	int span;
+	char action_id[256];
+
+	const char *id = astman_get_header(m, "ActionID");
+	const char *span_string = astman_get_header(m, "Span");	
+	const char *to = astman_get_header(m, "To");
+	const char *smsc_number = astman_get_header(m, "X-SMS-SMCC-Number");
+	const char *content_type = astman_get_header(m, "Content-type");
+	const char *content_transfer_encoding = astman_get_header(m, "Content-Transfer-Encoding");
+
+	const char *content = astman_get_header(m, "Content");
+
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+	
 
 	if (ast_strlen_zero(span_string)) {
 		astman_send_error(s, m, "No span specified");
@@ -16990,16 +17144,24 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 		return 0;
 	}
 
-	if (ast_strlen_zero(destination)) {
+	if (ast_strlen_zero(to)) {
 		astman_send_error(s, m, "Message destination not specified");
 		return 0;
 	}
 
-	if (sig_wat_send_sms(&wats[span-1].wat, destination, message) != 0) {
+	if (sig_wat_send_sms(&wats[span-1].wat, to, smsc_number, content_type, content_transfer_encoding, content) != 0) {
 		astman_send_error(s, m, "Failed to send SMS");
 	} else {
 		astman_send_ack(s, m, "SMS request sent");
 	}
+
+	astman_append(s, "Event: %sComplete\r\n"
+					"Items: %d\r\n"
+					"%s"
+					"\r\n",
+					"WATSendSms",
+					1,
+					action_id);
 	return 0;
 }
 
@@ -17032,7 +17194,7 @@ static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cl
 		return CLI_SUCCESS;
 	}
 
-	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], a->argv[5]);
+	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], NULL, NULL, NULL, a->argv[5]);	
 	return CLI_SUCCESS;
 }
 
@@ -17057,8 +17219,10 @@ static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_
 
 	for (span = 0; span < NUM_SPANS; span++) {
 		if (wats[span].wat.wat_span_id) {
+			char dest[30];
 			num_spans++;
-			sig_wat_cli_show_spans(a->fd, span + 1, &wats[span].wat);
+
+			ast_cli(a->fd, "%s", sig_wat_show_span(dest, &wats[span].wat));
 		}
 	}
 	if (!num_spans) {
@@ -17069,6 +17233,7 @@ static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_
 
 static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
+	char dest[1000];
 	int span;
 
 	switch (cmd) {
@@ -17084,17 +17249,19 @@ static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_c
 
 	if (a->argc < 4)
 		return CLI_SHOWUSAGE;
+	
 	span = atoi(a->argv[3]);
 	if ((span < 1) || (span > NUM_SPANS)) {
 		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
 		return CLI_SUCCESS;
 	}
+	
 	if (!wats[span-1].wat.wat_span_id) {
 		ast_cli(a->fd, "No WAT running on span %d\n", span);
 		return CLI_SUCCESS;
 	}
 
-	sig_wat_cli_show_span(a->fd, &wats[span-1].wat);
+	ast_cli(a->fd, "%s", sig_wat_show_span_verbose(dest, &wats[span-1].wat));
 
 	return CLI_SUCCESS;
 }
@@ -17296,6 +17463,8 @@ static int __unload_module(void)
 	}
 	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
 	ast_manager_unregister("WATSendSms");
+	ast_manager_unregister("WATShowSpan");
+	ast_manager_unregister("WATShowSpans");
 #endif
 #if defined(HAVE_SS7)
 	for (i = 0; i < NUM_SPANS; i++) {
@@ -19475,7 +19644,9 @@ static int load_module(void)
 #endif	/* defined(HAVE_PRI) */
 
 #ifdef HAVE_WAT
-	ast_manager_register_xml("WATSendSms", 0, wat_action_send_sms);
+	ast_manager_register_xml("WATSendSms", 0, action_watsendsms);
+	ast_manager_register_xml("WATShowSpan", 0, action_watshowspan);
+	ast_manager_register_xml("WATShowSpans", 0, action_watshowspans);
 #endif
 
 	ast_cond_init(&ss_thread_complete, NULL);
