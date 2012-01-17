@@ -1192,7 +1192,9 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *to, const char *smsc,
 #endif
 
 	strncpy(wat_sms->sms_event.to.digits, to, sizeof(wat_sms->sms_event.to.digits));
-	strncpy(wat_sms->sms_event.pdu.smsc.digits, smsc, sizeof(wat_sms->sms_event.pdu.smsc.digits));
+	if (smsc) {
+		strncpy(wat_sms->sms_event.pdu.smsc.digits, smsc, sizeof(wat_sms->sms_event.pdu.smsc.digits));
+	}
 	strncpy(wat_sms->sms_event.content, content, sizeof(wat_sms->sms_event.content));
 
 	ast_verb(3, "Span %d: Sending sms len:%d (id:%d)\n", wat->span + 1, wat_sms->sms_event.content_len, wat_sms->wat_sms_id);
