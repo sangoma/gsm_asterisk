@@ -437,7 +437,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 									"X-SMS-Reply-Path: %s\r\n"
 									"X-SMS-User-Data-Header-Indicator: %s\r\n"
 									"X-SMS-Status-Report-Indication: %s\r\n",
-									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain", wat_sms_pdu_dcs_charset2str(sms_event->pdu.dcs.charset),
+									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain", wat_sms_pdu_dcs_alphabet2str(sms_event->pdu.dcs.alphabet),
 									wat_decode_sms_pdu_mti(sms_event->pdu.sms.deliver.tp_mti),
 									wat_number_plan2str(sms_event->from.plan), wat_number_type2str(sms_event->from.type), sms_event->from.digits,
 									wat_number_plan2str(sms_event->pdu.smsc.plan), wat_number_type2str(sms_event->pdu.smsc.type), sms_event->pdu.smsc.digits,
@@ -449,7 +449,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 		if (sms_event->pdu.sms.deliver.tp_udhi) {
 			event_len += sprintf(&event[event_len],
 									"X-SMS-IE-Identifier: %d\r\n"
-									"X-SMS-Concat-Reference-Number: %04x\r\n"
+									"X-SMS-Reference-Number: %04x\r\n"
 									"X-SMS-Concat-Sequence-Number: %02d\r\n"
 									"X-SMS-Concat-Total-Messages: %02d\r\n",
 									sms_event->pdu.iei,
@@ -462,8 +462,8 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	event_len += sprintf(&event[event_len],
 									"Content-Length: %u\r\n"
 									"Content: %s\r\n\r\n",
-									sms_event->content_len,
-									sms_event->content);
+									sms_event->content.len,
+									sms_event->content.data);
 
 	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
 }
@@ -1117,41 +1117,11 @@ void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd)
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
-int sig_wat_send_sms(struct sig_wat_span *wat, const char *to, const char *smsc, const char *content_type, const char *content_encoding, const char *content)
+int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event)
 {
 	int i;
 	struct sig_wat_sms *wat_sms;
-	wat_sms_type_t type = WAT_SMS_TXT;
-	wat_sms_pdu_dcs_charset_t charset = WAT_SMS_PDU_DCS_CHARSET_INVALID;
 
-	if (strlen(content) > WAT_MAX_SMS_SZ) {
-		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%zd max:%d)\n", wat->span + 1, strlen(content), WAT_MAX_SMS_SZ);
-		return -1;
-	}
-
-	if (!ast_strlen_zero(content_type)) {
-		char *p = NULL;
-		/* This request is from an AMI request, send in PDU mode */
-		type = WAT_SMS_PDU;
-		
-		/* format:  text/plain; charset=ASCII */
-		
-		p = strstr(content_type, "charset");
-		if (p == NULL) {
-			p = strstr(content_type, "Charset");
-		}
-		if (p == NULL) {
-			ast_log(LOG_ERROR, "Span %d: Invalid \"Content-Type\" format (%s)\n", wat->span + 1, content_type);
-			return -1;
-		}
-		p+=strlen("charset=");
-		charset = wat_str2wat_sms_pdu_dcs_charset(p);
-		if (charset == WAT_SMS_PDU_DCS_CHARSET_INVALID) {
-			ast_log(LOG_ERROR, "Span %d: Invalid charset (%s)\n", wat->span + 1, p);
-			return -1;
-		}
-	}
-	
 	sig_wat_lock_private(wat->pvt);
 	
 	/* Find a free SMS Id */
@@ -1178,24 +1148,9 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *to, const char *smsc,
 
 	memset(wat_sms, 0, sizeof(*wat_sms));
 
+	memcpy(&wat_sms->sms_event, event, sizeof(*event));
+
 	wat_sms->wat_sms_id = i;
-	wat_sms->sms_event.type = type;
-	wat_sms->sms_event.pdu.dcs.charset = charset;	
-	wat_sms->sms_event.content_len = strlen(content);
-
-#if 1 /* Do not commit this */
-	wat_sms->sms_event.pdu.sms.submit.tp_vpf = WAT_SMS_PDU_VP_RELATIVE;
-	wat_sms->sms_event.pdu.sms.submit.vp_data.relative = 0xAB;
-	wat_sms->sms_event.to.plan = 1;
-	wat_sms->sms_event.to.type = WAT_NUMBER_TYPE_NATIONAL;
-	wat_sms->sms_event.pdu.dcs.msg_class = WAT_SMS_PDU_DCS_MSG_CLASS_ME_SPECIFIC;
-#endif
-
-	strncpy(wat_sms->sms_event.to.digits, to, sizeof(wat_sms->sms_event.to.digits));
-	strncpy(wat_sms->sms_event.pdu.smsc.digits, smsc, sizeof(wat_sms->sms_event.pdu.smsc.digits));
-	strncpy(wat_sms->sms_event.content, content, sizeof(wat_sms->sms_event.content));
-
-	ast_verb(3, "Span %d: Sending sms len:%d (id:%d)\n", wat->span + 1, wat_sms->sms_event.content_len, wat_sms->wat_sms_id);
 
 	if (wat_sms_req(wat->wat_span_id, wat_sms->wat_sms_id, &wat_sms->sms_event)) {
 		ast_verb(1, "Span %d: Failed to send sms\n", wat->span + 1);
