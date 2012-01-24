@@ -11862,6 +11862,7 @@ static struct dahdi_pvt *handle_init_event(struct dahdi_pvt *i, int event)
 			break;
 		case SIG_SS7:
 		case SIG_PRI_LIB_HANDLE_CASES:
+		case SIG_GSM:
 			dahdi_disable_ec(i);
 			res = tone_zone_play_tone(i->subs[SUB_REAL].dfd, -1);
 			break;
