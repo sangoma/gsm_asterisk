@@ -17190,26 +17190,6 @@ static int action_watsendsms(struct mansession *s, const struct message *m)
 		}
 	}
 	
-
-	if (!ast_strlen_zero(content_type)) {
-		char *p = NULL;
-		/* This request is from an AMI request, send in PDU mode */
-		type = WAT_SMS_PDU;
-		
-		/* format:  text/plain; charset=ASCII */
-		p = strstr(content_type, "charset");
-		if (p == NULL) {
-			p = strstr(content_type, "Charset");
-		}
-		if (p == NULL) {
-			ast_log(LOG_ERROR, "Span %d: Invalid \"Content-Type\" format (%s)\n", span, content_type);
-			return 0;
-		}
-		p+=strlen("charset=");
-
-		event.content.charset = wat_str2wat_sms_content_charset(p);
-	}
-
 	reject_duplicates = astman_get_header(m, "X-SMS-Reject-Duplicates");
 	if (!ast_strlen_zero(reject_duplicates)) {
 		event.pdu.sms.submit.tp_rd = ast_true(reject_duplicates);
