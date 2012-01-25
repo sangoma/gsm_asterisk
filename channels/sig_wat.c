@@ -460,7 +460,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	}
 
 	event_len += sprintf(&event[event_len],
-									"Content-Length: %u\r\n"
+									"Content-Length: %zd\r\n"
 									"Content: %s\r\n\r\n",
 									sms_event->content.len,
 									sms_event->content.data);
