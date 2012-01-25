@@ -17264,6 +17264,8 @@ static int action_watsendsms(struct mansession *s, const struct message *m)
 	class = astman_get_header(m, "X-SMS-Class");
 	if (!ast_strlen_zero(class)) {
 		event.pdu.dcs.msg_class = wat_str2wat_sms_pdu_dcs_msg_cls(class);
+	} else {
+		event.pdu.dcs.msg_class = WAT_SMS_PDU_DCS_MSG_CLASS_ME_SPECIFIC;
 	}
 
 	concatenate_total_messages = astman_get_header(m, "X-SMS-Concat-Total-Messages");
