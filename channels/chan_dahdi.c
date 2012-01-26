@@ -17123,7 +17123,7 @@ static int action_watsendsms(struct mansession *s, const struct message *m)
 	const char *to_number, *to_plan, *to_type;
 	const char *smsc_number, *smsc_plan, *smsc_type;
 	const char *reject_duplicates, *reply_path, *status_report_request, *reference_number, *validity_period_type, *validity_period_value;
-	const char *class, *concatenate_total_messages, *concatenate_sequence_num;
+	const char *class, *concatenate_reference_id, *concatenate_total_messages, *concatenate_sequence_num;
 	const char *content, *content_type, *content_transfer_encoding;
 
 	wat_sms_type_t type = WAT_SMS_TXT;
@@ -17207,7 +17207,7 @@ static int action_watsendsms(struct mansession *s, const struct message *m)
 	
 	reference_number = astman_get_header(m, "X-SMS-Reference-Number");
 	if (!ast_strlen_zero(reference_number)) {
-		event.pdu.refnr = atoi(reference_number);
+		event.pdu.tp_message_ref = atoi(reference_number);
 	}
 	
 	validity_period_type = astman_get_header(m, "X-SMS-Validity-Period-Type");
@@ -17248,14 +17248,19 @@ static int action_watsendsms(struct mansession *s, const struct message *m)
 		event.pdu.dcs.msg_class = WAT_SMS_PDU_DCS_MSG_CLASS_ME_SPECIFIC;
 	}
 
+	concatenate_reference_id = astman_get_header(m, "X-SMS-Concat-Reference-ID");
+	if (!ast_strlen_zero(concatenate_reference_id)) {
+		event.pdu.udh.refnr = atoi(concatenate_reference_id);
+	}
+
 	concatenate_total_messages = astman_get_header(m, "X-SMS-Concat-Total-Messages");
 	if (!ast_strlen_zero(concatenate_total_messages)) {
-		event.pdu.total = atoi(concatenate_total_messages);
+		event.pdu.udh.total = atoi(concatenate_total_messages);
 	}
 	
 	concatenate_sequence_num = astman_get_header(m, "X-SMS-Concat-Sequence-Number");
 	if (!ast_strlen_zero(concatenate_sequence_num)) {
-		event.pdu.seq = atoi(concatenate_sequence_num);
+		event.pdu.udh.seq = atoi(concatenate_sequence_num);
 	}
 	
 	content = astman_get_header(m, "Content");

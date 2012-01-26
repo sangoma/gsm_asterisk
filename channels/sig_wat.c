@@ -452,10 +452,10 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 									"X-SMS-Reference-Number: %04x\r\n"
 									"X-SMS-Concat-Sequence-Number: %02d\r\n"
 									"X-SMS-Concat-Total-Messages: %02d\r\n",
-									sms_event->pdu.iei,
-									sms_event->pdu.refnr,
-									sms_event->pdu.seq,
-									sms_event->pdu.total);
+									sms_event->pdu.udh.iei,
+									sms_event->pdu.udh.refnr,
+									sms_event->pdu.udh.seq,
+									sms_event->pdu.udh.total);
 		}
 	}
 
