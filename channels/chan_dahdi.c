@@ -1505,6 +1505,7 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.signal_threshold = 90,
 				.codec_mask = WAT_CODEC_ALL,
 				.band = WAT_BAND_AUTO,
+				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_BASE64,
 			},
 		},
 #endif

@@ -402,7 +402,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	char dest [30];
-	char event [500];
+	char event [800];
 	unsigned event_len = 0;
 
 	ast_assert(wat != NULL);
@@ -412,11 +412,14 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	
 	event_len += sprintf(&event[event_len],
 									"Span: %d\r\n"
-									"From: %s\r\n"
-									"Date: %02d/%02d/%02d %02d:%02d:%02d %s\r\n"
+									"From-Number: %s\r\n"
+									"From-NP: %s\r\n"
+									"From-TON: %s\nr\r"
+									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d %s\r\n"
 									"Type: %s\r\n",
 									(wat->span + 1),
 									sms_event->from.digits,
+		 							wat_number_plan2str(sms_event->from.plan), wat_number_type2str(sms_event->from.type),
 									sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
 									sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
 									wat_decode_timezone(dest, sms_event->scts.timezone),
@@ -425,26 +428,24 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 
 	if (sms_event->type == WAT_SMS_PDU) {
 		event_len += sprintf(&event[event_len],
-									"Content-Type: %s; charset=%s\r\n"
 									"X-SMS-Message-Type: %s\r\n"
-									"X-SMS-Sender-NP: %s\r\n"
-									"X-SMS-Sender-TON: %s\r\n"
-									"X-SMS-Sender-Number: %s\r\n"
 									"X-SMS-SMCC-NP: %s\r\n"
 									"X-SMS-SMCC-TON: %s\r\n"
 									"X-SMS-SMCC-Number: %s\r\n"
 									"X-SMS-More-Messages-To-Send: %s\r\n"
 									"X-SMS-Reply-Path: %s\r\n"
 									"X-SMS-User-Data-Header-Indicator: %s\r\n"
-									"X-SMS-Status-Report-Indication: %s\r\n",
-									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain", wat_sms_pdu_dcs_alphabet2str(sms_event->pdu.dcs.alphabet),
-									wat_decode_sms_pdu_mti(sms_event->pdu.sms.deliver.tp_mti),
-									wat_number_plan2str(sms_event->from.plan), wat_number_type2str(sms_event->from.type), sms_event->from.digits,
-									wat_number_plan2str(sms_event->pdu.smsc.plan), wat_number_type2str(sms_event->pdu.smsc.type), sms_event->pdu.smsc.digits,
-									(sms_event->pdu.sms.deliver.tp_mms) ? "Yes" : "No",
+									"X-SMS-Status-Report-Indication: %s\r\n"
+									"X-SMS-Class: %s\r\n",
+									wat_decode_pdu_mti(sms_event->pdu.sms.deliver.tp_mti),
+									wat_number_plan2str(sms_event->pdu.smsc.plan),
+									wat_number_type2str(sms_event->pdu.smsc.type),
+									sms_event->pdu.smsc.digits,
+									(sms_event->pdu.sms.deliver.tp_mms) ? "No" : "Yes",
 									(sms_event->pdu.sms.deliver.tp_rp) ? "Yes" : "No",
 									(sms_event->pdu.sms.deliver.tp_udhi) ? "Yes" : "No",
-									(sms_event->pdu.sms.deliver.tp_sri) ? "Yes" : "No");
+									(sms_event->pdu.sms.deliver.tp_sri) ? "Yes" : "No",
+									wat_sms_pdu_dcs_msg_cls2str(sms_event->pdu.dcs.msg_class));
 
 		if (sms_event->pdu.sms.deliver.tp_udhi) {
 			event_len += sprintf(&event[event_len],
@@ -460,8 +461,13 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	}
 
 	event_len += sprintf(&event[event_len],
+									"Content-Type: %s; charset=%s\r\n"
+									"Content-Transfer-Encoding: %s\r\n"
 									"Content-Length: %zd\r\n"
 									"Content: %s\r\n\r\n",
+									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
+									wat_sms_content_charset2str(sms_event->content.charset),
+									wat_sms_content_encoding2str(sms_event->content.encoding),
 									sms_event->content.len,
 									sms_event->content.data);
 
