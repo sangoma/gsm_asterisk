@@ -19371,6 +19371,11 @@ static int load_module(void)
 #if defined(HAVE_PRI)
 	ast_manager_register_xml("PRIShowSpans", 0, action_prishowspans);
 #endif	/* defined(HAVE_PRI) */
+#ifdef HAVE_WAT
+        ast_manager_register_xml("WATSendSms", 0, action_watsendsms);
+        ast_manager_register_xml("WATShowSpan", 0, action_watshowspan);
+        ast_manager_register_xml("WATShowSpans", 0, action_watshowspans);
+#endif
 
 	ast_cond_init(&ss_thread_complete, NULL);
 
