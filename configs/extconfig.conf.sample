@@ -63,9 +63,8 @@
 ;
 ;iaxusers => odbc,asterisk
 ;iaxpeers => odbc,asterisk
-;sipusers => odbc,asterisk
 ;sippeers => odbc,asterisk
-;sipregs => odbc,asterisk
+;sipregs => odbc,asterisk ; (avoid sipregs if possible, e.g. by using a view)
 ;voicemail => odbc,asterisk
 ;extensions => odbc,asterisk
 ;meetme => mysql,general

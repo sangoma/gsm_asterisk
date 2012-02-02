@@ -28,7 +28,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342225 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342929 $")
 
 #include "asterisk/paths.h"	/* use ast_config_AST_CONFIG_DIR */
 #include "asterisk/network.h"	/* we do some sockaddr manipulation here */
@@ -523,6 +523,28 @@ static void ast_variable_destroy(struct ast_variable *doomed)
 	ast_comment_destroy(&doomed->sameline);
 	ast_comment_destroy(&doomed->trailing);
 	ast_free(doomed);
+}
+
+struct ast_variable *ast_variables_dup(struct ast_variable *var)
+{
+	struct ast_variable *cloned;
+	struct ast_variable *tmp;
+
+	if (!(cloned = ast_variable_new(var->name, var->value, var->file))) {
+		return NULL;
+	}
+
+	tmp = cloned;
+
+	while ((var = var->next)) {
+		if (!(tmp->next = ast_variable_new(var->name, var->value, var->file))) {
+			ast_variables_destroy(cloned);
+			return NULL;
+		}
+		tmp = tmp->next;
+	}
+
+	return cloned;
 }
 
 void ast_variables_destroy(struct ast_variable *v)
@@ -2146,8 +2168,7 @@ int read_config_maps(void)
 		if (!driver || !database)
 			continue;
 		if (!strcasecmp(v->name, "sipfriends")) {
-			ast_log(LOG_WARNING, "The 'sipfriends' table is obsolete, update your config to use sipusers and sippeers, though they can point to the same table.\n");
-			append_mapping("sipusers", driver, database, table ? table : "sipfriends", pri);
+			ast_log(LOG_WARNING, "The 'sipfriends' table is obsolete, update your config to use sippeers instead.\n");
 			append_mapping("sippeers", driver, database, table ? table : "sipfriends", pri);
 		} else if (!strcasecmp(v->name, "iaxfriends")) {
 			ast_log(LOG_WARNING, "The 'iaxfriends' table is obsolete, update your config to use iaxusers and iaxpeers, though they can point to the same table.\n");

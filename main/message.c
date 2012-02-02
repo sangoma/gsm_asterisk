@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 348605 $")
 
 #include "asterisk/_private.h"
 
@@ -115,7 +115,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
 			<para>This application sets the following channel variables:</para>
 			<variablelist>
 				<variable name="MESSAGE_SEND_STATUS">
-					<para>This is the time from dialing a channel until when it is disconnected.</para>
+					<para>This is the message delivery status returned by this application.</para>
 					<value name="INVALID_PROTOCOL">
 						No handler for the technology part of the URI was found.
 					</value>
@@ -522,12 +522,20 @@ int ast_msg_set_var(struct ast_msg *msg, const char *name, const char *value)
 const char *ast_msg_get_var(struct ast_msg *msg, const char *name)
 {
 	struct msg_data *data;
+	const char *val = NULL;
 
 	if (!(data = msg_data_find(msg->vars, name))) {
 		return NULL;
 	}
 
-	return data->value;
+	/* Yep, this definitely looks like val would be a dangling pointer
+	 * after the ref count is decremented.  As long as the message structure
+	 * is used in a thread safe manner, this will not be the case though.
+	 * The ast_msg holds a reference to this object in the msg->vars container. */
+	val = data->value;
+	ao2_ref(data, -1);
+
+	return val;
 }
 
 struct ast_msg_var_iterator {

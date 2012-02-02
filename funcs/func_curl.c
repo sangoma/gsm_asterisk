@@ -37,7 +37,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337343 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337342 $")
 
 #include <curl/curl.h>
 

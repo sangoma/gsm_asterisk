@@ -62,8 +62,6 @@ struct ast_tone_zone_sound {
 	};
 };
 
-#define MAX_TONEZONE_COUNTRY 16
-
 /*!
  * \brief A set of tones for a given locale
  *
@@ -74,7 +72,7 @@ struct ast_tone_zone_sound {
  */
 struct ast_tone_zone {
 	/*! \brief Country code that this set of tones is for */
-	char country[MAX_TONEZONE_COUNTRY];
+	char country[16];
 	/*! 
 	 * \brief Text description of the given country.
 	 *

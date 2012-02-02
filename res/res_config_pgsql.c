@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332831 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332830 $")
 
 #include <libpq-fe.h>			/* PostgreSQL */
 

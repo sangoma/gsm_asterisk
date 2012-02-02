@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332561 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332560 $")
 
 #include "asterisk/config.h"
 #include "asterisk/netsock2.h"

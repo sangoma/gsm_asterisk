@@ -38,7 +38,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 347383 $")
 
 #include <dahdi/user.h>
 
@@ -123,9 +123,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 					</option>
 					<option name="I">
 						<para>Announce user join/leave without review.</para>
-					</option>
-					<option name="k">
-						<para>Close the conference if there's only one active participant left at exit.</para>
 					</option>
 					<option name="l">
 						<para>Set listen only mode (Listen only, no talking).</para>
@@ -233,7 +230,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340472 $")
 			<para>Enters the user into a specified MeetMe conference.  If the <replaceable>confno</replaceable>
 			is omitted, the user will be prompted to enter one.  User can exit the conference by hangup, or
 			if the <literal>p</literal> option is specified, by pressing <literal>#</literal>.</para>
-			<note><para>The DAHDI kernel modules and at least one hardware driver (or dahdi_dummy)
+			<note><para>The DAHDI kernel modules and a functional DAHDI timing source (see dahdi_test)
 			must be present for conferencing to operate properly. In addition, the chan_dahdi channel driver
 			must be loaded for the <literal>i</literal> and <literal>r</literal> options to operate at
 			all.</para></note>
@@ -552,7 +549,6 @@ enum {
 	ADMINFLAG_KICKME =    (1 << 3),  /*!< User has been kicked */
 	/*! User has requested to speak */
 	ADMINFLAG_T_REQUEST = (1 << 4),
-	ADMINFLAG_HANGUP = (1 << 5),	/*!< User will be leaving the conference */
 };
 
 #define MEETME_DELAYDETECTTALK     300
@@ -644,8 +640,6 @@ enum {
 #define CONFFLAG_NO_AUDIO_UNTIL_UP  (1ULL << 31)
 #define CONFFLAG_INTROMSG           (1ULL << 32) /*!< If set play an intro announcement at start of conference */
 #define CONFFLAG_INTROUSER_VMREC    (1ULL << 33)
-/*! If there's only one person left in a conference when someone leaves, kill the conference */
-#define CONFFLAG_KILL_LAST_MAN_STANDING ((uint64_t)1 << 34)
 
 enum {
 	OPT_ARG_WAITMARKED = 0,
@@ -673,7 +667,6 @@ AST_APP_OPTIONS(meetme_opts, BEGIN_OPTIONS
 	AST_APP_OPTION_ARG('v', CONFFLAG_INTROUSER_VMREC , OPT_ARG_INTROUSER_VMREC),
 	AST_APP_OPTION('i', CONFFLAG_INTROUSER ),
 	AST_APP_OPTION('I', CONFFLAG_INTROUSERNOREVIEW ),
-	AST_APP_OPTION('k', CONFFLAG_KILL_LAST_MAN_STANDING ),
 	AST_APP_OPTION_ARG('M', CONFFLAG_MOH, OPT_ARG_MOH_CLASS ),
 	AST_APP_OPTION('m', CONFFLAG_STARTMUTED ),
 	AST_APP_OPTION('o', CONFFLAG_OPTIMIZETALKER ),
@@ -2206,17 +2199,6 @@ static void set_user_talking(struct ast_channel *chan, struct ast_conference *co
 	}
 }
 
-static int user_set_hangup_cb(void *obj, void *check_admin_arg, int flags)
-{
-	struct ast_conf_user *user = obj;
-	/* actual pointer contents of check_admin_arg is irrelevant */
-
-	if (!check_admin_arg || (check_admin_arg && !ast_test_flag64(&user->userflags, CONFFLAG_ADMIN))) {
-		user->adminflags |= ADMINFLAG_HANGUP;
-	}
-	return 0;
-}
-
 static int user_set_kickme_cb(void *obj, void *check_admin_arg, int flags)
 {
 	struct ast_conf_user *user = obj;
@@ -3196,13 +3178,7 @@ static int conf_run(struct ast_channel *chan, struct ast_conference *conf, struc
 							      "Status: off\r\n",
 							     chan->name, chan->uniqueid, conf->confno, user->user_no);
 			}
-
-			/* If user have been hung up, exit the conference */
-			if (user->adminflags & ADMINFLAG_HANGUP) {
-				ret = 0;
-				break;
-			}
-
+			
 			/* If I have been kicked, exit the conference */
 			if (user->adminflags & ADMINFLAG_KICKME) {
 				/* You have been kicked. */
@@ -3893,11 +3869,6 @@ bailoutandtrynormal:
 			ast_devstate_changed(AST_DEVICE_NOT_INUSE, "meetme:%s", conf->confno);
 		}
 
- 		/* This flag is meant to kill a conference with only one participant remaining.  */
-		if (conf->users == 1 && ast_test_flag64(confflags, CONFFLAG_KILL_LAST_MAN_STANDING)) {
- 			ao2_callback(conf->usercontainer, 0, user_set_hangup_cb, NULL);
- 		}
-
 		/* Return the number of seconds the user was in the conf */
 		snprintf(meetmesecs, sizeof(meetmesecs), "%d", (int) (time(NULL) - user->jointime));
 		pbx_builtin_setvar_helper(chan, "MEETMESECS", meetmesecs);
@@ -4043,8 +4014,12 @@ static struct ast_conference *find_conf_realtime(struct ast_channel *chan, char 
 			cnf->useropts = ast_strdup(useropts);
 			cnf->adminopts = ast_strdup(adminopts);
 			cnf->bookid = ast_strdup(bookid);
-			cnf->recordingfilename = ast_strdup(recordingfilename);
-			cnf->recordingformat = ast_strdup(recordingformat);
+			if (!ast_strlen_zero(recordingfilename)) {
+				cnf->recordingfilename = ast_strdup(recordingfilename);
+			}
+			if (!ast_strlen_zero(recordingformat)) {
+				cnf->recordingformat = ast_strdup(recordingformat);
+			}
 
 			/* Parse the other options into confflags -- need to do this in two
 			 * steps, because the parse_options routine zeroes the buffer. */
@@ -4458,13 +4433,27 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 					res = -1;
 				}
 			} else {
-				/* Check to see if the conference requires a pin
-				 * and we ALWAYS prompt or no pin was provided */
-				if ((!ast_strlen_zero(cnf->pin) ||
+				/* Conference requires a pin for specified access level */
+				int req_pin = !ast_strlen_zero(cnf->pin) ||
 					(!ast_strlen_zero(cnf->pinadmin) &&
-						ast_test_flag64(&confflags, CONFFLAG_ADMIN))) &&
-				    (ast_test_flag64(&confflags, CONFFLAG_ALWAYSPROMPT) ||
-						ast_strlen_zero(args.pin))) {
+						ast_test_flag64(&confflags, CONFFLAG_ADMIN));
+				/* The following logic was derived from a
+				 * 4 variable truth table and defines which
+				 * circumstances are not exempt from pin
+				 * checking.
+				 * If this needs to be modified, write the
+				 * truth table back out from the boolean
+				 * expression AB+A'D+C', change the erroneous
+				 * result, and rederive the expression.
+				 * Variables:
+				 *  A: pin provided?
+				 *  B: always prompt?
+				 *  C: dynamic?
+				 *  D: has users? */
+				int not_exempt = !cnf->isdynamic;
+				not_exempt = not_exempt || (!ast_strlen_zero(args.pin) && ast_test_flag64(&confflags, CONFFLAG_ALWAYSPROMPT));
+				not_exempt = not_exempt || (ast_strlen_zero(args.pin) && cnf->users);
+				if (req_pin && not_exempt) {
 					char pin[MAX_PIN] = "";
 					int j;
 

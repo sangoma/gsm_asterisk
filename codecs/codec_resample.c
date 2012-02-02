@@ -32,7 +32,7 @@
 #include "asterisk.h"
 #include "speex/speex_resampler.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 330941 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 330940 $")
 
 #include "asterisk/module.h"
 #include "asterisk/translate.h"

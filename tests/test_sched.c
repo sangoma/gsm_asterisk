@@ -32,7 +32,7 @@
 
 #include <inttypes.h>
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332178 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332177 $")
 
 #include "asterisk/module.h"
 #include "asterisk/utils.h"

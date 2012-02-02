@@ -114,7 +114,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336717 $")
 
 #include "asterisk/logger.h"
 #include "asterisk/module.h"

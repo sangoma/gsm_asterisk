@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340972 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 352290 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -80,6 +80,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340972 $")
 
 #define ZFONE_PROFILE_ID 0x505a
 
+#define DEFAULT_LEARNING_MIN_SEQUENTIAL 4
+
 extern struct ast_srtp_res *res_srtp;
 static int dtmftimeout = DEFAULT_DTMF_TIMEOUT;
 
@@ -91,10 +93,13 @@ static int rtcpstats;			/*!< Are we debugging RTCP? */
 static int rtcpinterval = RTCP_DEFAULT_INTERVALMS; /*!< Time between rtcp reports in millisecs */
 static struct ast_sockaddr rtpdebugaddr;	/*!< Debug packets to/from this host */
 static struct ast_sockaddr rtcpdebugaddr;	/*!< Debug RTCP packets to/from this host */
+static int rtpdebugport;		/*< Debug only RTP packets from IP or IP+Port if port is > 0 */
+static int rtcpdebugport;		/*< Debug only RTCP packets from IP or IP+Port if port is > 0 */
 #ifdef SO_NO_CHECK
 static int nochecksums;
 #endif
-static int strictrtp;
+static int strictrtp;			/*< Only accept RTP frames from a defined source. If we receive an indication of a changing source, enter learning mode. */
+static int learning_min_sequential;	/*< Number of sequential RTP frames needed from a single source during learning mode to accept new source. */
 
 enum strict_rtp_state {
 	STRICT_RTP_OPEN = 0, /*! No RTP packets should be dropped, all sources accepted */
@@ -173,6 +178,13 @@ struct ast_rtp {
 	enum strict_rtp_state strict_rtp_state; /*!< Current state that strict RTP protection is in */
 	struct ast_sockaddr strict_rtp_address;  /*!< Remote address information for strict RTP purposes */
 	struct ast_sockaddr alt_rtp_address; /*!<Alternate remote address information */
+
+	/*
+	 * Learning mode values based on pjmedia's probation mode.  Many of these values are redundant to the above,
+	 * but these are in place to keep learning mode sequence values sealed from their normal counterparts.
+	 */
+	uint16_t learning_max_seq;		/*!< Highest sequence number heard */
+	int learning_probation;		/*!< Sequential packets untill source is valid */
 
 	struct rtp_red *red;
 };
@@ -315,8 +327,15 @@ static inline int rtp_debug_test_addr(struct ast_sockaddr *addr)
 	if (!rtpdebug) {
 		return 0;
 	}
+	if (!ast_sockaddr_isnull(&rtpdebugaddr)) {
+		if (rtpdebugport) {
+			return (ast_sockaddr_cmp(&rtpdebugaddr, addr) == 0); /* look for RTP packets from IP+Port */
+		} else {
+			return (ast_sockaddr_cmp_addr(&rtpdebugaddr, addr) == 0); /* only look for RTP packets from IP */
+		}
+	}
 
-	return ast_sockaddr_isnull(&rtpdebugaddr) ? 1 : ast_sockaddr_cmp(&rtpdebugaddr, addr) == 0;
+	return 1;
 }
 
 static inline int rtcp_debug_test_addr(struct ast_sockaddr *addr)
@@ -324,8 +343,15 @@ static inline int rtcp_debug_test_addr(struct ast_sockaddr *addr)
 	if (!rtcpdebug) {
 		return 0;
 	}
+	if (!ast_sockaddr_isnull(&rtcpdebugaddr)) {
+		if (rtcpdebugport) {
+			return (ast_sockaddr_cmp(&rtcpdebugaddr, addr) == 0); /* look for RTCP packets from IP+Port */
+		} else {
+			return (ast_sockaddr_cmp_addr(&rtcpdebugaddr, addr) == 0); /* only look for RTCP packets from IP */
+		}
+	}
 
-	return ast_sockaddr_isnull(&rtcpdebugaddr) ? 1 : ast_sockaddr_cmp(&rtcpdebugaddr, addr) == 0;
+	return 1;
 }
 
 static int __rtp_recvfrom(struct ast_rtp_instance *instance, void *buf, size_t size, int flags, struct ast_sockaddr *sa, int rtcp)
@@ -444,6 +470,50 @@ static int create_new_socket(const char *type, int af)
 	return sock;
 }
 
+/*!
+ * \internal
+ * \brief Initializes sequence values and probation for learning mode.
+ * \note This is an adaptation of pjmedia's pjmedia_rtp_seq_init function.
+ *
+ * \param rtp pointer to rtp struct used with the received rtp packet.
+ * \param seq sequence number read from the rtp header
+ */
+static void rtp_learning_seq_init(struct ast_rtp *rtp, uint16_t seq)
+{
+	rtp->learning_max_seq = seq - 1;
+	rtp->learning_probation = learning_min_sequential;
+}
+
+/*!
+ * \internal
+ * \brief Updates sequence information for learning mode and determines if probation/learning mode should remain in effect.
+ * \note This function was adapted from pjmedia's pjmedia_rtp_seq_update function.
+ *
+ * \param rtp pointer to rtp struct used with the received rtp packet.
+ * \param seq sequence number read from the rtp header
+ * \return boolean value indicating if probation mode is active at the end of the function
+ */
+static int rtp_learning_rtp_seq_update(struct ast_rtp *rtp, uint16_t seq)
+{
+	int probation = 1;
+
+	ast_debug(1, "%p -- probation = %d, seq = %d\n", rtp, rtp->learning_probation, seq);
+
+	if (seq == rtp->learning_max_seq + 1) {
+		/* packet is in sequence */
+		rtp->learning_probation--;
+		rtp->learning_max_seq = seq;
+		if (rtp->learning_probation == 0) {
+			probation = 0;
+		}
+	} else {
+		rtp->learning_probation = learning_min_sequential - 1;
+		rtp->learning_max_seq = seq;
+	}
+
+	return probation;
+}
+
 static int ast_rtp_new(struct ast_rtp_instance *instance,
 		       struct ast_sched_context *sched, struct ast_sockaddr *addr,
 		       void *data)
@@ -460,6 +530,9 @@ static int ast_rtp_new(struct ast_rtp_instance *instance,
 	rtp->ssrc = ast_random();
 	rtp->seqno = ast_random() & 0xffff;
 	rtp->strict_rtp_state = (strictrtp ? STRICT_RTP_LEARN : STRICT_RTP_OPEN);
+	if (strictrtp) {
+		rtp_learning_seq_init(rtp, (uint16_t)rtp->seqno);
+	}
 
 	/* Create a new socket for us to listen on and use */
 	if ((rtp->s =
@@ -2066,7 +2139,17 @@ static struct ast_frame *ast_rtp_read(struct ast_rtp_instance *instance, int rtc
 
 	/* If strict RTP protection is enabled see if we need to learn the remote address or if we need to drop the packet */
 	if (rtp->strict_rtp_state == STRICT_RTP_LEARN) {
+		ast_debug(1, "%p -- start learning mode pass with addr = %s\n", rtp, ast_sockaddr_stringify(&addr));
+		/* For now, we always copy the address. */
 		ast_sockaddr_copy(&rtp->strict_rtp_address, &addr);
+
+		/* Send the rtp and the seqno from header to rtp_learning_rtp_seq_update to see whether we can exit or not*/
+		if (rtp_learning_rtp_seq_update(rtp, ntohl(rtpheader[0]))) {
+			ast_debug(1, "%p -- Condition for learning hasn't exited, so reject the frame.\n", rtp);
+			return &ast_null_frame;
+		}
+
+		ast_debug(1, "%p -- Probation Ended. Set strict_rtp_state to STRICT_RTP_CLOSED with address %s\n", rtp, ast_sockaddr_stringify(&addr));
 		rtp->strict_rtp_state = STRICT_RTP_CLOSED;
 	} else if (rtp->strict_rtp_state == STRICT_RTP_CLOSED) {
 		if (ast_sockaddr_cmp(&rtp->strict_rtp_address, &addr)) {
@@ -2094,7 +2177,18 @@ static struct ast_frame *ast_rtp_read(struct ast_rtp_instance *instance, int rtc
 
 	if (!(version = (seqno & 0xC0000000) >> 30)) {
 		struct sockaddr_in addr_tmp;
-		ast_sockaddr_to_sin(&addr, &addr_tmp);
+		struct ast_sockaddr addr_v4;
+		if (ast_sockaddr_is_ipv4(&addr)) {
+			ast_sockaddr_to_sin(&addr, &addr_tmp);
+		} else if (ast_sockaddr_ipv4_mapped(&addr, &addr_v4)) {
+			ast_debug(1, "Using IPv6 mapped address %s for STUN\n",
+				  ast_sockaddr_stringify(&addr));
+			ast_sockaddr_to_sin(&addr_v4, &addr_tmp);
+		} else {
+			ast_debug(1, "Cannot do STUN for non IPv4 address %s\n",
+				  ast_sockaddr_stringify(&addr));
+			return &ast_null_frame;
+		}
 		if ((ast_stun_handle_packet(rtp->s, &addr_tmp, rtp->rawdata + AST_FRIENDLY_OFFSET, res, NULL, NULL) == AST_STUN_ACCEPT) &&
 		    ast_sockaddr_isnull(&remote_address)) {
 			ast_sockaddr_from_sin(&addr, &addr_tmp);
@@ -2470,6 +2564,7 @@ static void ast_rtp_remote_address_set(struct ast_rtp_instance *instance, struct
 
 	if (strictrtp) {
 		rtp->strict_rtp_state = STRICT_RTP_LEARN;
+		rtp_learning_seq_init(rtp, rtp->seqno);
 	}
 
 	return;
@@ -2712,11 +2807,14 @@ static int ast_rtp_sendcng(struct ast_rtp_instance *instance, int level)
 static char *rtp_do_debug_ip(struct ast_cli_args *a)
 {
 	char *arg = ast_strdupa(a->argv[4]);
+	char *debughost = NULL;
+	char *debugport = NULL;
 
-	if (!ast_sockaddr_parse(&rtpdebugaddr, arg, 0)) {
+	if (!ast_sockaddr_parse(&rtpdebugaddr, arg, 0) || !ast_sockaddr_split_hostport(arg, &debughost, &debugport, 0)) {
 		ast_cli(a->fd, "Lookup failed for '%s'\n", arg);
 		return CLI_FAILURE;
 	}
+	rtpdebugport = (!ast_strlen_zero(debugport) && debugport[0] != '0');
 	ast_cli(a->fd, "RTP Debugging Enabled for address: %s\n",
 		ast_sockaddr_stringify(&rtpdebugaddr));
 	rtpdebug = 1;
@@ -2726,11 +2824,14 @@ static char *rtp_do_debug_ip(struct ast_cli_args *a)
 static char *rtcp_do_debug_ip(struct ast_cli_args *a)
 {
 	char *arg = ast_strdupa(a->argv[4]);
+	char *debughost = NULL;
+	char *debugport = NULL;
 
-	if (!ast_sockaddr_parse(&rtcpdebugaddr, arg, 0)) {
+	if (!ast_sockaddr_parse(&rtcpdebugaddr, arg, 0) || !ast_sockaddr_split_hostport(arg, &debughost, &debugport, 0)) {
 		ast_cli(a->fd, "Lookup failed for '%s'\n", arg);
 		return CLI_FAILURE;
 	}
+	rtcpdebugport = (!ast_strlen_zero(debugport) && debugport[0] != '0');
 	ast_cli(a->fd, "RTCP Debugging Enabled for address: %s\n",
 		ast_sockaddr_stringify(&rtcpdebugaddr));
 	rtcpdebug = 1;
@@ -2851,6 +2952,7 @@ static int rtp_reload(int reload)
 	rtpend = DEFAULT_RTP_END;
 	dtmftimeout = DEFAULT_DTMF_TIMEOUT;
 	strictrtp = STRICT_RTP_CLOSED;
+	learning_min_sequential = DEFAULT_LEARNING_MIN_SEQUENTIAL;
 	if (cfg) {
 		if ((s = ast_variable_retrieve(cfg, "general", "rtpstart"))) {
 			rtpstart = atoi(s);
@@ -2893,6 +2995,12 @@ static int rtp_reload(int reload)
 		}
 		if ((s = ast_variable_retrieve(cfg, "general", "strictrtp"))) {
 			strictrtp = ast_true(s);
+		}
+		if ((s = ast_variable_retrieve(cfg, "general", "probation"))) {
+			if ((sscanf(s, "%d", &learning_min_sequential) <= 0) || learning_min_sequential <= 0) {
+				ast_log(LOG_WARNING, "Value for 'probation' could not be read, using default of '%d' instead\n",
+					DEFAULT_LEARNING_MIN_SEQUENTIAL);
+			}
 		}
 		ast_config_destroy(cfg);
 	}

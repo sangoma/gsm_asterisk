@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342148 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 352290 $")
 
 #include "asterisk/_private.h"
 
@@ -2303,6 +2303,7 @@ static int builtin_blindtransfer(struct ast_channel *chan, struct ast_channel *p
 	pbx_builtin_setvar_helper(transferer, "BLINDTRANSFER", transferee->name);
 	pbx_builtin_setvar_helper(transferee, "BLINDTRANSFER", transferer->name);
 	finishup(transferee);
+	ast_channel_lock(transferer);
 	if (!transferer->cdr) { /* this code should never get called (in a perfect world) */
 		transferer->cdr = ast_cdr_alloc();
 		if (transferer->cdr) {
@@ -2310,6 +2311,7 @@ static int builtin_blindtransfer(struct ast_channel *chan, struct ast_channel *p
 			ast_cdr_start(transferer->cdr);
 		}
 	}
+	ast_channel_unlock(transferer);
 	if (transferer->cdr) {
 		struct ast_cdr *swap = transferer->cdr;
 
@@ -3536,7 +3538,9 @@ static struct ast_channel *feature_request_and_dial(struct ast_channel *caller,
 		} else if (chan == active_channel) {
 			if (!ast_strlen_zero(chan->call_forward)) {
 				state = 0;
+				ast_autoservice_start(transferee);
 				chan = ast_call_forward(caller, chan, NULL, tmp_cap, NULL, &state);
+				ast_autoservice_stop(transferee);
 				if (!chan) {
 					break;
 				}
@@ -3611,7 +3615,9 @@ static struct ast_channel *feature_request_and_dial(struct ast_channel *caller,
 						}
 						ast_autoservice_stop(transferee);
 					}
-				} else if (f->subclass.integer != -1 && f->subclass.integer != AST_CONTROL_PROGRESS) {
+				} else if (f->subclass.integer != -1
+					&& f->subclass.integer != AST_CONTROL_PROGRESS
+					&& f->subclass.integer != AST_CONTROL_PROCEEDING) {
 					ast_log(LOG_NOTICE, "Don't know what to do about control frame: %d\n", f->subclass.integer);
 				}
 				/* else who cares */
@@ -3911,11 +3917,15 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 	/* copy the userfield from the B-leg to A-leg if applicable */
 	if (chan->cdr && peer->cdr && !ast_strlen_zero(peer->cdr->userfield)) {
 		char tmp[256];
+
+		ast_channel_lock(chan);
 		if (!ast_strlen_zero(chan->cdr->userfield)) {
 			snprintf(tmp, sizeof(tmp), "%s;%s", chan->cdr->userfield, peer->cdr->userfield);
 			ast_cdr_appenduserfield(chan, tmp);
-		} else
+		} else {
 			ast_cdr_setuserfield(chan, peer->cdr->userfield);
+		}
+		ast_channel_unlock(chan);
 		/* Don't delete the CDR; just disable it. */
 		ast_set_flag(peer->cdr, AST_CDR_FLAG_POST_DISABLED);
 		we_disabled_peer_cdr = 1;
@@ -3924,7 +3934,7 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 	ast_copy_string(orig_peername,peer->name,sizeof(orig_peername));
 
 	if (!chan_cdr || (chan_cdr && !ast_test_flag(chan_cdr, AST_CDR_FLAG_POST_DISABLED))) {
-		
+		ast_channel_lock_both(chan, peer);
 		if (chan_cdr) {
 			ast_set_flag(chan_cdr, AST_CDR_FLAG_MAIN);
 			ast_cdr_update(chan);
@@ -3939,7 +3949,6 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 				ast_copy_string(bridge_cdr->userfield, peer_cdr->userfield, sizeof(bridge_cdr->userfield));
 			}
 			ast_cdr_setaccount(peer, chan->accountcode);
-
 		} else {
 			/* better yet, in a xfer situation, find out why the chan cdr got zapped (pun unintentional) */
 			bridge_cdr = ast_cdr_alloc(); /* this should be really, really rare/impossible? */
@@ -3962,6 +3971,9 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 				ast_cdr_start(bridge_cdr);
 			}
 		}
+		ast_channel_unlock(chan);
+		ast_channel_unlock(peer);
+
 		ast_debug(4, "bridge answer set, chan answer set\n");
 		/* peer_cdr->answer will be set when a macro runs on the peer;
 		   in that case, the bridge answer will be delayed while the
@@ -4053,11 +4065,11 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 					   digits to come in for features. */
 					ast_debug(1, "Timed out for feature!\n");
 					if (!ast_strlen_zero(peer_featurecode)) {
-						ast_dtmf_stream(chan, peer, peer_featurecode, 0, f ? f->len : 0);
+						ast_dtmf_stream(chan, peer, peer_featurecode, 0, 0);
 						memset(peer_featurecode, 0, sizeof(peer_featurecode));
 					}
 					if (!ast_strlen_zero(chan_featurecode)) {
-						ast_dtmf_stream(peer, chan, chan_featurecode, 0, f ? f->len : 0);
+						ast_dtmf_stream(peer, chan, chan_featurecode, 0, 0);
 						memset(chan_featurecode, 0, sizeof(chan_featurecode));
 					}
 					if (f)
@@ -4098,6 +4110,17 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 		if (!f || (f->frametype == AST_FRAME_CONTROL &&
 				(f->subclass.integer == AST_CONTROL_HANGUP || f->subclass.integer == AST_CONTROL_BUSY ||
 					f->subclass.integer == AST_CONTROL_CONGESTION))) {
+			/*
+			 * If the bridge was broken for a hangup that isn't real, then
+			 * then don't run the h extension, because the channel isn't
+			 * really hung up. This should really only happen with AST_SOFTHANGUP_ASYNCGOTO,
+			 * but it doesn't hurt to check AST_SOFTHANGUP_UNBRIDGE either.
+			 */
+			ast_channel_lock(chan);
+			if (chan->_softhangup & (AST_SOFTHANGUP_ASYNCGOTO | AST_SOFTHANGUP_UNBRIDGE)) {
+				ast_set_flag(chan, AST_FLAG_BRIDGE_HANGUP_DONT);
+			}
+			ast_channel_unlock(chan);
 			res = -1;
 			break;
 		}
@@ -4184,7 +4207,6 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 		} else if (f->frametype == AST_FRAME_DTMF_END) {
 			char *featurecode;
 			int sense;
-			unsigned int dtmfduration = f->len;
 
 			hadfeatures = hasfeatures;
 			/* This cannot overrun because the longest feature is one shorter than our buffer */
@@ -4218,7 +4240,7 @@ int ast_bridge_call(struct ast_channel *chan, struct ast_channel *peer, struct a
 				res = feature_interpret(chan, peer, config, featurecode, sense);
 				switch(res) {
 				case AST_FEATURE_RETURN_PASSDIGITS:
-					ast_dtmf_stream(other, who, featurecode, 0, dtmfduration);
+					ast_dtmf_stream(other, who, featurecode, 0, 0);
 					/* Fall through */
 				case AST_FEATURE_RETURN_SUCCESS:
 					memset(featurecode, 0, sizeof(chan_featurecode));
@@ -4294,7 +4316,13 @@ before_you_go:
 		int  save_prio;
 		int  found = 0;	/* set if we find at least one match */
 		int  spawn_error = 0;
-		
+
+		/*
+		 * Make sure that the channel is marked as hungup since we are
+		 * going to run the "h" exten on it.
+		 */
+		ast_softhangup(chan, AST_SOFTHANGUP_APPUNLOAD);
+
 		autoloopflag = ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP);
 		ast_set_flag(chan, AST_FLAG_IN_AUTOLOOP);
 		if (bridge_cdr && ast_opt_end_cdr_before_h_exten) {

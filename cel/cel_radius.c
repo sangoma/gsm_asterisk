@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Rev: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Rev: 328247 $")
 
 #include <radiusclient-ng.h>
 

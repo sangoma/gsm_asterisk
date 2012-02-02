@@ -16,34 +16,8 @@
 === UPGRADE-1.4.txt -- Upgrade info for 1.2 to 1.4
 === UPGRADE-1.6.txt -- Upgrade info for 1.4 to 1.6
 === UPGRADE-1.8.txt -- Upgrade info for 1.6 to 1.8
-=== UPGRADE-10.txt -- Upgrade info for 1.8 to 10
 ===
 ===========================================================
-
-From 10 to 12:
-
-func_enum:
- - ENUM query functions now return a count of -1 on lookup error to
-   differentiate between a failed query and a successful query with 0 results
-   matching the specified type.
-
-Configuration Files:
- - Files listed below have been updated to be more consistent with how Asterisk
-   parses configuration files.  This makes configuration files more consistent
-   with what is expected across modules.
-
-   - cdr.conf: [general] and [csv] sections
-   - dnsmgr.conf
-   - dsp.conf
-
-AMI:
-  - DBDelTree now correctly returns an error when 0 rows are deleted just as
-    the DBDel action does.
-
-SIP
-===
- - A new option "tonezone" for setting default tonezone for the channel driver
-   or individual devices
 
 From 1.8 to 10:
 
@@ -115,6 +89,11 @@ chan_sip:
  - Setting of HASH(SIP_CAUSE,<slave-channel-name>) on channels is now disabled
    by default. It can be enabled using the 'storesipcause' option. This feature
    has a significant performance penalty.
+
+UDPTL:
+ - The default UDPTL port range in udptl.conf.sample differed from the defaults
+   in the source. If you didn't have a config file, you got 4500 to 4599. Now the
+   default is 4000 to 4999.
 
 ===========================================================
 ===========================================================

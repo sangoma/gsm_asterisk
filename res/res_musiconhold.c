@@ -32,7 +32,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336732 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 349195 $")
 
 #include <ctype.h>
 #include <signal.h>
@@ -163,7 +163,7 @@ struct moh_files_state {
 	int pos;
 	int save_pos;
 	int save_total;
-	char *save_pos_filename;
+	char save_pos_filename[PATH_MAX];
 };
 
 #define MOH_QUIET		(1 << 0)
@@ -298,10 +298,10 @@ static int ast_moh_files_next(struct ast_channel *chan)
 		return -1;
 	}
 
-	if (state->pos == 0 && state->save_pos_filename == NULL) {
+	if (state->pos == 0 && ast_strlen_zero(state->save_pos_filename)) {
 		/* First time so lets play the file. */
 		state->save_pos = -1;
-	} else if (state->save_pos >= 0 && state->save_pos < state->class->total_files && state->class->filearray[state->save_pos] == state->save_pos_filename) {
+	} else if (state->save_pos >= 0 && state->save_pos < state->class->total_files && !strcmp(state->class->filearray[state->save_pos], state->save_pos_filename)) {
 		/* If a specific file has been saved confirm it still exists and that it is still valid */
 		state->pos = state->save_pos;
 		state->save_pos = -1;
@@ -338,7 +338,7 @@ static int ast_moh_files_next(struct ast_channel *chan)
 	}
 
 	/* Record the pointer to the filename for position resuming later */
-	state->save_pos_filename = state->class->filearray[state->pos];
+	ast_copy_string(state->save_pos_filename, state->class->filearray[state->pos], sizeof(state->save_pos_filename));
 
 	ast_debug(1, "%s Opened file %d '%s'\n", chan->name, state->pos, state->class->filearray[state->pos]);
 
@@ -673,7 +673,7 @@ static void *monmp3thread(void *data)
 			}
 		}
 		if (class->timer) {
-			struct pollfd pfd = { .fd = ast_timer_fd(class->timer), .events = POLLIN, };
+			struct pollfd pfd = { .fd = ast_timer_fd(class->timer), .events = POLLIN | POLLPRI, };
 
 #ifdef SOLARIS
 			thr_yield();
@@ -683,7 +683,7 @@ static void *monmp3thread(void *data)
 				ast_timer_ack(class->timer, 1);
 				res = 320;
 			} else {
-				ast_log(LOG_ERROR, "poll() failed: %s\n", strerror(errno));
+				ast_log(LOG_WARNING, "poll() failed: %s\n", strerror(errno));
 				res = 0;
 			}
 			pthread_testcancel();
@@ -1222,6 +1222,7 @@ static int init_app_class(struct mohclass *class)
 
 	if (!(class->timer = ast_timer_open())) {
 		ast_log(LOG_WARNING, "Unable to create timer: %s\n", strerror(errno));
+		return -1;
 	}
 	if (class->timer && ast_timer_set_rate(class->timer, 25)) {
 		ast_log(LOG_WARNING, "Unable to set 40ms frame rate: %s\n", strerror(errno));
@@ -1249,7 +1250,9 @@ static int _moh_register(struct mohclass *moh, int reload, int unref, const char
 {
 	struct mohclass *mohclass = NULL;
 
-	if ((mohclass = _get_mohbyname(moh->name, 0, MOH_NOTDELETED, file, line, funcname)) && !moh_diff(mohclass, moh)) {
+	mohclass = _get_mohbyname(moh->name, 0, MOH_NOTDELETED, file, line, funcname);
+
+	if (mohclass && !moh_diff(mohclass, moh)) {
 		ast_log(LOG_WARNING, "Music on Hold class '%s' already exists\n", moh->name);
 		mohclass = mohclass_unref(mohclass, "unreffing mohclass we just found by name");
 		if (unref) {
@@ -1522,11 +1525,20 @@ static int local_ast_moh_start(struct ast_channel *chan, const char *mclass, con
 			}
 		} else {
 			ast_variables_destroy(var);
+			var = NULL;
 		}
 	}
 
 	if (!mohclass) {
 		return -1;
+	}
+
+	/* If we are using a cached realtime class with files, re-scan the files */
+	if (!var && ast_test_flag(global_flags, MOH_CACHERTCLASSES) && mohclass->realtime && !strcasecmp(mohclass->mode, "files")) {
+		if (!moh_scan_files(mohclass)) {
+			mohclass = mohclass_unref(mohclass, "unreffing potential mohclass (moh_scan_files failed)");
+			return -1;
+		}
 	}
 
 	ast_manager_event(chan, EVENT_FLAG_CALL, "MusicOnHold",
@@ -1579,6 +1591,12 @@ static void moh_class_destructor(void *obj)
 
 	ast_debug(1, "Destroying MOH class '%s'\n", class->name);
 
+	ao2_lock(class);
+	while ((member = AST_LIST_REMOVE_HEAD(&class->members, list))) {
+		free(member);
+	}
+	ao2_unlock(class);
+
 	/* Kill the thread first, so it cannot restart the child process while the
 	 * class is being destroyed */
 	if (class->thread != AST_PTHREADT_NULL && class->thread != 0) {
@@ -1630,10 +1648,7 @@ static void moh_class_destructor(void *obj)
 		ast_debug(1, "mpg123 pid %d and child died after %d bytes read\n", pid, tbytes);
 
 		close(class->srcfd);
-	}
-
-	while ((member = AST_LIST_REMOVE_HEAD(&class->members, list))) {
-		free(member);
+		class->srcfd = -1;
 	}
 
 	if (class->filearray) {
@@ -1654,6 +1669,7 @@ static void moh_class_destructor(void *obj)
 	if (tid > 0) {
 		pthread_join(tid, NULL);
 	}
+
 }
 
 static int moh_class_mark(void *obj, void *arg, int flags)

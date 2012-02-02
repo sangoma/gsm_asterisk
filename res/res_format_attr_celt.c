@@ -23,9 +23,13 @@
  * \author David Vossel <dvossel@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 327116 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 346029 $")
 
 #include "asterisk/module.h"
 #include "asterisk/format.h"

@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337974 $")
 
 /* When we include logger.h again it will trample on some stuff in syslog.h, but
  * nothing we care about in here. */
@@ -48,8 +48,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
 #include "asterisk/pbx.h"
 #include "asterisk/app.h"
 #include "asterisk/syslog.h"
-#include "asterisk/buildinfo.h"
-#include "asterisk/ast_version.h"
 
 #include <signal.h>
 #include <time.h>
@@ -237,9 +235,6 @@ static struct logchannel *make_logchannel(const char *channel, const char *compo
 {
 	struct logchannel *chan;
 	char *facility;
-	struct ast_tm tm;
-	struct timeval now = ast_tvnow();
-	char datestring[256];
 
 	if (ast_strlen_zero(channel) || !(chan = ast_calloc(1, sizeof(*chan) + strlen(components) + 1)))
 		return NULL;
@@ -288,15 +283,6 @@ static struct logchannel *make_logchannel(const char *channel, const char *compo
 			ast_console_puts_mutable("'\n", __LOG_ERROR);
 			ast_free(chan);
 			return NULL;
-		} else {
-			/* Create our date/time */
-			ast_localtime(&now, &tm, NULL);
-			ast_strftime(datestring, sizeof(datestring), dateformat, &tm);
-
-			fprintf(chan->fileptr, "[%s] Asterisk %s built by %s @ %s on a %s running %s on %s\n",
-				datestring, ast_get_version(), ast_build_user, ast_build_hostname,
-				ast_build_machine, ast_build_os, ast_build_date);
-			fflush(chan->fileptr);
 		}
 		chan->type = LOGTYPE_FILE;
 	}

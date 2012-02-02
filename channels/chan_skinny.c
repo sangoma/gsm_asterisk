@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340973 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 346240 $")
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -166,7 +166,7 @@ enum skinny_codecs {
 
 #define DEFAULT_SKINNY_PORT 2000
 #define DEFAULT_SKINNY_BACKLOG 2
-#define SKINNY_MAX_PACKET 2000
+#define SKINNY_MAX_PACKET 1000
 #define DEFAULT_AUTH_TIMEOUT 30
 #define DEFAULT_AUTH_LIMIT 50
 
@@ -353,18 +353,11 @@ struct alarm_message {
 };
 
 #define OPEN_RECEIVE_CHANNEL_ACK_MESSAGE 0x0022
-struct open_receive_channel_ack_message_ip4 {
+struct open_receive_channel_ack_message {
 	uint32_t status;
 	uint32_t ipAddr;
 	uint32_t port;
-	uint32_t callReference;
-};
-struct open_receive_channel_ack_message_ip6 {
-	uint32_t status;
-	uint32_t space;
-	char ipAddr[16];
-	uint32_t port;
-	uint32_t callReference;
+	uint32_t passThruId;
 };
 
 #define SOFT_KEY_SET_REQ_MESSAGE 0x0025
@@ -402,7 +395,6 @@ struct start_tone_message {
 struct stop_tone_message {
 	uint32_t instance;
 	uint32_t reference;
-	uint32_t space;
 };
 
 #define SET_RINGER_MESSAGE 0x0085
@@ -435,11 +427,11 @@ struct set_microphone_message {
 struct media_qualifier {
 	uint32_t precedence;
 	uint32_t vad;
-	uint32_t packets;
+	uint16_t packets;
 	uint32_t bitRate;
 };
 
-struct start_media_transmission_message_ip4 {
+struct start_media_transmission_message {
 	uint32_t conferenceId;
 	uint32_t passThruPartyId;
 	uint32_t remoteIp;
@@ -447,19 +439,7 @@ struct start_media_transmission_message_ip4 {
 	uint32_t packetSize;
 	uint32_t payloadType;
 	struct media_qualifier qualifier;
-	uint32_t space[19];
-};
-
-struct start_media_transmission_message_ip6 {
-	uint32_t conferenceId;
-	uint32_t passThruPartyId;
-	uint32_t space;
-	char remoteIp[16];
-	uint32_t remotePort;
-	uint32_t packetSize;
-	uint32_t payloadType;
-	struct media_qualifier qualifier;
-	uint32_t space2[19];
+	uint32_t space[16];
 };
 
 #define STOP_MEDIA_TRANSMISSION_MESSAGE 0x008B
@@ -603,9 +583,6 @@ struct displaytext_message {
 
 #define CLEAR_NOTIFY_MESSAGE  0x0115
 #define CLEAR_DISPLAY_MESSAGE 0x009A
-struct clear_display_message {
-	uint32_t space;
-};
 
 #define CAPABILITIES_REQ_MESSAGE 0x009B
 
@@ -640,7 +617,7 @@ struct open_receive_channel_message {
 	uint32_t capability;
 	uint32_t echo;
 	uint32_t bitrate;
-	uint32_t space[36];
+	uint32_t space[16];
 };
 
 #define CLOSE_RECEIVE_CHANNEL_MESSAGE 0x0106
@@ -1038,7 +1015,6 @@ union skinny_data {
 	struct version_res_message version;
 	struct button_template_res_message buttontemplate;
 	struct displaytext_message displaytext;
-	struct clear_display_message cleardisplay;
 	struct display_prompt_status_message displaypromptstatus;
 	struct clear_prompt_message clearpromptstatus;
 	struct definetimedate_message definetimedate;
@@ -1063,12 +1039,10 @@ union skinny_data {
 	struct set_speaker_message setspeaker;
 	struct set_microphone_message setmicrophone;
 	struct call_info_message callinfo;
-	struct start_media_transmission_message_ip4 startmedia_ip4;
-	struct start_media_transmission_message_ip6 startmedia_ip6;
+	struct start_media_transmission_message startmedia;
 	struct stop_media_transmission_message stopmedia;
 	struct open_receive_channel_message openreceivechannel;
-	struct open_receive_channel_ack_message_ip4 openreceivechannelack_ip4;
-	struct open_receive_channel_ack_message_ip6 openreceivechannelack_ip6;
+	struct open_receive_channel_ack_message openreceivechannelack;
 	struct close_receive_channel_message closereceivechannel;
 	struct display_notify_message displaynotify;
 	struct dialed_number_message dialednumber;
@@ -1411,7 +1385,6 @@ struct skinny_addon {
 	char version_id[16];					\
 	char vmexten[AST_MAX_EXTENSION];			\
 	int type;						\
-	int protocolversion;				\
 	int registered;						\
 	int hookstate;					\
 	int lastlineinstance;					\
@@ -2079,6 +2052,11 @@ static int skinny_register(struct skinny_req *req, struct skinnysession *s)
 	socklen_t slen;
 	int instance;
 
+	if (letohl(req->data.reg.protocolVersion) >= 17) {
+		ast_log(LOG_WARNING, "Asterisk10 does not support skinny protocol 17 and above. Rejecting device.\n");
+		return 0;
+	}
+
 	AST_LIST_LOCK(&devices);
 	AST_LIST_TRAVERSE(&devices, d, list){
 		struct ast_sockaddr addr;
@@ -2087,7 +2065,6 @@ static int skinny_register(struct skinny_req *req, struct skinnysession *s)
 				&& ast_apply_ha(d->ha, &addr)) {
 			s->device = d;
 			d->type = letohl(req->data.reg.type);
-			d->protocolversion = letohl(req->data.reg.protocolVersion);
 			if (ast_strlen_zero(d->version_id)) {
 				ast_copy_string(d->version_id, version_id, sizeof(d->version_id));
 			}
@@ -2613,7 +2590,7 @@ static void transmit_ringer_mode(struct skinny_device *d, int mode)
 static void transmit_clear_display_message(struct skinny_device *d, int instance, int reference)
 {
 	struct skinny_req *req;
-	if (!(req = req_alloc(sizeof(struct clear_display_message), CLEAR_DISPLAY_MESSAGE)))
+	if (!(req = req_alloc(0, CLEAR_DISPLAY_MESSAGE)))
 		return;
 
 	//what do we want hear CLEAR_DISPLAY_MESSAGE or CLEAR_PROMPT_STATUS???
@@ -2737,33 +2714,19 @@ static void transmit_startmediatransmission(struct skinny_device *d, struct skin
 {
 	struct skinny_req *req;
 
-	if (d->protocolversion < 17) {
-		if (!(req = req_alloc(sizeof(struct start_media_transmission_message_ip4), START_MEDIA_TRANSMISSION_MESSAGE)))
-			return;
-		req->data.startmedia_ip4.conferenceId = htolel(sub->callid);
-		req->data.startmedia_ip4.passThruPartyId = htolel(sub->callid);
-		req->data.startmedia_ip4.remoteIp = dest.sin_addr.s_addr;
-		req->data.startmedia_ip4.remotePort = htolel(ntohs(dest.sin_port));
-		req->data.startmedia_ip4.packetSize = htolel(fmt.cur_ms);
-		req->data.startmedia_ip4.payloadType = htolel(codec_ast2skinny(&fmt.format));
-		req->data.startmedia_ip4.qualifier.precedence = htolel(127);
-		req->data.startmedia_ip4.qualifier.vad = htolel(0);
-		req->data.startmedia_ip4.qualifier.packets = htolel(0);
-		req->data.startmedia_ip4.qualifier.bitRate = htolel(0);
-	} else {
-		if (!(req = req_alloc(sizeof(struct start_media_transmission_message_ip6), START_MEDIA_TRANSMISSION_MESSAGE)))
-			return;
-		req->data.startmedia_ip6.conferenceId = htolel(sub->callid);
-		req->data.startmedia_ip6.passThruPartyId = htolel(sub->callid);
-		memcpy(req->data.startmedia_ip6.remoteIp, &dest.sin_addr.s_addr, sizeof(dest.sin_addr.s_addr));
-		req->data.startmedia_ip6.remotePort = htolel(ntohs(dest.sin_port));
-		req->data.startmedia_ip6.packetSize = htolel(fmt.cur_ms);
-		req->data.startmedia_ip6.payloadType = htolel(codec_ast2skinny(&fmt.format));
-		req->data.startmedia_ip6.qualifier.precedence = htolel(127);
-		req->data.startmedia_ip6.qualifier.vad = htolel(0);
-		req->data.startmedia_ip6.qualifier.packets = htolel(0);
-		req->data.startmedia_ip6.qualifier.bitRate = htolel(0);
-	}
+	if (!(req = req_alloc(sizeof(struct start_media_transmission_message), START_MEDIA_TRANSMISSION_MESSAGE)))
+		return;
+
+	req->data.startmedia.conferenceId = htolel(sub->callid);
+	req->data.startmedia.passThruPartyId = htolel(sub->callid);
+	req->data.startmedia.remoteIp = dest.sin_addr.s_addr;
+	req->data.startmedia.remotePort = htolel(ntohs(dest.sin_port));
+	req->data.startmedia.packetSize = htolel(fmt.cur_ms);
+	req->data.startmedia.payloadType = htolel(codec_ast2skinny(&fmt.format));
+	req->data.startmedia.qualifier.precedence = htolel(127);
+	req->data.startmedia.qualifier.vad = htolel(0);
+	req->data.startmedia.qualifier.packets = htolel(0);
+	req->data.startmedia.qualifier.bitRate = htolel(0);
 	transmit_response(d, req);
 }
 
@@ -4309,9 +4272,7 @@ static void *skinny_ss(void *data)
 					}
 					return NULL;
 				} else {
-					if (sub->substate == SUBSTATE_OFFHOOK) {
-						dialandactivatesub(sub, sub->exten);
-					}
+					dialandactivatesub(sub, sub->exten);
 					return NULL;
 				}
 			} else {
@@ -5465,9 +5426,6 @@ static void activatesub(struct skinny_subchannel *sub, int state)
 
 static void dialandactivatesub(struct skinny_subchannel *sub, char exten[AST_MAX_EXTENSION])
 {
-	if (skinnydebug) {
-		ast_verb(3, "Sub %d - Dial %s and Activate\n", sub->callid, exten);
-	}
 	ast_copy_string(sub->exten, exten, sizeof(sub->exten));
 	activatesub(sub, SUBSTATE_DIALING);
 }
@@ -6231,33 +6189,25 @@ static int handle_open_receive_channel_ack_message(struct skinny_req *req, struc
 	uint32_t addr;
 	int port;
 	int status;
-	int callid;
+	int passthruid;
 
-	status = (d->protocolversion<17)?letohl(req->data.openreceivechannelack_ip4.status):letohl(req->data.openreceivechannelack_ip6.status);
+	status = letohl(req->data.openreceivechannelack.status);
 	if (status) {
 		ast_log(LOG_ERROR, "Open Receive Channel Failure\n");
 		return 0;
 	}
-	if (d->protocolversion<17) {
-		addr = req->data.openreceivechannelack_ip4.ipAddr;
-		port = letohl(req->data.openreceivechannelack_ip4.port);
-		callid = letohl(req->data.openreceivechannelack_ip4.callReference);
-	} else {
-		memcpy(&addr, &req->data.openreceivechannelack_ip6.ipAddr, sizeof(addr));
-		port = letohl(req->data.openreceivechannelack_ip6.port);
-		callid = letohl(req->data.openreceivechannelack_ip6.callReference);
-	}
+	addr = req->data.openreceivechannelack.ipAddr;
+	port = letohl(req->data.openreceivechannelack.port);
+	passthruid = letohl(req->data.openreceivechannelack.passThruId);
 
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = addr;
 	sin.sin_port = htons(port);
 
-	sub = find_subchannel_by_reference(d, callid);
+	sub = find_subchannel_by_reference(d, passthruid);
 
-	if (!sub) {
-		ast_log(LOG_ERROR, "Open Receive Channel Failure - can't find sub for %d\n", callid);
+	if (!sub)
 		return 0;
-	}
 
 	l = sub->line;
 
@@ -6660,7 +6610,7 @@ static int handle_message(struct skinny_req *req, struct skinnysession *s)
 	case REGISTER_MESSAGE:
 		if (skinny_register(req, s)) {
 			ast_atomic_fetchadd_int(&unauth_sessions, -1);
-			ast_verb(3, "Device '%s' successfully registered (protoVers %d)\n", s->device->name, s->device->protocolversion);
+			ast_verb(3, "Device '%s' successfully registered\n", s->device->name);
 			transmit_registerack(s->device);
 			transmit_capabilitiesreq(s->device);
 		} else {
@@ -6920,7 +6870,6 @@ static int get_input(struct skinnysession *s)
 			return -1;
 		}
 		if (dlen+8 > sizeof(s->inbuf)) {
-			ast_log(LOG_WARNING, "Skinny packet too large (%d bytes), max length(%d bytes)\n", dlen+8, SKINNY_MAX_PACKET);
 			dlen = sizeof(s->inbuf) - 8;
 		}
 		*bufaddr = htolel(dlen);
@@ -6974,7 +6923,6 @@ static void *skinny_session(void *data)
 	for (;;) {
 		res = get_input(s);
 		if (res < 0) {
-			ast_verb(3, "Ending Skinny session from %s (bad input)\n", ast_inet_ntoa(s->sin.sin_addr));
 			break;
 		}
 
@@ -6982,7 +6930,6 @@ static void *skinny_session(void *data)
 		{
 			if (!(req = skinny_req_parse(s))) {
 				destroy_session(s);
-				ast_verb(3, "Ending Skinny session from %s (failed parse)\n", ast_inet_ntoa(s->sin.sin_addr));
 				return NULL;
 			}
 
@@ -7385,6 +7332,7 @@ static struct ast_channel *skinny_request(const char *type, struct ast_format_ca
  			if (type & (TYPE_DEVICE)) {
 				struct ast_sockaddr CDEV_addr_tmp;
 
+				CDEV_addr_tmp.ss.ss_family = AF_INET;
 				if (ast_get_ip(&CDEV_addr_tmp, v->value)) {
  					ast_log(LOG_WARNING, "Bad IP '%s' at line %d.\n", v->value, v->lineno);
  				}

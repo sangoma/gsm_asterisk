@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 327749 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 348846 $")
 
 #include <signal.h>
 
@@ -41,6 +41,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 327749 $")
 #include "asterisk/file.h"
 #include "asterisk/module.h"
 #include "asterisk/astobj2.h"
+#include "asterisk/test.h"
 
 static AST_RWLIST_HEAD_STATIC(bridge_technologies, ast_bridge_technology);
 
@@ -739,12 +740,13 @@ static enum ast_bridge_channel_state bridge_channel_join_multithreaded(struct as
 
 	ao2_unlock(bridge_channel->bridge);
 
+	ao2_lock(bridge_channel);
 	/* Wait for data to either come from the channel or us to be signalled */
 	if (!bridge_channel->suspended) {
+		ao2_unlock(bridge_channel);
 		ast_debug(10, "Going into a multithreaded waitfor for bridge channel %p of bridge %p\n", bridge_channel, bridge_channel->bridge);
 		chan = ast_waitfor_nandfds(&bridge_channel->chan, 1, fds, nfds, NULL, &outfd, &ms);
 	} else {
-		ao2_lock(bridge_channel);
 		ast_debug(10, "Going into a multithreaded signal wait for bridge channel %p of bridge %p\n", bridge_channel, bridge_channel->bridge);
 		ast_cond_wait(&bridge_channel->cond, ao2_object_get_lockaddr(bridge_channel));
 		ao2_unlock(bridge_channel);
@@ -777,9 +779,10 @@ static enum ast_bridge_channel_state bridge_channel_join_singlethreaded(struct a
 /*! \brief Internal function that suspends a channel from a bridge */
 static void bridge_channel_suspend(struct ast_bridge *bridge, struct ast_bridge_channel *bridge_channel)
 {
+	ao2_lock(bridge_channel);
 	bridge_channel->suspended = 1;
-
 	bridge_array_remove(bridge, bridge_channel->chan);
+	ao2_unlock(bridge_channel);
 
 	if (bridge->technology->suspend) {
 		bridge->technology->suspend(bridge, bridge_channel);
@@ -791,13 +794,17 @@ static void bridge_channel_suspend(struct ast_bridge *bridge, struct ast_bridge_
 /*! \brief Internal function that unsuspends a channel from a bridge */
 static void bridge_channel_unsuspend(struct ast_bridge *bridge, struct ast_bridge_channel *bridge_channel)
 {
-	bridge_channel->suspended =0;
-
+	ao2_lock(bridge_channel);
+	bridge_channel->suspended = 0;
 	bridge_array_add(bridge, bridge_channel->chan);
+	ast_cond_signal(&bridge_channel->cond);
+	ao2_unlock(bridge_channel);
 
 	if (bridge->technology->unsuspend) {
 		bridge->technology->unsuspend(bridge, bridge_channel);
 	}
+
+
 
 	return;
 }
@@ -865,6 +872,12 @@ static void bridge_channel_feature(struct ast_bridge *bridge, struct ast_bridge_
 	/* If a hook was actually matched execute it on this channel, otherwise stream up the DTMF to the other channels */
 	if (hook) {
 		hook->callback(bridge, bridge_channel, hook->hook_pvt);
+		/* If we are handing the channel off to an external hook for ownership,
+		 * we are not guaranteed what kind of state it will come back in.  If
+		 * the channel hungup, we need to detect that here. */
+		if (bridge_channel->chan && ast_check_hangup_locked(bridge_channel->chan)) {
+			ast_bridge_change_state(bridge_channel, AST_BRIDGE_CHANNEL_STATE_END);
+		}
 	} else {
 		ast_bridge_dtmf_stream(bridge, dtmf, bridge_channel->chan);
 	}
@@ -1502,6 +1515,7 @@ void ast_bridge_set_single_src_video_mode(struct ast_bridge *bridge, struct ast_
 	cleanup_video_mode(bridge);
 	bridge->video_mode.mode = AST_BRIDGE_VIDEO_MODE_SINGLE_SRC;
 	bridge->video_mode.mode_data.single_src_data.chan_vsrc = ast_channel_ref(video_src_chan);
+	ast_test_suite_event_notify("BRIDGE_VIDEO_MODE", "Message: video mode set to single source\r\nVideo Mode: %d\r\nVideo Channel: %s", bridge->video_mode.mode, video_src_chan->name);
 	ast_indicate(video_src_chan, AST_CONTROL_VIDUPDATE);
 	ao2_unlock(bridge);
 }
@@ -1511,6 +1525,7 @@ void ast_bridge_set_talker_src_video_mode(struct ast_bridge *bridge)
 	ao2_lock(bridge);
 	cleanup_video_mode(bridge);
 	bridge->video_mode.mode = AST_BRIDGE_VIDEO_MODE_TALKER_SRC;
+	ast_test_suite_event_notify("BRIDGE_VIDEO_MODE", "Message: video mode set to talker source\r\nVideo Mode: %d", bridge->video_mode.mode);
 	ao2_unlock(bridge);
 }
 
@@ -1537,12 +1552,14 @@ void ast_bridge_update_talker_src_video_mode(struct ast_bridge *bridge, struct a
 		}
 		data->chan_vsrc = ast_channel_ref(chan);
 		data->average_talking_energy = talker_energy;
+		ast_test_suite_event_notify("BRIDGE_VIDEO_SRC", "Message: video source updated\r\nVideo Channel: %s", data->chan_vsrc->name);
 		ast_indicate(data->chan_vsrc, AST_CONTROL_VIDUPDATE);
 	} else if ((data->average_talking_energy < talker_energy) && !is_keyframe) {
 		ast_indicate(chan, AST_CONTROL_VIDUPDATE);
 	} else if (!data->chan_vsrc && is_keyframe) {
 		data->chan_vsrc = ast_channel_ref(chan);
 		data->average_talking_energy = talker_energy;
+		ast_test_suite_event_notify("BRIDGE_VIDEO_SRC", "Message: video source updated\r\nVideo Channel: %s", data->chan_vsrc->name);
 		ast_indicate(chan, AST_CONTROL_VIDUPDATE);
 	} else if (!data->chan_old_vsrc && is_keyframe) {
 		data->chan_old_vsrc = ast_channel_ref(chan);

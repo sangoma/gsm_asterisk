@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 333159 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328247 $")
 
 #include <fcntl.h>
 #include <sys/signal.h>
@@ -287,7 +287,7 @@ static int local_devicestate(void *data)
 
 	if (!(context = strchr(exten, '@'))) {
 		ast_log(LOG_WARNING, "Someone used Local/%s somewhere without a @context. This is bad.\n", exten);
-		return AST_DEVICE_INVALID;
+		return AST_DEVICE_INVALID;	
 	}
 
 	*context++ = '\0';
@@ -299,9 +299,9 @@ static int local_devicestate(void *data)
 	ast_debug(3, "Checking if extension %s@%s exists (devicestate)\n", exten, context);
 
 	res = ast_exists_extension(NULL, context, exten, 1, NULL);
-	if (!res)
+	if (!res)		
 		return AST_DEVICE_INVALID;
-
+	
 	res = AST_DEVICE_NOT_INUSE;
 
 	it = ao2_iterator_init(locals, 0);
@@ -335,7 +335,7 @@ static struct ast_channel *local_bridgedchannel(struct ast_channel *chan, struct
 	if (ast_test_flag(p, LOCAL_BRIDGE)) {
 		/* Find the opposite channel */
 		bridged = (bridge == p->owner ? p->chan : p->owner);
-
+		
 		/* Now see if the opposite channel is bridged to anything */
 		if (!bridged) {
 			bridged = bridge;
@@ -406,7 +406,7 @@ query_cleanup:
  * local_pvt, it is impossible to guarantee it will not be destroyed by another thread
  * during deadlock avoidance.
  */
-static int local_queue_frame(struct local_pvt *p, int isoutbound, struct ast_frame *f,
+static int local_queue_frame(struct local_pvt *p, int isoutbound, struct ast_frame *f, 
 	struct ast_channel *us, int us_locked)
 {
 	struct ast_channel *other = NULL;
@@ -451,9 +451,8 @@ static int local_answer(struct ast_channel *ast)
 	int isoutbound;
 	int res = -1;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_lock(p);
 	ao2_ref(p, 1);
@@ -620,9 +619,8 @@ static int local_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 {
 	struct local_pvt *p = newchan->tech_pvt;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_lock(p);
 
@@ -631,11 +629,10 @@ static int local_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 		ao2_unlock(p);
 		return -1;
 	}
-	if (p->owner == oldchan) {
+	if (p->owner == oldchan)
 		p->owner = newchan;
-	} else {
+	else
 		p->chan = newchan;
-	}
 
 	/* Do not let a masquerade cause a Local channel to be bridged to itself! */
 	if (!ast_check_hangup(newchan) && ((p->owner && p->owner->_bridge == p->chan) || (p->chan && p->chan->_bridge == p->owner))) {
@@ -656,9 +653,8 @@ static int local_indicate(struct ast_channel *ast, int condition, const void *da
 	struct ast_frame f = { AST_FRAME_CONTROL, };
 	int isoutbound;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_ref(p, 1); /* ref for local_queue_frame */
 
@@ -723,9 +719,8 @@ static int local_digit_begin(struct ast_channel *ast, char digit)
 	struct ast_frame f = { AST_FRAME_DTMF_BEGIN, };
 	int isoutbound;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_ref(p, 1); /* ref for local_queue_frame */
 	ao2_lock(p);
@@ -745,9 +740,8 @@ static int local_digit_end(struct ast_channel *ast, char digit, unsigned int dur
 	struct ast_frame f = { AST_FRAME_DTMF_END, };
 	int isoutbound;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_ref(p, 1); /* ref for local_queue_frame */
 	ao2_lock(p);
@@ -768,9 +762,8 @@ static int local_sendtext(struct ast_channel *ast, const char *text)
 	struct ast_frame f = { AST_FRAME_TEXT, };
 	int isoutbound;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_lock(p);
 	ao2_ref(p, 1); /* ref for local_queue_frame */
@@ -790,9 +783,8 @@ static int local_sendhtml(struct ast_channel *ast, int subclass, const char *dat
 	struct ast_frame f = { AST_FRAME_HTML, };
 	int isoutbound;
 
-	if (!p) {
+	if (!p)
 		return -1;
-	}
 
 	ao2_lock(p);
 	ao2_ref(p, 1); /* ref for local_queue_frame */
@@ -807,8 +799,8 @@ static int local_sendhtml(struct ast_channel *ast, int subclass, const char *dat
 	return res;
 }
 
-/*! \brief Initiate new call, part of PBX interface
- *         dest is the dial string */
+/*! \brief Initiate new call, part of PBX interface 
+ * 	dest is the dial string */
 static int local_call(struct ast_channel *ast, char *dest, int timeout)
 {
 	struct local_pvt *p = ast->tech_pvt;
@@ -908,19 +900,6 @@ static int local_call(struct ast_channel *ast, char *dest, int timeout)
 		chan = ast_channel_unref(chan); /* we already unlocked it, so clear it hear so the cleanup label won't touch it. */
 		goto return_cleanup;
 	}
-
-	manager_event(EVENT_FLAG_CALL, "LocalBridge",
-		      "Channel1: %s\r\n"
-		      "Channel2: %s\r\n"
-		      "Uniqueid1: %s\r\n"
-		      "Uniqueid2: %s\r\n"
-		      "Context: %s\r\n"
-		      "Exten: %s\r\n"
-		      "LocalOptimization: %s\r\n",
-			p->owner->name, p->chan->name, p->owner->uniqueid, p->chan->uniqueid,
-			p->context, p->exten,
-			ast_test_flag(p, LOCAL_NO_OPTIMIZATION) ? "Yes" : "No");
-
 
 	/* Start switch on sub channel */
 	if (!(res = ast_pbx_start(chan))) {
@@ -1140,7 +1119,7 @@ static struct ast_channel *local_new(struct local_pvt *p, int state, const char 
 		ama = p->owner->amaflags;
 	else
 		ama = 0;
-	if (!(tmp = ast_channel_alloc(1, state, 0, 0, t, p->exten, p->context, linkedid, ama, "Local/%s@%s-%04x;1", p->exten, p->context, randnum))
+	if (!(tmp = ast_channel_alloc(1, state, 0, 0, t, p->exten, p->context, linkedid, ama, "Local/%s@%s-%04x;1", p->exten, p->context, randnum)) 
 		|| !(tmp2 = ast_channel_alloc(1, AST_STATE_RING, 0, 0, t, p->exten, p->context, linkedid, ama, "Local/%s@%s-%04x;2", p->exten, p->context, randnum))) {
 		if (tmp) {
 			tmp = ast_channel_release(tmp);
@@ -1222,9 +1201,8 @@ static char *locals_show(struct ast_cli_entry *e, int cmd, struct ast_cli_args *
 		return NULL;
 	}
 
-	if (a->argc != 3) {
+	if (a->argc != 3)
 		return CLI_SHOWUSAGE;
-	}
 
 	if (ao2_container_count(locals) == 0) {
 		ast_cli(a->fd, "No local channels in use\n");

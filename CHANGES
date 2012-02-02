@@ -9,46 +9,19 @@
 ==============================================================================
 
 ------------------------------------------------------------------------------
---- Functionality changes from Asterisk 10 to Asterisk 11 --------------------
+--- Functionality changes since Asterisk 10.0.0 ------------------------------
 ------------------------------------------------------------------------------
 
-SIP Changes
------------
- * Asterisk will no longer substitute CID number for CID name into display
-   name field if CID number exists without a CID name. This change improves
-   compatibility with certain device features such as Avaya IP500's directory
-   lookup service.
-
-Chan_local changes
-------------------
- * Added a manager event "LocalBridge" for local channel call bridges between
-   the two pseudo-channels created.
-
-Codec changes
+RTP changes
 -------------
- * Codec lists may now be modified by the '!' character, to allow succinct
-   specification of a list of codecs allowed and disallowed, without the
-   requirement to use two different keywords.  For example, to specify all
-   codecs except g729 and g723, one need only specify allow=all,!g729,!g723.
-
-Queue changes
--------------
- * Added queue options autopausebusy and autopauseunavail for automatically
-   pausing a queue member when their device reports busy or congestion.
-
-CDR postgresql driver changes
------------------------------
- * Added command "cdr show pgsql status" to check connection status
-
-AMI (Asterisk Manager Interface) changes
-----------------------------------------
- * Originate now generates an error response if the extension given
-   is not found in the dialplan
-
-FAX changes
------------
- * FAXOPT(faxdetect) will enable a generic fax detect framehook for dialplan
-   control of faxdetect.
+ * A new option, 'probation' has been added to rtp.conf
+   RTP in strictrtp mode can now require more than 1 packet to exit learning
+   mode with a new source (and by default requires 4). The probation option
+   allows the user to change the required number of packets in sequence to any
+   desired value. Use a value of 1 to essentially restore the old behavior.
+   Also, with strictrtp on, Asterisk will now drop all packets until learning
+   mode has successfully exited. These changes are based on how pjmedia handles
+   media sources and source changes.
 
 ------------------------------------------------------------------------------
 --- Functionality changes from Asterisk 1.8 to Asterisk 10 -------------------
@@ -119,7 +92,6 @@ CDR
 --------------------------
  * The filter option in cdr_adaptive_odbc now supports negating the argument,
    thus allowing records which do NOT match the specified filter.
- * Added ability to log CONGESTION calls to CDR
 
 CODECS
 --------------------------
@@ -204,11 +176,6 @@ FollowMe
    compatability for a FollowMe call with certain dialplan apps, options, and
    functions.
 
-Meetme
---------------------------
- * Added option "k" that will automatically close the conference when there's
-   only one person left when a user exits the conference.
-
 CEL
 --------------------------
  * cel_pgsql now supports the 'extra' column for data added using the
@@ -231,7 +198,7 @@ res_fax
 --------------------------
  * The ReceiveFAXStatus and SendFAXStatus manager events have been consolidated
    into a FAXStatus event with an 'Operation' header that will be either
-   'send', 'receive', and 'gateway'.
+   'send', 'receive', or 'gateway'.
  * T.38 gateway functionality has been added to res_fax (and res_fax_spandsp).
    Set FAXOPT(gateway)=yes to enable this functionality on a channel. This
    feature will handle converting a fax call between an audio T.30 fax terminal
@@ -261,9 +228,6 @@ Applications
 ------------
  * Added 'v' option to MeetMe to play voicemail greetings when a user joins/leaves
    a MeetMe conference
- * Added 'k' option to MeetMe to automatically kill the conference when there's only
-   one participant left (much like a normal call bridge)
- * Added extra argument to Originate to set timeout.
 
 Asterisk Database
 -----------------
@@ -309,6 +273,11 @@ PBX Core
 
 SIP Changes
 -----------
+ * Due to potential username discovery vulnerabilities, the 'nat' setting in sip.conf
+   now defaults to force_rport. It is very important that phones requiring nat=no be
+   specifically set as such instead of relying on the default setting. If at all
+   possible, all devices should have nat settings configured in the general section as
+   opposed to configuring nat per-device.
  * Added preferred_codec_only option in sip.conf. This feature limits the joint
    codecs sent in response to an INVITE to the single most preferred codec.
  * Added SIP_CODEC_OUTBOUND dialplan variable which can be used to set the codec

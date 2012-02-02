@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338996 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338995 $")
 
 #include <regex.h>
 #include <ctype.h>

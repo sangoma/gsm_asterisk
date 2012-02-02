@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341256 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341255 $")
 
 #include <sys/socket.h>
 #include <sys/ioctl.h>
