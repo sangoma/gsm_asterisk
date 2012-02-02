@@ -219,6 +219,7 @@
 	<depend>tonezone</depend>
 	<use>pri</use>
 	<use>ss7</use>
+	<use>wat</use>
 </member>
 <member name="chan_features" displayname="Feature Proxy Channel" remove_on_change="channels/chan_features.o channels/chan_features.so">
         <defaultenabled>no</defaultenabled>
