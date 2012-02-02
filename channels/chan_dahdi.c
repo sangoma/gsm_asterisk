@@ -17170,6 +17170,16 @@ static int __unload_module(void)
 #if defined(HAVE_PRI)
 	ast_manager_unregister("PRIShowSpans");
 #endif	/* defined(HAVE_PRI) */
+#ifdef HAVE_WAT
+	for (i = 0; i < NUM_SPANS; i++) {
+		if (wats[i].wat.master != AST_PTHREADT_NULL)
+			pthread_cancel(wats[i].wat.master);
+	}
+	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
+	ast_manager_unregister("WATSendSms");
+	ast_manager_unregister("WATShowSpan");
+	ast_manager_unregister("WATShowSpans");
+#endif
 	ast_data_unregister(NULL);
 	ast_channel_unregister(&dahdi_tech);
 
