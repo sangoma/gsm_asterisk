@@ -213,12 +213,13 @@
 <member name="chan_console" displayname="Console Channel Driver" remove_on_change="channels/chan_console.o channels/chan_console.so">
 	<depend>portaudio</depend>
 </member>
-<member name="chan_dahdi" displayname="DAHDI Telephony" remove_on_change="channels/chan_dahdi.o channels/chan_dahdi.so">
+<member name="chan_dahdi" displayname="DAHDI Telephony" remove_on_change="channels/chan_dahdi.o channels/sig_wat.o channels/chan_dahdi.so">
 	<depend>res_smdi</depend>
 	<depend name="dahdi">DAHDI</depend>
 	<depend>tonezone</depend>
 	<use>pri</use>
 	<use>ss7</use>
+	<use>wat</use>
 </member>
 <member name="chan_features" displayname="Feature Proxy Channel" remove_on_change="channels/chan_features.o channels/chan_features.so">
         <defaultenabled>no</defaultenabled>

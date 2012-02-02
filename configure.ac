@@ -337,6 +337,7 @@ AST_EXT_LIB_SETUP([PGSQL], [PostgreSQL], [postgres])
 AST_EXT_LIB_SETUP([POPT], [popt], [popt])
 AST_EXT_LIB_SETUP([PORTAUDIO], [PortAudio], [portaudio])
 AST_EXT_LIB_SETUP([PRI], [ISDN PRI], [pri])
+AST_EXT_LIB_SETUP([WAT], [GSM AT], [wat])	
 AST_EXT_LIB_SETUP_DEPENDENT([PRI_CALL_HOLD], [NOTIFY with call ptr], [PRI], [pri])
 AST_EXT_LIB_SETUP_DEPENDENT([PRI_INBANDDISCONNECT], [ISDN PRI set_inbanddisconnect], [PRI], [pri])
 AST_EXT_LIB_SETUP_DEPENDENT([PRI_PROG_W_CAUSE], [ISDN progress with cause], [PRI], [pri])
@@ -1622,6 +1623,8 @@ fi
 if test "x${PBX_SPANDSP}" = "x1" ; then
 	AC_CHECK_HEADER([spandsp/expose.h], [AC_DEFINE_UNQUOTED([HAVE_SPANDSP_EXPOSE_H], 1, [Define to 1 if spandsp/expose.h is available.])], [], [#include <spandsp.h>])
 fi
+
+AST_EXT_LIB_CHECK([WAT], [wat], [wat_register], [libwat.h])	
 
 AST_EXT_LIB_CHECK([SS7], [ss7], [ss7_pollflags], [libss7.h])
 
