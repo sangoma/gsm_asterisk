@@ -583,10 +583,6 @@ static int r2links_count = 0;
 
 #endif /* HAVE_OPENR2 */
 
-#ifdef HAVE_WAT
-struct dahdi_wat wats[WAT_NUM_SPANS];
-#endif /* HAVE_WAT */
-
 #ifdef HAVE_PRI
 
 struct dahdi_pri {
@@ -9626,7 +9622,7 @@ static struct ast_channel *dahdi_new(struct dahdi_pvt *i, int state, int startpb
 		tmp->caller.ani.number.valid = 1;
 		tmp->caller.ani.number.str = ast_strdup(i->cid_num);
 	}
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) */
 	tmp->caller.id.name.presentation = i->callingpres;
 	tmp->caller.id.number.presentation = i->callingpres;
 	tmp->caller.id.number.plan = i->cid_ton;
@@ -17210,10 +17206,6 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				} else if (!strcasecmp(v->value, "mfcr2")) {
 					confp->chan.sig = SIG_MFCR2;
 #endif
-#ifdef HAVE_WAT
-				} else if (!strcasecmp(v->value, "gsm")) {
-					confp->chan.sig = SIG_GSM;
-#endif	/* defined (HAVE_WAT) */
 				} else if (!strcasecmp(v->value, "auto")) {
 					confp->is_sig_auto = 1;
 				} else {
