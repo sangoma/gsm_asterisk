@@ -47,7 +47,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340282 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 347438 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/paths.h"	/* use various ast_config_AST_* */
@@ -220,6 +220,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340282 $")
 		</syntax>
 		<description>
 			<para>Set a global or local channel variable.</para>
+			<note>
+				<para>If a channel name is not provided then the variable is global.</para>
+			</note>
 		</description>
 	</manager>
 	<manager name="Getvar" language="en_US">
@@ -237,6 +240,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340282 $")
 		</syntax>
 		<description>
 			<para>Get the value of a global or local channel variable.</para>
+			<note>
+				<para>If a channel name is not provided then the variable is global.</para>
+			</note>
 		</description>
 	</manager>
 	<manager name="GetConfig" language="en_US">
@@ -823,52 +829,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340282 $")
 			<para>Generates an AOC-D or AOC-E message on a channel.</para>
 		</description>
 	</manager>
-	<manager name="Filter" language="en_US">
-		<synopsis>
-			Dynamically add filters for the current manager session.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Operation">
-				<enumlist>
-					<enum name="Add">
-						<para>Add a filter.</para>
-					</enum>
-				</enumlist>
-			</parameter>
-			<parameter name="Filter">
-				<para>Filters can be whitelist or blacklist</para>
-				<para>Example whitelist filter: "Event: Newchannel"</para>
-				<para>Example blacklist filter: "!Channel: DAHDI.*"</para>
-				<para>This filter option is used to whitelist or blacklist events per user to be
-				reported with regular expressions and are allowed if both the regex matches
-				and the user has read access as defined in manager.conf. Filters are assumed to be for whitelisting
-				unless preceeded by an exclamation point, which marks it as being black.
-				Evaluation of the filters is as follows:</para>
-				<para>- If no filters are configured all events are reported as normal.</para>
-				<para>- If there are white filters only: implied black all filter processed first, then white filters.</para>
-				<para>- If there are black filters only: implied white all filter processed first, then black filters.</para>
-				<para>- If there are both white and black filters: implied black all filter processed first, then white
-				filters, and lastly black filters.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>The filters added are only used for the current session.
-			Once the connection is closed the filters are removed.</para>
-			<para>This comand requires the system permission because
-			this command can be used to create filters that may bypass
-			filters defined in manager.conf</para>
-		</description>
-	</manager>
-	<manager name="FilterList" language="en_US">
-		<synopsis>
-			Show current event filters for this session
-		</synopsis>
-		<description>
-			<para>The filters displayed are for the current session.  Only those filters defined in
-                        manager.conf will be present upon starting a new session.</para>
-		</description>
-	</manager>
  ***/
 
 enum error_type {
@@ -885,11 +845,6 @@ enum error_type {
 	FAILURE_APPEND
 };
 
-enum add_filter_result {
-	FILTER_SUCCESS,
-	FILTER_ALLOC_FAILED,
-	FILTER_COMPILE_FAIL,
-};
 
 /*!
  * Linked list of events.
@@ -921,11 +876,22 @@ struct eventqent {
 
 static AST_RWLIST_HEAD_STATIC(all_events, eventqent);
 
-static int displayconnects = 1;
+static const int DEFAULT_ENABLED			= 0;	/*!< Default setting for manager to be enabled */
+static const int DEFAULT_WEBENABLED			= 0;	/*!< Default setting for the web interface to be enabled */
+static const int DEFAULT_BLOCKSOCKETS		= 0;	/*!< Default setting for block-sockets */
+static const int DEFAULT_DISPLAYCONNECTS	= 1;	/*!< Default setting for displaying manager connections */
+static const int DEFAULT_TIMESTAMPEVENTS	= 0;	/*!< Default setting for timestampevents */	
+static const int DEFAULT_HTTPTIMEOUT 		= 60;	/*!< Default manager http timeout */
+static const int DEFAULT_BROKENEVENTSACTION	= 0;	/*!< Default setting for brokeneventsaction */
+static const int DEFAULT_AUTHTIMEOUT		= 30;	/*!< Default setting for authtimeout */
+static const int DEFAULT_AUTHLIMIT		= 50;	/*!< Default setting for authlimit */
+static const int DEFAULT_MANAGERDEBUG		= 0;	/*!< Default setting for manager debug */
+
+static int displayconnects;
 static int allowmultiplelogin = 1;
 static int timestampevents;
-static int httptimeout = 60;
-static int broken_events_action = 0;
+static int httptimeout;
+static int broken_events_action;
 static int manager_enabled = 0;
 static int webmanager_enabled = 0;
 static int manager_debug = 0;	/*!< enable some debugging code in the manager */
@@ -992,7 +958,7 @@ static const struct {
  * data.
  */
 struct mansession_session {
-				/*! \todo XXX need to document which fields it is protecting */
+				/* XXX need to document which fields it is protecting */
 	struct sockaddr_in sin;	/*!< address we are connecting from */
 	FILE *f;		/*!< fdopen() on the underlying fd */
 	int fd;			/*!< descriptor used for output. Either the socket (AMI) or a temporary file (HTTP) */
@@ -1008,24 +974,25 @@ struct mansession_session {
 	int authenticated;	/*!< Authentication status */
 	int readperm;		/*!< Authorization for reading */
 	int writeperm;		/*!< Authorization for writing */
-	char inbuf[1025];	/*!< Buffer -  we use the extra byte to add a '\0' and simplify parsing */
+	char inbuf[1025];	/*!< Buffer */
+				/* we use the extra byte to add a '\0' and simplify parsing */
 	int inlen;		/*!< number of buffered bytes */
-	struct ao2_container *whitefilters;	/*!< Manager event filters - white list */
-	struct ao2_container *blackfilters;	/*!< Manager event filters - black list */
 	int send_events;	/*!<  XXX what ? */
 	struct eventqent *last_ev;	/*!< last event processed. */
 	int writetimeout;	/*!< Timeout for ast_carefulwrite() */
 	time_t authstart;
 	int pending_event;         /*!< Pending events indicator in case when waiting_thread is NULL */
 	time_t noncetime;	/*!< Timer for nonce value expiration */
+	struct ao2_container *whitefilters;
+	struct ao2_container *blackfilters;
 	unsigned long oldnonce;	/*!< Stale nonce value */
 	unsigned long nc;	/*!< incremental  nonce counter */
 	AST_LIST_HEAD_NOLOCK(mansession_datastores, ast_datastore) datastores; /*!< Data stores on the session */
 	AST_LIST_ENTRY(mansession_session) list;
 };
 
-/*! \brief In case you didn't read that giant block of text above the mansession_session struct, the
- * \ref struct mansession is named this solely to keep the API the same in Asterisk. This structure really
+/* In case you didn't read that giant block of text above the mansession_session struct, the
+ * 'mansession' struct is named this solely to keep the API the same in Asterisk. This structure really
  * represents data that is different from Manager action to Manager action. The mansession_session pointer
  * contained within points to session-specific data.
  */
@@ -1057,15 +1024,15 @@ static AST_RWLIST_HEAD_STATIC(channelvars, manager_channel_variable);
  */
 struct ast_manager_user {
 	char username[80];
-	char *secret;			/*!< Secret for logging in */
+	char *secret;
 	struct ast_ha *ha;		/*!< ACL setting */
-	int readperm;			/*!< Authorization for reading */
-	int writeperm;			/*!< Authorization for writing */
-	int writetimeout;		/*!< Per user Timeout for ast_carefulwrite() */
+	int readperm;			/*! Authorization for reading */
+	int writeperm;			/*! Authorization for writing */
+	int writetimeout;		/*! Per user Timeout for ast_carefulwrite() */
 	int displayconnects;		/*!< XXX unused */
 	int keep;			/*!< mark entries created on a reload */
-	struct ao2_container *whitefilters; /*!< Manager event filters - white list */
-	struct ao2_container *blackfilters; /*!< Manager event filters - black list */
+	struct ao2_container *whitefilters;
+	struct ao2_container *blackfilters;
 	char *a1_hash;			/*!< precalculated A1 for Digest auth */
 	AST_RWLIST_ENTRY(ast_manager_user) list;
 };
@@ -1080,8 +1047,6 @@ static AST_RWLIST_HEAD_STATIC(actions, manager_action);
 static AST_RWLIST_HEAD_STATIC(manager_hooks, manager_custom_hook);
 
 static void free_channelvars(void);
-
-static enum add_filter_result manager_add_filter(const char *filter_pattern, struct ao2_container *whitefilters, struct ao2_container *blackfilters);
 
 /*!
  * \internal
@@ -1314,7 +1279,7 @@ static struct mansession_session *unref_mansession(struct mansession_session *s)
 {
 	int refcount = ao2_ref(s, -1);
         if (manager_debug) {
-		ast_debug(1, "Mansession: %p refcount now %d\n", s, refcount - 1);
+		ast_log(LOG_DEBUG, "Mansession: %p refcount now %d\n", s, refcount - 1);
 	}
 	return s;
 }
@@ -1910,7 +1875,8 @@ struct ast_variable *astman_get_variables(const struct message *m)
 	return head;
 }
 
-/*! \brief access for hooks to send action messages to ami */
+/* access for hooks to send action messages to ami */
+
 int ast_hook_send_action(struct manager_custom_hook *hook, const char *msg)
 {
 	const char *action;
@@ -2017,7 +1983,6 @@ static int send_string(struct mansession *s, char *string)
  *       initialize the thread local storage key.
  */
 AST_THREADSTORAGE(astman_append_buf);
-
 AST_THREADSTORAGE(userevent_buf);
 
 /*! \brief initial allocated size for the astman_append_buf */
@@ -2055,9 +2020,6 @@ void astman_append(struct mansession *s, const char *fmt, ...)
    lock.
  */
 
-/*! \todo XXX MSG_MOREDATA should go to a header file. */
-#define MSG_MOREDATA	((char *)astman_send_response)
-
 /*! \brief send a response with an optional message,
  * and terminate it with an empty line.
  * m is used only to grab the 'ActionID' field.
@@ -2065,6 +2027,7 @@ void astman_append(struct mansession *s, const char *fmt, ...)
  * Use the explicit constant MSG_MOREDATA to remove the empty line.
  * XXX MSG_MOREDATA should go to a header file.
  */
+#define MSG_MOREDATA	((char *)astman_send_response)
 static void astman_send_response_full(struct mansession *s, const struct message *m, char *resp, char *msg, char *listflag)
 {
 	const char *id = astman_get_header(m, "ActionID");
@@ -2448,8 +2411,8 @@ static int authenticate(struct mansession *s, const struct message *m)
 	/* auth complete */
 
 	/* All of the user parameters are copied to the session so that in the event
-	* of a reload and a configuration change, the session parameters are not
-	* changed. */
+     * of a reload and a configuration change, the session parameters are not
+     * changed. */
 	ast_copy_string(s->session->username, username, sizeof(s->session->username));
 	s->session->readperm = user->readperm;
 	s->session->writeperm = user->writeperm;
@@ -2655,7 +2618,7 @@ static int action_getconfigjson(struct mansession *s, const struct message *m)
 	return 0;
 }
 
-/*! \brief helper function for action_updateconfig */
+/* helper function for action_updateconfig */
 static enum error_type handle_updates(struct mansession *s, const struct message *m, struct ast_config *cfg, const char *dfn)
 {
 	int x;
@@ -3685,7 +3648,7 @@ struct fast_originate_helper {
 	/*! data can contain a channel name, extension number, username, password, etc. */
 	char data[512];
 	int timeout;
-	struct ast_format_cap *cap;				/*!< Codecs used for a call */
+	format_t format;				/*!< Codecs used for a call */
 	AST_DECLARE_STRING_FIELDS (
 		AST_STRING_FIELD(app);
 		AST_STRING_FIELD(appdata);
@@ -3709,12 +3672,12 @@ static void *fast_originate(void *data)
 	char requested_channel[AST_CHANNEL_NAME];
 
 	if (!ast_strlen_zero(in->app)) {
-		res = ast_pbx_outgoing_app(in->tech, in->cap, in->data, in->timeout, in->app, in->appdata, &reason, 1,
+		res = ast_pbx_outgoing_app(in->tech, in->format, in->data, in->timeout, in->app, in->appdata, &reason, 1,
 			S_OR(in->cid_num, NULL),
 			S_OR(in->cid_name, NULL),
 			in->vars, in->account, &chan);
 	} else {
-		res = ast_pbx_outgoing_exten(in->tech, in->cap, in->data, in->timeout, in->context, in->exten, in->priority, &reason, 1,
+		res = ast_pbx_outgoing_exten(in->tech, in->format, in->data, in->timeout, in->context, in->exten, in->priority, &reason, 1,
 			S_OR(in->cid_num, NULL),
 			S_OR(in->cid_name, NULL),
 			in->vars, in->account, &chan);
@@ -3746,7 +3709,6 @@ static void *fast_originate(void *data)
 	if (chan) {
 		ast_channel_unlock(chan);
 	}
-	in->cap = ast_format_cap_destroy(in->cap);
 	ast_string_field_free_memory(in);
 	ast_free(in);
 	return NULL;
@@ -4005,39 +3967,29 @@ static int action_originate(struct mansession *s, const struct message *m)
 	int reason = 0;
 	char tmp[256];
 	char tmp2[256];
-	struct ast_format_cap *cap = ast_format_cap_alloc_nolock();
-	struct ast_format tmp_fmt;
+	format_t format = AST_FORMAT_SLINEAR;
+
 	pthread_t th;
-
-	if (!cap) {
-		astman_send_error(s, m, "Internal Error. Memory allocation failure.");
-	}
-	ast_format_cap_add(cap, ast_format_set(&tmp_fmt, AST_FORMAT_SLINEAR, 0));
-
 	if (ast_strlen_zero(name)) {
 		astman_send_error(s, m, "Channel not specified");
-		res = 0;
-		goto fast_orig_cleanup;
+		return 0;
 	}
 	if (!ast_strlen_zero(priority) && (sscanf(priority, "%30d", &pi) != 1)) {
 		if ((pi = ast_findlabel_extension(NULL, context, exten, priority, NULL)) < 1) {
 			astman_send_error(s, m, "Invalid priority");
-			res = 0;
-			goto fast_orig_cleanup;
+			return 0;
 		}
 	}
 	if (!ast_strlen_zero(timeout) && (sscanf(timeout, "%30d", &to) != 1)) {
 		astman_send_error(s, m, "Invalid timeout");
-		res = 0;
-		goto fast_orig_cleanup;
+		return 0;
 	}
 	ast_copy_string(tmp, name, sizeof(tmp));
 	tech = tmp;
 	data = strchr(tmp, '/');
 	if (!data) {
 		astman_send_error(s, m, "Invalid channel");
-		res = 0;
-		goto fast_orig_cleanup;
+		return 0;
 	}
 	*data++ = '\0';
 	ast_copy_string(tmp2, callerid, sizeof(tmp2));
@@ -4054,10 +4006,9 @@ static int action_originate(struct mansession *s, const struct message *m)
 		}
 	}
 	if (!ast_strlen_zero(codecs)) {
-		ast_format_cap_remove_all(cap);
-		ast_parse_allow_disallow(NULL, cap, codecs, 1);
+		format = 0;
+		ast_parse_allow_disallow(NULL, &format, codecs, 1);
 	}
-
 	if (!ast_strlen_zero(app)) {
 		/* To run the System application (or anything else that goes to
 		 * shell), you must have the additional System privilege */
@@ -4073,21 +4024,9 @@ static int action_originate(struct mansession *s, const struct message *m)
 				strstr(appdata, "EVAL")           /* NoOp(${EVAL(${some_var_containing_SHELL})}) */
 				)) {
 			astman_send_error(s, m, "Originate with certain 'Application' arguments requires the additional System privilege, which you do not have.");
-			res = 0;
-			goto fast_orig_cleanup;
+			return 0;
 		}
 	}
-
-	/* Check early if the extension exists. If not, we need to bail out here. */
-	if (exten && context && pi) {
-		if (! ast_exists_extension(NULL, context, exten, pi, l)) {
-			/* The extension does not exist. */
-			astman_send_error(s, m, "Extension does not exist.");
-			res = 0;
-			goto fast_orig_cleanup;
-		}
-	}
-
 	/* Allocate requested channel variables */
 	vars = astman_get_variables(m);
 
@@ -4112,12 +4051,10 @@ static int action_originate(struct mansession *s, const struct message *m)
 			ast_string_field_set(fast, exten, exten);
 			ast_string_field_set(fast, account, account);
 			fast->vars = vars;
-			fast->cap = cap;
-			cap = NULL; /* transfered originate helper the capabilities structure.  It is now responsible for freeing it. */
+			fast->format = format;
 			fast->timeout = to;
 			fast->priority = pi;
 			if (ast_pthread_create_detached(&th, NULL, fast_originate, fast)) {
-				ast_format_cap_destroy(fast->cap);
 				ast_string_field_free_memory(fast);
 				ast_free(fast);
 				res = -1;
@@ -4126,17 +4063,16 @@ static int action_originate(struct mansession *s, const struct message *m)
 			}
 		}
 	} else if (!ast_strlen_zero(app)) {
-		res = ast_pbx_outgoing_app(tech, cap, data, to, app, appdata, &reason, 1, l, n, vars, account, NULL);
+		res = ast_pbx_outgoing_app(tech, format, data, to, app, appdata, &reason, 1, l, n, vars, account, NULL);
 	} else {
 		if (exten && context && pi) {
-			res = ast_pbx_outgoing_exten(tech, cap, data, to, context, exten, pi, &reason, 1, l, n, vars, account, NULL);
+			res = ast_pbx_outgoing_exten(tech, format, data, to, context, exten, pi, &reason, 1, l, n, vars, account, NULL);
 		} else {
 			astman_send_error(s, m, "Originate with 'Exten' requires 'Context' and 'Priority'");
 			if (vars) {
 				ast_variables_destroy(vars);
 			}
-			res = 0;
-			goto fast_orig_cleanup;
+			return 0;
 		}
 	}
 	if (!res) {
@@ -4144,9 +4080,6 @@ static int action_originate(struct mansession *s, const struct message *m)
 	} else {
 		astman_send_error(s, m, "Originate failed");
 	}
-
-fast_orig_cleanup:
-	ast_format_cap_destroy(cap);
 	return 0;
 }
 
@@ -4274,88 +4207,6 @@ static int blackfilter_cmp_fn(void *obj, void *arg, void *data, int flags)
 
 	*result = 1;
 	return 0;
-}
-
-/*
- * \brief Manager command to add an event filter to a manager session
- * \see For more details look at manager_add_filter
- */
-static int action_filter(struct mansession *s, const struct message *m)
-{
-	const char *filter = astman_get_header(m, "Filter");
-        const char *operation = astman_get_header(m, "Operation");
-        int res;
-
-        if (!strcasecmp(operation, "Add")) {
-		res = manager_add_filter(filter, s->session->whitefilters, s->session->blackfilters);
-
-	        if (res != FILTER_SUCCESS) {
-		        if (res == FILTER_ALLOC_FAILED) {
-				astman_send_error(s, m, "Internal Error. Failed to allocate regex for filter");
-		                return 0;
-		        } else if (res == FILTER_COMPILE_FAIL) {
-				astman_send_error(s, m, "Filter did not compile.  Check the syntax of the filter given.");
-		                return 0;
-		        } else {
-				astman_send_error(s, m, "Internal Error. Failed adding filter.");
-		                return 0;
-	                }
-		}
-
-		astman_send_ack(s, m, "Success");
-                return 0;
-        }
-
-	astman_send_error(s, m, "Unknown operation");
-	return 0;
-}
-
-/*
- * \brief Add an event filter to a manager session
- *
- * \param s               manager session to modify filters on
- * \param filter_pattern  Filter syntax to add, see below for syntax
- *
- * \return FILTER_ALLOC_FAILED   Memory allocation failure
- * \return FILTER_COMPILE_FAIL   If the filter did not compile
- * \return FILTER_SUCCESS        Success
- *
- * Filter will be used to match against each line of a manager event
- * Filter can be any valid regular expression
- * Filter can be a valid regular expression prefixed with !, which will add the filter as a black filter
- *
- * \example filter_pattern = "Event: Newchannel"
- * \example filter_pattern = "Event: New.*"
- * \example filter_pattern = "!Channel: DAHDI.*"
- *
- */
-static enum add_filter_result manager_add_filter(const char *filter_pattern, struct ao2_container *whitefilters, struct ao2_container *blackfilters) {
-	regex_t *new_filter = ao2_t_alloc(sizeof(*new_filter), event_filter_destructor, "event_filter allocation");
-	int is_blackfilter;
-
-	if (!new_filter) {
-		return FILTER_ALLOC_FAILED;
-	}
-
-	if (filter_pattern[0] == '!') {
-		is_blackfilter = 1;
-		filter_pattern++;
-	} else {
-		is_blackfilter = 0;
-	}
-
-	if (regcomp(new_filter, filter_pattern, 0)) {
-		ao2_t_ref(new_filter, -1, "failed to make regx");
-		return FILTER_COMPILE_FAIL;
-	}
-
-	if (is_blackfilter) {
-		ao2_t_link(blackfilters, new_filter, "link new filter into black user container");
-	} else {
-		ao2_t_link(whitefilters, new_filter, "link new filter into white user container");
-	}
-
-        return FILTER_SUCCESS;
 }
 
 static int match_filter(struct mansession *s, char *eventdata)
@@ -4611,7 +4462,7 @@ static int action_coreshowchannels(struct mansession *s, const struct message *m
 	return 0;
 }
 
-/*! \brief Manager function to check if module is loaded */
+/* Manager function to check if module is loaded */
 static int manager_modulecheck(struct mansession *s, const struct message *m)
 {
 	int res;
@@ -4631,14 +4482,14 @@ static int manager_modulecheck(struct mansession *s, const struct message *m)
 		cut = filename + strlen(filename);
 	}
 	snprintf(cut, (sizeof(filename) - strlen(filename)) - 1, ".so");
-	ast_debug(1, "**** ModuleCheck .so file %s\n", filename);
+	ast_log(LOG_DEBUG, "**** ModuleCheck .so file %s\n", filename);
 	res = ast_module_check(filename);
 	if (!res) {
 		astman_send_error(s, m, "Module not loaded");
 		return 0;
 	}
 	snprintf(cut, (sizeof(filename) - strlen(filename)) - 1, ".c");
-	ast_debug(1, "**** ModuleCheck .c file %s\n", filename);
+	ast_log(LOG_DEBUG, "**** ModuleCheck .c file %s\n", filename);
 #if !defined(LOW_MEMORY)
 	version = ast_file_version_find(filename);
 #endif
@@ -4710,7 +4561,7 @@ static int manager_moduleload(struct mansession *s, const struct message *m)
  * the appropriate handler.
  */
 
-/*! \brief
+/*
  * Process an AMI message, performing desired action.
  * Return 0 on success, -1 on error that require the session to be destroyed.
  */
@@ -5119,7 +4970,7 @@ static void purge_sessions(int n_max)
 	ao2_iterator_destroy(&i);
 }
 
-/*! \brief
+/*
  * events are appended to a queue from where they
  * can be dispatched to clients.
  */
@@ -5261,7 +5112,7 @@ int __ast_manager_event_multichan(int category, const char *event, int chancount
 	return 0;
 }
 
-/*! \brief
+/*
  * support functions to register/unregister AMI action handlers,
  */
 int ast_manager_unregister(char *action)
@@ -5294,7 +5145,7 @@ int ast_manager_unregister(char *action)
 	return 0;
 }
 
-static int manager_state_cb(const char *context, const char *exten, enum ast_extension_states state, void *data)
+static int manager_state_cb(char *context, char *exten, int state, void *data)
 {
 	/* Notify managers of change */
 	char hint[512];
@@ -5755,9 +5606,10 @@ static void xml_translate(struct ast_str **out, char *in, struct ast_variable *g
 		}
 
 		if (in_data) {
-			/* Process data field in Opaque mode */
-			xml_copy_escape(out, val, 0);   /* data field */
+			/* Process data field in Opaque mode. This is a
+			 * followup, so we re-add line feeds. */
 			ast_str_append(out, 0, xml ? "\n" : "<br>\n");
+			xml_copy_escape(out, val, 0);   /* data field */
 			continue;
 		}
 
@@ -5793,7 +5645,9 @@ static void xml_translate(struct ast_str **out, char *in, struct ast_variable *g
 		ao2_ref(vc, -1);
 		ast_str_append(out, 0, xml ? "='" : "</td><td>");
 		xml_copy_escape(out, val, 0);	/* data field */
-		ast_str_append(out, 0, xml ? "'" : "</td></tr>\n");
+		if (!in_data || !*in) {
+			ast_str_append(out, 0, xml ? "'" : "</td></tr>\n");
+		}
 	}
 
 	if (inobj) {
@@ -6612,7 +6466,7 @@ static int __init_manager(int reload)
 	struct ast_config *ucfg = NULL, *cfg = NULL;
 	const char *val;
 	char *cat = NULL;
-	int newhttptimeout = 60;
+	int newhttptimeout = DEFAULT_HTTPTIMEOUT;
 	struct ast_manager_user *user = NULL;
 	struct ast_variable *var;
 	struct ast_flags config_flags = { reload ? CONFIG_FLAG_FILEUNCHANGED : 0 };
@@ -6620,8 +6474,6 @@ static int __init_manager(int reload)
 	char a1_hash[256];
 	struct sockaddr_in ami_desc_local_address_tmp = { 0, };
 	struct sockaddr_in amis_desc_local_address_tmp = { 0, };
-
-	manager_enabled = 0;
 
 	if (!registered) {
 		/* Register default actions */
@@ -6658,7 +6510,6 @@ static int __init_manager(int reload)
 		ast_manager_register_xml("ModuleLoad", EVENT_FLAG_SYSTEM, manager_moduleload);
 		ast_manager_register_xml("ModuleCheck", EVENT_FLAG_SYSTEM, manager_modulecheck);
 		ast_manager_register_xml("AOCMessage", EVENT_FLAG_AOC, action_aocmessage);
-		ast_manager_register_xml("Filter", EVENT_FLAG_SYSTEM, action_filter);
 
 		ast_cli_register_multiple(cli_manager, ARRAY_LEN(cli_manager));
 		ast_extension_state_add(NULL, NULL, manager_state_cb, NULL);
@@ -6670,11 +6521,16 @@ static int __init_manager(int reload)
 		return 0;
 	}
 
-	displayconnects = 1;
-	broken_events_action = 0;
-	authtimeout = 30;
-	authlimit = 50;
-	manager_debug = 0;		/* Debug disabled by default */
+	manager_enabled = DEFAULT_ENABLED;
+	webmanager_enabled = DEFAULT_WEBENABLED;
+	manager_debug = DEFAULT_MANAGERDEBUG;
+	displayconnects = DEFAULT_DISPLAYCONNECTS;
+	broken_events_action = DEFAULT_BROKENEVENTSACTION;
+	block_sockets = DEFAULT_BLOCKSOCKETS;
+	timestampevents = DEFAULT_TIMESTAMPEVENTS;
+	httptimeout = DEFAULT_HTTPTIMEOUT;
+	authtimeout = DEFAULT_AUTHTIMEOUT;
+	authlimit = DEFAULT_AUTHLIMIT;
 
 	if (!cfg || cfg == CONFIG_STATUS_FILEINVALID) {
 		ast_log(LOG_NOTICE, "Unable to open AMI configuration manager.conf, or configuration is invalid. Asterisk management interface (AMI) disabled.\n");
@@ -6925,7 +6781,25 @@ static int __init_manager(int reload)
 				}
 			} else if (!strcasecmp(var->name, "eventfilter")) {
 				const char *value = var->value;
-                                manager_add_filter(value, user->whitefilters, user->blackfilters);
+				regex_t *new_filter = ao2_t_alloc(sizeof(*new_filter), event_filter_destructor, "event_filter allocation");
+				if (new_filter) {
+					int is_blackfilter;
+					if (value[0] == '!') {
+						is_blackfilter = 1;
+						value++;
+					} else {
+						is_blackfilter = 0;
+					}
+					if (regcomp(new_filter, value, 0)) {
+						ao2_t_ref(new_filter, -1, "failed to make regx");
+					} else {
+						if (is_blackfilter) {
+							ao2_t_link(user->blackfilters, new_filter, "link new filter into black user container");
+						} else {
+							ao2_t_link(user->whitefilters, new_filter, "link new filter into white user container");
+						}
+					}
+				}
 			} else {
 				ast_debug(1, "%s is an unknown option.\n", var->name);
 			}

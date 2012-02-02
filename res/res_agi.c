@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341719 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 345431 $")
 
 #include <math.h>
 #include <signal.h>
@@ -1307,7 +1307,7 @@ static enum agi_result launch_asyncagi(struct ast_channel *chan, char *argv[], i
 	/* encode it and send it thru the manager so whoever is going to take
 	   care of AGI commands on this channel can decide which AGI commands
 	   to execute based on the setup info */
-	ast_uri_encode(agi_buffer, ami_buffer, AMI_BUF_SIZE, ast_uri_http);
+	ast_uri_encode(agi_buffer, ami_buffer, AMI_BUF_SIZE, 1);
 	manager_event(EVENT_FLAG_AGI, "AsyncAGI",
 		"SubEvent: Start\r\n"
 		"Channel: %s\r\n"
@@ -1340,7 +1340,7 @@ static enum agi_result launch_asyncagi(struct ast_channel *chan, char *argv[], i
 			 * was added.
 			 */
 			agi_buffer[res] = '\0';
-			ast_uri_encode(agi_buffer, ami_buffer, AMI_BUF_SIZE, ast_uri_http);
+			ast_uri_encode(agi_buffer, ami_buffer, AMI_BUF_SIZE, 1);
 			if (ast_strlen_zero(cmd->cmd_id)) {
 				manager_event(EVENT_FLAG_AGI, "AsyncAGI",
 					"SubEvent: Exec\r\n"
@@ -1934,26 +1934,22 @@ static int handle_streamfile(struct ast_channel *chan, AGI *agi, int argc, const
 	long sample_offset = 0, max_length;
 	const char *edigits = "";
 
-	if (argc < 4 || argc > 5) {
+	if (argc < 4 || argc > 5)
 		return RESULT_SHOWUSAGE;
-	}
 
-	if (argv[3]) {
+	if (argv[3])
 		edigits = argv[3];
-	}
 
-	if ((argc > 4) && (sscanf(argv[4], "%30ld", &sample_offset) != 1)) {
+	if ((argc > 4) && (sscanf(argv[4], "%30ld", &sample_offset) != 1))
 		return RESULT_SHOWUSAGE;
-	}
 
 	if (!(fs = ast_openstream(chan, argv[2], chan->language))) {
 		ast_agi_send(agi->fd, chan, "200 result=%d endpos=%ld\n", 0, sample_offset);
 		return RESULT_SUCCESS;
 	}
 
-	if ((vfs = ast_openvstream(chan, argv[2], chan->language))) {
+	if ((vfs = ast_openvstream(chan, argv[2], chan->language)))
 		ast_debug(1, "Ooh, found a video stream, too\n");
-	}
 
 	ast_verb(3, "Playing '%s' (escape_digits=%s) (sample_offset %ld)\n", argv[2], edigits, sample_offset);
 
@@ -1961,13 +1957,11 @@ static int handle_streamfile(struct ast_channel *chan, AGI *agi, int argc, const
 	max_length = ast_tellstream(fs);
 	ast_seekstream(fs, sample_offset, SEEK_SET);
 	res = ast_applystream(chan, fs);
-	if (vfs) {
+	if (vfs)
 		ast_applystream(chan, vfs);
-	}
 	ast_playstream(fs);
-	if (vfs) {
+	if (vfs)
 		ast_playstream(vfs);
-	}
 
 	res = ast_waitstream_full(chan, argv[3], agi->audio, agi->ctrl);
 	/* this is to check for if ast_waitstream closed the stream, we probably are at
@@ -2255,8 +2249,7 @@ static int handle_recordfile(struct ast_channel *chan, AGI *agi, int argc, const
 	int silence = 0;                /* amount of silence to allow */
 	int gotsilence = 0;             /* did we timeout for silence? */
 	char *silencestr = NULL;
-	struct ast_format rfmt;
-	ast_format_clear(&rfmt);
+	int rfmt = 0;
 
 	/* XXX EAGI FIXME XXX */
 
@@ -2286,8 +2279,8 @@ static int handle_recordfile(struct ast_channel *chan, AGI *agi, int argc, const
 	}
 
 	if (silence > 0) {
-		ast_format_copy(&rfmt, &chan->readformat);
-		res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
+		rfmt = chan->readformat;
+		res = ast_set_read_format(chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear mode, giving up\n");
 			ast_agi_send(agi->fd, chan, "200 result=%d\n", res);
@@ -2411,7 +2404,7 @@ static int handle_recordfile(struct ast_channel *chan, AGI *agi, int argc, const
 	}
 
 	if (silence > 0) {
-		res = ast_set_read_format(chan, &rfmt);
+		res = ast_set_read_format(chan, rfmt);
 		if (res)
 			ast_log(LOG_WARNING, "Unable to restore read format on '%s'\n", chan->name);
 		ast_dsp_free(sildet);
@@ -2759,25 +2752,16 @@ static int handle_setmusic(struct ast_channel *chan, AGI *agi, int argc, const c
 
 static int handle_speechcreate(struct ast_channel *chan, AGI *agi, int argc, const char * const argv[])
 {
-	struct ast_format_cap *cap;
-	struct ast_format tmpfmt;
-
 	/* If a structure already exists, return an error */
-	if (agi->speech) {
+        if (agi->speech) {
 		ast_agi_send(agi->fd, chan, "200 result=0\n");
 		return RESULT_SUCCESS;
 	}
 
-	if (!(cap = ast_format_cap_alloc_nolock())) {
-		return RESULT_FAILURE;
-	}
-	ast_format_cap_add(cap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-	if ((agi->speech = ast_speech_new(argv[2], cap))) {
+	if ((agi->speech = ast_speech_new(argv[2], AST_FORMAT_SLINEAR)))
 		ast_agi_send(agi->fd, chan, "200 result=1\n");
-	} else {
+	else
 		ast_agi_send(agi->fd, chan, "200 result=0\n");
-	}
-	cap = ast_format_cap_destroy(cap);
 
 	return RESULT_SUCCESS;
 }
@@ -2910,7 +2894,6 @@ static int handle_speechrecognize(struct ast_channel *chan, AGI *agi, int argc, 
 	const char *prompt;
 	char dtmf = 0, tmp[4096] = "", *buf = tmp;
 	int timeout = 0, offset = 0, res = 0, i = 0;
-	struct ast_format old_read_format;
 	long current_offset = 0;
 	const char *reason = NULL;
 	struct ast_frame *fr = NULL;
@@ -2934,8 +2917,7 @@ static int handle_speechrecognize(struct ast_channel *chan, AGI *agi, int argc, 
 		offset = atoi(argv[4]);
 
 	/* We want frames coming in signed linear */
-	ast_format_copy(&old_read_format, &chan->readformat);
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_read_format(chan, AST_FORMAT_SLINEAR)) {
 		ast_agi_send(agi->fd, chan, "200 result=0\n");
 		return RESULT_SUCCESS;
 	}
@@ -3501,7 +3483,7 @@ static enum agi_result run_agi(struct ast_channel *chan, char *request, AGI *agi
 				if (pid > -1) {
 					kill(pid, SIGHUP);
 				} else if (agi->fast) {
-					send(agi->ctrl, "HANGUP\n", 7, 0);
+					ast_agi_send(agi->fd, chan, "HANGUP\n");
 				}
 			}
 		}
@@ -3616,7 +3598,7 @@ static enum agi_result run_agi(struct ast_channel *chan, char *request, AGI *agi
 			}
 			waitpid(pid, status, WNOHANG);
 		} else if (agi->fast) {
-			send(agi->ctrl, "HANGUP\n", 7, 0);
+			ast_agi_send(agi->fd, chan, "HANGUP\n");
 		}
 	}
 	fclose(readf);
@@ -3917,22 +3899,21 @@ static int agi_exec(struct ast_channel *chan, const char *data)
 
 static int eagi_exec(struct ast_channel *chan, const char *data)
 {
-	int res;
-	struct ast_format readformat;
+	int readformat, res;
 
 	if (ast_check_hangup(chan)) {
 		ast_log(LOG_ERROR, "EAGI cannot be run on a dead/hungup channel, please use AGI.\n");
 		return 0;
 	}
-	ast_format_copy(&readformat, &chan->readformat);
-	if (ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	readformat = chan->readformat;
+	if (ast_set_read_format(chan, AST_FORMAT_SLINEAR)) {
 		ast_log(LOG_WARNING, "Unable to set channel '%s' to linear mode\n", chan->name);
 		return -1;
 	}
 	res = agi_exec_full(chan, data, 1, 0);
 	if (!res) {
-		if (ast_set_read_format(chan, &readformat)) {
-			ast_log(LOG_WARNING, "Unable to restore channel '%s' to format %s\n", chan->name, ast_getformatname(&readformat));
+		if (ast_set_read_format(chan, readformat)) {
+			ast_log(LOG_WARNING, "Unable to restore channel '%s' to format %s\n", chan->name, ast_getformatname(readformat));
 		}
 	}
 	return res;

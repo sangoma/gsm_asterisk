@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -73,6 +73,10 @@ static int serialize_showchan(struct ast_channel *c, char *buf, size_t size)
 	long elapsed_seconds = 0;
 	int hour = 0, min = 0, sec = 0;
 	char nf[256];
+	char wf[256];
+	char rf[256];
+	char rwf[256];
+	char rrf[256];
 	char cgrp[256];
 	char pgrp[256];
 	struct ast_str *write_transpath = ast_str_alloca(256);
@@ -143,10 +147,10 @@ static int serialize_showchan(struct ast_channel *c, char *buf, size_t size)
 		c->_state,
 		c->rings, 
 		ast_getformatname_multiple(nf, sizeof(nf), c->nativeformats),
-		ast_getformatname(&c->writeformat),
-		ast_getformatname(&c->readformat),
-		ast_getformatname(&c->rawwriteformat),
-		ast_getformatname(&c->rawreadformat),
+		ast_getformatname_multiple(wf, sizeof(wf), c->writeformat),
+		ast_getformatname_multiple(rf, sizeof(rf), c->readformat),
+		ast_getformatname_multiple(rwf, sizeof(rwf), c->rawwriteformat),
+		ast_getformatname_multiple(rrf, sizeof(rrf), c->rawreadformat),
 		c->writetrans ? "Yes" : "No",
 		ast_translate_path_to_str(c->writetrans, &write_transpath),
 		c->readtrans ? "Yes" : "No",

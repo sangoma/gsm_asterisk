@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 304639 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 346239 $")
 
 #include "asterisk/network.h"
 
@@ -123,7 +123,7 @@ static int get_local_address(struct ast_sockaddr *ourip)
 	char *buf = NULL;
 	int bufsz, x;
 #endif /* SOLARIS */
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__) || defined(__GLIBC__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__)
 	struct ifaddrs *ifap, *ifaphead;
 	int rtnerr;
 	const struct sockaddr_in *sin;
@@ -132,7 +132,7 @@ static int get_local_address(struct ast_sockaddr *ourip)
 	int best_score = -100;
 	memset(&best_addr, 0, sizeof(best_addr));
 
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__) || defined(__GLIBC__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__)
 	rtnerr = getifaddrs(&ifaphead);
 	if (rtnerr) {
 		perror(NULL);
@@ -143,7 +143,7 @@ static int get_local_address(struct ast_sockaddr *ourip)
 	s = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (s > 0) {
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__) || defined(__GLIBC__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__linux__) || defined(__Darwin__)
 		for (ifap = ifaphead; ifap; ifap = ifap->ifa_next) {
 
 			if (ifap->ifa_addr && ifap->ifa_addr->sa_family == AF_INET) {
@@ -408,6 +408,9 @@ struct ast_ha *ast_append_ha(const char *sense, const char *stuff, struct ast_ha
 	}
 
 	if (!(ha = ast_calloc(1, sizeof(*ha)))) {
+		if (error) {
+			*error = 1;
+		}
 		return ret;
 	}
 
@@ -583,7 +586,7 @@ static int resolve_first(struct ast_sockaddr *addr, const char *name, int flag,
 	return 0;
 }
 
-int ast_get_ip_or_srv(struct ast_sockaddr *addr, const char *value, const char *service)
+int ast_get_ip_or_srv(struct ast_sockaddr *addr, const char *hostname, const char *service)
 {
 	char srv[256];
 	char host[256];
@@ -591,13 +594,13 @@ int ast_get_ip_or_srv(struct ast_sockaddr *addr, const char *value, const char *
 	int tportno;
 
 	if (service) {
-		snprintf(srv, sizeof(srv), "%s.%s", service, value);
+		snprintf(srv, sizeof(srv), "%s.%s", service, hostname);
 		if ((srv_ret = ast_get_srv(NULL, host, sizeof(host), &tportno, srv)) > 0) {
-			value = host;
+			hostname = host;
 		}
 	}
 
-	if (resolve_first(addr, value, PARSE_PORT_FORBID, addr->ss.ss_family) != 0) {
+	if (resolve_first(addr, hostname, PARSE_PORT_FORBID, addr->ss.ss_family) != 0) {
 		return -1;
 	}
 
@@ -686,9 +689,9 @@ const char *ast_tos2str(unsigned int tos)
 	return "unknown";
 }
 
-int ast_get_ip(struct ast_sockaddr *addr, const char *value)
+int ast_get_ip(struct ast_sockaddr *addr, const char *hostname)
 {
-	return ast_get_ip_or_srv(addr, value, NULL);
+	return ast_get_ip_or_srv(addr, hostname, NULL);
 }
 
 int ast_ouraddrfor(const struct ast_sockaddr *them, struct ast_sockaddr *us)

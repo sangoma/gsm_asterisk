@@ -200,6 +200,15 @@ static int analog_wait_event(struct analog_pvt *p)
 	return -1;
 }
 
+static int analog_have_progressdetect(struct analog_pvt *p)
+{
+	if (p->calls->have_progressdetect) {
+		return p->calls->have_progressdetect(p->chan_pvt);
+	}
+	/* Don't have progress detection. */
+	return 0;
+}
+
 enum analog_cid_start analog_str_to_cidstart(const char *value)
 {
 	if (!strcasecmp(value, "ring")) {
@@ -518,31 +527,23 @@ static void analog_all_subchannels_hungup(struct analog_pvt *p)
 	}
 }
 
+#if 0
 static void analog_unlock_private(struct analog_pvt *p)
 {
 	if (p->calls->unlock_private) {
 		p->calls->unlock_private(p->chan_pvt);
 	}
 }
+#endif
 
+#if 0
 static void analog_lock_private(struct analog_pvt *p)
 {
 	if (p->calls->lock_private) {
 		p->calls->lock_private(p->chan_pvt);
 	}
 }
-
-static void analog_deadlock_avoidance_private(struct analog_pvt *p)
-{
-	if (p->calls->deadlock_avoidance_private) {
-		p->calls->deadlock_avoidance_private(p->chan_pvt);
-	} else {
-		/* Fallback to manual avoidance if callback not present. */
-		analog_unlock_private(p);
-		usleep(1);
-		analog_lock_private(p);
-	}
-}
+#endif
 
 /*!
  * \internal
@@ -571,7 +572,12 @@ static void analog_lock_sub_owner(struct analog_pvt *pvt, enum analog_sub sub_id
 			break;
 		}
 		/* We must unlock the private to avoid the possibility of a deadlock */
-		analog_deadlock_avoidance_private(pvt);
+		if (pvt->calls->deadlock_avoidance_private) {
+			pvt->calls->deadlock_avoidance_private(pvt->chan_pvt);
+		} else {
+			/* Don't use 100% CPU if required callback not present. */
+			usleep(1);
+		}
 	}
 }
 
@@ -2744,7 +2750,9 @@ static struct ast_frame *__analog_handle_event(struct analog_pvt *p, struct ast_
 					}
 				}
 				if (ast->_state == AST_STATE_DIALING) {
-					if (analog_check_confirmanswer(p) || (!p->dialednone
+					if (analog_have_progressdetect(p)) {
+						ast_debug(1, "Done dialing, but waiting for progress detection before doing more...\n");
+					} else if (analog_check_confirmanswer(p) || (!p->dialednone
 						&& ((mysig == ANALOG_SIG_EM) || (mysig == ANALOG_SIG_EM_E1)
 							|| (mysig == ANALOG_SIG_EMWINK) || (mysig == ANALOG_SIG_FEATD)
 							|| (mysig == ANALOG_SIG_FEATDMF_TA) || (mysig == ANALOG_SIG_FEATDMF)

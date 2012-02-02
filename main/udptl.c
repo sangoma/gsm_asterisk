@@ -51,7 +51,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339627 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339625 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -124,7 +124,7 @@ struct ast_udptl {
 	struct ast_sockaddr us;
 	struct ast_sockaddr them;
 	int *ioid;
-	struct ast_sched_context *sched;
+	struct sched_context *sched;
 	struct io_context *io;
 	void *data;
 	char *tag;
@@ -369,7 +369,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 					/* Decode the secondary IFP packet */
 					//fprintf(stderr, "Secondary %d, len %d\n", seq_no - i, lengths[i - 1]);
 					s->f[ifp_no].frametype = AST_FRAME_MODEM;
-					s->f[ifp_no].subclass.integer = AST_MODEM_T38;
+					s->f[ifp_no].subclass.codec = AST_MODEM_T38;
 
 					s->f[ifp_no].mallocd = 0;
 					s->f[ifp_no].seqno = seq_no - i;
@@ -474,7 +474,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 			if (repaired[l]) {
 				//fprintf(stderr, "Fixed packet %d, len %d\n", j, l);
 				s->f[ifp_no].frametype = AST_FRAME_MODEM;
-				s->f[ifp_no].subclass.integer = AST_MODEM_T38;
+				s->f[ifp_no].subclass.codec = AST_MODEM_T38;
 			
 				s->f[ifp_no].mallocd = 0;
 				s->f[ifp_no].seqno = j;
@@ -495,7 +495,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 	if (seq_no >= s->rx_seq_no) {
 		/* Decode the primary IFP packet */
 		s->f[ifp_no].frametype = AST_FRAME_MODEM;
-		s->f[ifp_no].subclass.integer = AST_MODEM_T38;
+		s->f[ifp_no].subclass.codec = AST_MODEM_T38;
 		
 		s->f[ifp_no].mallocd = 0;
 		s->f[ifp_no].seqno = seq_no;
@@ -912,7 +912,7 @@ unsigned int ast_udptl_get_far_max_ifp(struct ast_udptl *udptl)
 	return udptl->far_max_ifp;
 }
 
-struct ast_udptl *ast_udptl_new_with_bindaddr(struct ast_sched_context *sched, struct io_context *io, int callbackmode, struct ast_sockaddr *addr)
+struct ast_udptl *ast_udptl_new_with_bindaddr(struct sched_context *sched, struct io_context *io, int callbackmode, struct ast_sockaddr *addr)
 {
 	struct ast_udptl *udptl;
 	int x;
@@ -1059,7 +1059,7 @@ int ast_udptl_write(struct ast_udptl *s, struct ast_frame *f)
 		return 0;
 	
 	if ((f->frametype != AST_FRAME_MODEM) ||
-	    (f->subclass.integer != AST_MODEM_T38)) {
+	    (f->subclass.codec != AST_MODEM_T38)) {
 		ast_log(LOG_WARNING, "UDPTL (%s): UDPTL can only send T.38 data.\n",
 			LOG_TAG(s));
 		return -1;

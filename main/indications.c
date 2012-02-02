@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306010 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 274727 $")
 
 #include <math.h>
 
@@ -116,7 +116,7 @@ struct playtones_state {
 	int npos;
 	int oldnpos;
 	int pos;
-	struct ast_format origwfmt;
+	int origwfmt;
 	struct ast_frame f;
 	unsigned char offset[AST_FRIENDLY_OFFSET];
 	short data[4000];
@@ -127,7 +127,7 @@ static void playtones_release(struct ast_channel *chan, void *params)
 	struct playtones_state *ps = params;
 
 	if (chan) {
-		ast_set_write_format(chan, &ps->origwfmt);
+		ast_set_write_format(chan, ps->origwfmt);
 	}
 
 	if (ps->items) {
@@ -147,9 +147,9 @@ static void *playtones_alloc(struct ast_channel *chan, void *params)
 		return NULL;
 	}
 
-	ast_format_copy(&ps->origwfmt, &chan->writeformat);
+	ps->origwfmt = chan->writeformat;
 
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR)) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to signed linear format (write)\n", chan->name);
 		playtones_release(NULL, ps);
 		ps = NULL;
@@ -223,7 +223,7 @@ static int playtones_generator(struct ast_channel *chan, void *data, int len, in
 	}
 
 	ps->f.frametype = AST_FRAME_VOICE;
-	ast_format_set(&ps->f.subclass.format, AST_FORMAT_SLINEAR, 0);
+	ps->f.subclass.codec = AST_FORMAT_SLINEAR;
 	ps->f.datalen = len;
 	ps->f.samples = samples;
 	ps->f.offset = AST_FRIENDLY_OFFSET;
@@ -416,12 +416,12 @@ struct ao2_iterator ast_tone_zone_iterator_init(void)
 	return ao2_iterator_init(ast_tone_zones, 0);
 }
 
-/*! \brief Set global indication country 
-   If no country is specified or we are unable to find the zone, then return not found */
+/* Set global indication country */
 static int ast_set_indication_country(const char *country)
 {
 	struct ast_tone_zone *zone = NULL;
 
+	/* If no country is specified or we are unable to find the zone, then return not found */
 	if (ast_strlen_zero(country) || !(zone = ast_get_indication_zone(country))) {
 		return -1;
 	}
@@ -440,7 +440,7 @@ static int ast_set_indication_country(const char *country)
 	return 0;
 }
 
-/*! \brief locate ast_tone_zone, given the country. if country == NULL, use the default country */
+/* locate ast_tone_zone, given the country. if country == NULL, use the default country */
 struct ast_tone_zone *ast_get_indication_zone(const char *country)
 {
 	struct ast_tone_zone *tz = NULL;
@@ -530,7 +530,7 @@ static void ast_tone_zone_destructor(void *obj)
 	}
 }
 
-/*! \brief add a new country, if country exists, it will be replaced. */
+/* add a new country, if country exists, it will be replaced. */
 static int ast_register_indication_country(struct ast_tone_zone *zone)
 {
 	ao2_lock(ast_tone_zones);
@@ -546,7 +546,7 @@ static int ast_register_indication_country(struct ast_tone_zone *zone)
 	return 0;
 }
 
-/*! \brief remove an existing country and all its indications, country must exist. */
+/* remove an existing country and all its indications, country must exist. */
 static int ast_unregister_indication_country(const char *country)
 {
 	struct ast_tone_zone *tz = NULL;
@@ -610,7 +610,7 @@ static int ast_register_indication(struct ast_tone_zone *zone, const char *indic
 	return 0;
 }
 
-/*! \brief remove an existing country's indication. Both country and indication must exist */
+/* remove an existing country's indication. Both country and indication must exist */
 static int ast_unregister_indication(struct ast_tone_zone *zone, const char *indication)
 {
 	struct ast_tone_zone_sound *ts;
@@ -895,8 +895,7 @@ static int is_valid_tone_zone(struct ast_tone_zone *zone)
 	return res;
 }
 
-/*!\brief
- *
+/*!
  * \note This is called with the tone zone locked.
  */
 static void store_tone_zone_ring_cadence(struct ast_tone_zone *zone, const char *val)
@@ -995,7 +994,7 @@ static int parse_tone_zone(struct ast_config *cfg, const char *country)
 	return 0;
 }
 
-/*! \brief
+/*!
  * Mark the zone and its tones before parsing configuration.  We will use this
  * to know what to remove after configuration is parsed.
  */
@@ -1017,7 +1016,7 @@ static int tone_zone_mark(void *obj, void *arg, int flags)
 	return 0;
 }
 
-/*! \brief
+/*!
  * Prune tones no longer in the configuration, and have the tone zone unlinked
  * if it is no longer in the configuration at all.
  */

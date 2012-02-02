@@ -15,6 +15,10 @@
  *
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 /*! \file
  *
  * \brief REALTIME dialplan function
@@ -26,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 304913 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340863 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"

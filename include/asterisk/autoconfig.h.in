@@ -579,13 +579,6 @@
    feature. */
 #undef HAVE_PRI_CCSS
 
-/* Define to 1 if PRI has the ISDN PRI Date/time ie send policy feature. */
-#undef HAVE_PRI_DATETIME_SEND
-
-/* Define to 1 if PRI has the ISDN PRI user display text IE contents during
-   call feature. */
-#undef HAVE_PRI_DISPLAY_TEXT
-
 /* Define to 1 if PRI has the ISDN PRI hangup fix feature. */
 #undef HAVE_PRI_HANGUP_FIX
 
@@ -600,10 +593,6 @@
 
 /* Define to 1 if PRI has the ISDN PRI Message Waiting Indication feature. */
 #undef HAVE_PRI_MWI
-
-/* Define to 1 if PRI has the ISDN PRI Message Waiting Indication (Fixed)
-   feature. */
-#undef HAVE_PRI_MWI_V2
 
 /* Define to 1 if PRI has the ISDN progress with cause feature. */
 #undef HAVE_PRI_PROG_W_CAUSE
@@ -938,9 +927,6 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
-/* Define to 1 if you have the <sys/thr.h> header file. */
-#undef HAVE_SYS_THR_H
-
 /* Define to 1 if you have the <sys/time.h> header file. */
 #undef HAVE_SYS_TIME_H
 
@@ -1025,9 +1011,6 @@
 
 /* Define to 1 if you have the `vprintf' function. */
 #undef HAVE_VPRINTF
-
-/* Define to 1 if you have the GSM AT library. */
-#undef HAVE_WAT
 
 /* Define to 1 if you have the <winsock2.h> header file. */
 #undef HAVE_WINSOCK2_H

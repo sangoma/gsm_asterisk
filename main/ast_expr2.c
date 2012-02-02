@@ -98,7 +98,7 @@
 
 #if !defined(STANDALONE) && !defined(STANDALONE2)	\
 	
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 293198 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 293197 $")
 #else
 #ifndef __USE_ISOC99
 #define __USE_ISOC99 1

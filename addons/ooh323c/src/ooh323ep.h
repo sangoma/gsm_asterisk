@@ -130,7 +130,7 @@ typedef struct OOH323EndPoint {
    int noOfCaps;
    OOH225MsgCallbacks h225Callbacks;
    OOH323CALLBACKS h323Callbacks;
-   char signallingIP[2+8*4+7];
+   char signallingIP[20];
    int listenPort;
    OOSOCKET *listener;
    OOH323CallData *callList;
@@ -148,7 +148,6 @@ typedef struct OOH323EndPoint {
    OOInterface *ifList; /* interface list for the host we are running on*/
    OOBOOL isGateway;
    OOSOCKET cmdSock;
-   OOBOOL v6Mode;
 } OOH323EndPoint;
 
 #define ooEndPoint OOH323EndPoint

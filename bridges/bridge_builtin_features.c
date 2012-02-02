@@ -69,10 +69,10 @@ static int grab_transfer(struct ast_channel *chan, char *exten, size_t exten_len
 }
 
 /*! \brief Helper function that creates an outgoing channel and returns it immediately */
-static struct ast_channel *dial_transfer(const struct ast_channel *caller, const char *exten, const char *context)
+static struct ast_channel *dial_transfer(struct ast_channel *caller, const char *exten, const char *context)
 {
-	char destination[AST_MAX_EXTENSION+AST_MAX_CONTEXT+1] = "";
-	struct ast_channel *chan = NULL;
+	char destination[AST_MAX_EXTENSION + AST_MAX_CONTEXT + 1];
+	struct ast_channel *chan;
 	int cause;
 
 	/* Fill the variable with the extension and context we want to call */
@@ -83,8 +83,13 @@ static struct ast_channel *dial_transfer(const struct ast_channel *caller, const
 		return NULL;
 	}
 
-	/* Before we actually dial out let's inherit the appropriate dialplan variables */
+	/* Before we actually dial out let's inherit appropriate information. */
+	ast_channel_lock_both(caller, chan);
+	ast_connected_line_copy_from_caller(&chan->connected, &caller->caller);
 	ast_channel_inherit_variables(caller, chan);
+	ast_channel_datastore_inherit(caller, chan);
+	ast_channel_unlock(chan);
+	ast_channel_unlock(caller);
 
 	/* Since the above worked fine now we actually call it and return the channel */
 	if (ast_call(chan, destination, 0)) {
@@ -202,12 +207,12 @@ static int feature_attended_transfer(struct ast_bridge *bridge, struct ast_bridg
 	ast_bridge_features_enable(&caller_features, AST_BRIDGE_BUILTIN_HANGUP,
 				   (attended_transfer && !ast_strlen_zero(attended_transfer->complete) ? attended_transfer->complete : "*1"), NULL);
 	ast_bridge_features_hook(&caller_features, (attended_transfer && !ast_strlen_zero(attended_transfer->threeway) ? attended_transfer->threeway : "*2"),
-				 attended_threeway_transfer, NULL, NULL);
+				 attended_threeway_transfer, NULL);
 	ast_bridge_features_hook(&caller_features, (attended_transfer && !ast_strlen_zero(attended_transfer->abort) ? attended_transfer->abort : "*3"),
-				 attended_abort_transfer, NULL, NULL);
+				 attended_abort_transfer, NULL);
 
 	/* But for the caller we want to join the bridge in a blocking fashion so we don't spin around in this function doing nothing while waiting */
-	attended_bridge_result = ast_bridge_join(attended_bridge, bridge_channel->chan, NULL, &caller_features, NULL);
+	attended_bridge_result = ast_bridge_join(attended_bridge, bridge_channel->chan, NULL, &caller_features);
 
 	/* Since the above returned the caller features structure is of no more use */
 	ast_bridge_features_cleanup(&caller_features);

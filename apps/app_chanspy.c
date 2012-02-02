@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 349044 $")
 
 #include <ctype.h>
 #include <errno.h>
@@ -432,9 +432,6 @@ static int spy_generate(struct ast_channel *chan, void *data, int len, int sampl
 {
 	struct chanspy_translation_helper *csth = data;
 	struct ast_frame *f, *cur;
-	struct ast_format format_slin;
-
-	ast_format_set(&format_slin, AST_FORMAT_SLINEAR, 0);
 
 	ast_audiohook_lock(&csth->spy_audiohook);
 	if (csth->spy_audiohook.status != AST_AUDIOHOOK_STATUS_RUNNING) {
@@ -445,9 +442,9 @@ static int spy_generate(struct ast_channel *chan, void *data, int len, int sampl
 
 	if (ast_test_flag(&csth->flags, OPTION_READONLY)) {
 		/* Option 'o' was set, so don't mix channel audio */
-		f = ast_audiohook_read_frame(&csth->spy_audiohook, samples, AST_AUDIOHOOK_DIRECTION_READ, &format_slin);
+		f = ast_audiohook_read_frame(&csth->spy_audiohook, samples, AST_AUDIOHOOK_DIRECTION_READ, AST_FORMAT_SLINEAR);
 	} else {
-		f = ast_audiohook_read_frame(&csth->spy_audiohook, samples, AST_AUDIOHOOK_DIRECTION_BOTH, &format_slin);
+		f = ast_audiohook_read_frame(&csth->spy_audiohook, samples, AST_AUDIOHOOK_DIRECTION_BOTH, AST_FORMAT_SLINEAR);
 	}
 
 	ast_audiohook_unlock(&csth->spy_audiohook);
@@ -546,24 +543,40 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	memset(&csth, 0, sizeof(csth));
 	ast_copy_flags(&csth.flags, flags, AST_FLAGS_ALL);
 
-	ast_audiohook_init(&csth.spy_audiohook, AST_AUDIOHOOK_TYPE_SPY, "ChanSpy", 0);
+	/* This is the audiohook which gives us the audio off the channel we are
+	   spying on.
+	*/
+	ast_audiohook_init(&csth.spy_audiohook, AST_AUDIOHOOK_TYPE_SPY, "ChanSpy");
 
 	if (start_spying(spyee_autochan, spyer_name, &csth.spy_audiohook)) {
 		ast_audiohook_destroy(&csth.spy_audiohook);
 		return 0;
 	}
 
-	ast_audiohook_init(&csth.whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "ChanSpy", 0);
-	ast_audiohook_init(&csth.bridge_whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "Chanspy", 0);
-	if (start_spying(spyee_autochan, spyer_name, &csth.whisper_audiohook)) {
-		ast_log(LOG_WARNING, "Unable to attach whisper audiohook to spyee %s. Whisper mode disabled!\n", name);
-	}
-	if ((spyee_bridge_autochan = ast_autochan_setup(ast_bridged_channel(spyee_autochan->chan)))) {
-		ast_channel_lock(spyee_bridge_autochan->chan);
-		if (start_spying(spyee_bridge_autochan, spyer_name, &csth.bridge_whisper_audiohook)) {
-			ast_log(LOG_WARNING, "Unable to attach barge audiohook on spyee %s. Barge mode disabled!\n", name);
+	if (ast_test_flag(flags, OPTION_WHISPER | OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		/* This audiohook will let us inject audio from our channel into the
+		   channel we are currently spying on.
+		*/
+		ast_audiohook_init(&csth.whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "ChanSpy");
+
+		if (start_spying(spyee_autochan, spyer_name, &csth.whisper_audiohook)) {
+			ast_log(LOG_WARNING, "Unable to attach whisper audiohook to spyee %s. Whisper mode disabled!\n", name);
 		}
-		ast_channel_unlock(spyee_bridge_autochan->chan);
+	}
+
+	if (ast_test_flag(flags, OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		/* And this hook lets us inject audio into the channel that the spied on
+		   channel is currently bridged with.
+		*/
+		ast_audiohook_init(&csth.bridge_whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "Chanspy");
+
+		if ((spyee_bridge_autochan = ast_autochan_setup(ast_bridged_channel(spyee_autochan->chan)))) {
+			ast_channel_lock(spyee_bridge_autochan->chan);
+			if (start_spying(spyee_bridge_autochan, spyer_name, &csth.bridge_whisper_audiohook)) {
+				ast_log(LOG_WARNING, "Unable to attach barge audiohook on spyee %s. Barge mode disabled!\n", name);
+			}
+			ast_channel_unlock(spyee_bridge_autochan->chan);
+		}
 	}
 
 	ast_channel_lock(chan);
@@ -686,15 +699,19 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
 	ast_channel_unlock(chan);
 
-	ast_audiohook_lock(&csth.whisper_audiohook);
-	ast_audiohook_detach(&csth.whisper_audiohook);
-	ast_audiohook_unlock(&csth.whisper_audiohook);
-	ast_audiohook_destroy(&csth.whisper_audiohook);
-	
-	ast_audiohook_lock(&csth.bridge_whisper_audiohook);
-	ast_audiohook_detach(&csth.bridge_whisper_audiohook);
-	ast_audiohook_unlock(&csth.bridge_whisper_audiohook);
-	ast_audiohook_destroy(&csth.bridge_whisper_audiohook);
+	if (ast_test_flag(flags, OPTION_WHISPER | OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		ast_audiohook_lock(&csth.whisper_audiohook);
+		ast_audiohook_detach(&csth.whisper_audiohook);
+		ast_audiohook_unlock(&csth.whisper_audiohook);
+		ast_audiohook_destroy(&csth.whisper_audiohook);
+	}
+
+	if (ast_test_flag(flags, OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		ast_audiohook_lock(&csth.bridge_whisper_audiohook);
+		ast_audiohook_detach(&csth.bridge_whisper_audiohook);
+		ast_audiohook_unlock(&csth.bridge_whisper_audiohook);
+		ast_audiohook_destroy(&csth.bridge_whisper_audiohook);
+	}
 
 	ast_audiohook_lock(&csth.spy_audiohook);
 	ast_audiohook_detach(&csth.spy_audiohook);
@@ -1018,7 +1035,7 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 		.volume = '#',
 		.exit = '\0',
 	};
-	struct ast_format oldwf;
+	int oldwf = 0;
 	int volfactor = 0;
 	int res;
 	char *mailbox = NULL;
@@ -1031,7 +1048,6 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 	char *parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
-	ast_format_clear(&oldwf);
 
 	if (args.spec && !strcmp(args.spec, "all"))
 		args.spec = NULL;
@@ -1095,8 +1111,8 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 		ast_clear_flag(&flags, AST_FLAGS_ALL);
 	}
 
-	ast_format_copy(&oldwf, &chan->writeformat);
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
+	oldwf = chan->writeformat;
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;
 	}
@@ -1116,7 +1132,7 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 	if (fd)
 		close(fd);
 
-	if (oldwf.id && ast_set_write_format(chan, &oldwf) < 0)
+	if (oldwf && ast_set_write_format(chan, oldwf) < 0)
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 
 	if (ast_test_flag(&flags, OPTION_EXITONHANGUP)) {
@@ -1138,7 +1154,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 		.volume = '#',
 		.exit = '\0',
 	};
-	struct ast_format oldwf;
+	int oldwf = 0;
 	int volfactor = 0;
 	int res;
 	char *mailbox = NULL;
@@ -1150,13 +1166,12 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 	char *parse = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, parse);
-	ast_format_clear(&oldwf);
-
 	if (!ast_strlen_zero(args.context) && (ptr = strchr(args.context, '@'))) {
 		exten = args.context;
 		*ptr++ = '\0';
 		args.context = ptr;
 	}
+
 	if (ast_strlen_zero(args.context))
 		args.context = ast_strdupa(chan->context);
 
@@ -1220,7 +1235,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 	}
 
 	oldwf = chan->writeformat;
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;
 	}
@@ -1241,7 +1256,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 	if (fd)
 		close(fd);
 
-	if (oldwf.id && ast_set_write_format(chan, &oldwf) < 0)
+	if (oldwf && ast_set_write_format(chan, oldwf) < 0)
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 
 	return res;
@@ -1256,12 +1271,12 @@ static int dahdiscan_exec(struct ast_channel *chan, const char *data)
 		.volume = '\0',
 		.exit = '*',
 	};
-	struct ast_format oldwf;
+	int oldwf = 0;
 	int res;
 	char *mygroup = NULL;
 
 	ast_clear_flag(&flags, AST_FLAGS_ALL);
-	ast_format_clear(&oldwf);
+
 	if (!ast_strlen_zero(data)) {
 		mygroup = ast_strdupa(data);
 	}
@@ -1269,15 +1284,15 @@ static int dahdiscan_exec(struct ast_channel *chan, const char *data)
 	ast_set_flag(&flags, OPTION_DTMF_CYCLE);
 	ast_set_flag(&flags, OPTION_DAHDI_SCAN);
 
-	ast_format_copy(&oldwf, &chan->writeformat);
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
+	oldwf = chan->writeformat;
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;
 	}
 
 	res = common_exec(chan, &flags, 0, 0, &user_options, mygroup, NULL, spec, NULL, NULL, NULL, NULL);
 
-	if (oldwf.id && ast_set_write_format(chan, &oldwf) < 0)
+	if (oldwf && ast_set_write_format(chan, oldwf) < 0)
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 
 	return res;

@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340110 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340108 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/paths.h"
@@ -1843,7 +1843,7 @@ static char *xmldoc_build_field(const char *type, const char *name, const char *
 	node = ast_xml_find_element(ast_xml_node_get_children(node), var, NULL, NULL);
 
 	if (!node || !ast_xml_node_get_children(node)) {
-		ast_debug(1, "Cannot find variable '%s' in tree '%s'\n", var, name);
+		ast_log(LOG_DEBUG, "Cannot find variable '%s' in tree '%s'\n", var, name);
 		return ret;
 	}
 

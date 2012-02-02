@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/translate.h"
 #include "asterisk/config.h"
@@ -197,6 +197,8 @@ static void lpc10_destroy(struct ast_trans_pvt *arg)
 
 static struct ast_translator lpc10tolin = {
 	.name = "lpc10tolin", 
+	.srcfmt = AST_FORMAT_LPC10,
+	.dstfmt = AST_FORMAT_SLINEAR,
 	.newpvt = lpc10_dec_new,
 	.framein = lpc10tolin_framein,
 	.destroy = lpc10_destroy,
@@ -208,6 +210,8 @@ static struct ast_translator lpc10tolin = {
 
 static struct ast_translator lintolpc10 = {
 	.name = "lintolpc10", 
+	.srcfmt = AST_FORMAT_SLINEAR,
+	.dstfmt = AST_FORMAT_LPC10,
 	.newpvt = lpc10_enc_new,
 	.framein = lintolpc10_framein,
 	.frameout = lintolpc10_frameout,
@@ -237,12 +241,6 @@ static int unload_module(void)
 static int load_module(void)
 {
 	int res;
-
-	ast_format_set(&lpc10tolin.src_format, AST_FORMAT_LPC10, 0);
-	ast_format_set(&lpc10tolin.dst_format, AST_FORMAT_SLINEAR, 0);
-
-	ast_format_set(&lintolpc10.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintolpc10.dst_format, AST_FORMAT_LPC10, 0);
 
 	res = ast_register_translator(&lpc10tolin);
 	if (!res) 

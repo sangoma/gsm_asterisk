@@ -88,16 +88,6 @@ static void sig_ss7_lock_private(struct sig_ss7_chan *p)
 	}
 }
 
-static void sig_ss7_deadlock_avoidance_private(struct sig_ss7_chan *p)
-{
-	if (p->calls->deadlock_avoidance_private) {
-		p->calls->deadlock_avoidance_private(p->chan_pvt);
-	} else {
-		/* Fallback to the old way if callback not present. */
-		SIG_SS7_DEADLOCK_AVOIDANCE(p);
-	}
-}
-
 void sig_ss7_set_alarm(struct sig_ss7_chan *p, int in_alarm)
 {
 	p->inalarm = in_alarm;
@@ -292,7 +282,7 @@ static void sig_ss7_lock_owner(struct sig_ss7_linkset *ss7, int chanpos)
 		}
 		/* We must unlock the SS7 to avoid the possibility of a deadlock */
 		ast_mutex_unlock(&ss7->lock);
-		sig_ss7_deadlock_avoidance_private(ss7->pvts[chanpos]);
+		SIG_SS7_DEADLOCK_AVOIDANCE(ss7->pvts[chanpos]);
 		ast_mutex_lock(&ss7->lock);
 	}
 }
@@ -1253,7 +1243,7 @@ static void ss7_grab(struct sig_ss7_chan *pvt, struct sig_ss7_linkset *ss7)
 	do {
 		res = ast_mutex_trylock(&ss7->lock);
 		if (res) {
-			sig_ss7_deadlock_avoidance_private(pvt);
+			SIG_SS7_DEADLOCK_AVOIDANCE(pvt);
 		}
 	} while (res);
 	/* Then break the poll */

@@ -16,6 +16,7 @@
 #include "asterisk.h"
 #include "asterisk/lock.h"
 #include "ooh245.h"
+#include "ooq931.h"
 #include "ooCalls.h"
 #include "printHandler.h"
 #include "ooh323ep.h"
@@ -957,6 +958,9 @@ int ooHandleMasterSlave(OOH323CallData *call, void * pmsg,
             /*Since Cap exchange and MasterSlave Procedures are done */
             if(gH323ep.h323Callbacks.openLogicalChannels)
                gH323ep.h323Callbacks.openLogicalChannels(call);
+
+   	    /* ooSendStatusInquiry(call); */
+
             if(!ooGetTransmitLogicalChannel(call))
                ooOpenLogicalChannels(call);
 #if 0
@@ -1559,8 +1563,7 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
    H245H2250LogicalChannelAckParameters *h2250lcap=NULL;
    OOCTXT *pctxt;
    H245UnicastAddress *unicastAddrs, *unicastAddrs1;
-   H245UnicastAddress_iPAddress *iPAddress = NULL, *iPAddress1 = NULL;
-   H245UnicastAddress_iP6Address *iP6Address = NULL, *iP6Address1 = NULL;
+   H245UnicastAddress_iPAddress *iPAddress, *iPAddress1;
    ooLogicalChannel *pLogicalChannel = NULL;
    H245H2250LogicalChannelParameters *h2250lcp=NULL;
    H245OpenLogicalChannel_forwardLogicalChannelParameters *flcp =
@@ -1638,20 +1641,11 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
 
    unicastAddrs = h2250lcap->mediaChannel.u.unicastAddress;
    memset(unicastAddrs, 0, sizeof(H245UnicastAddress));
-
-   if (call->versionIP == 6) {
-   	unicastAddrs->t = T_H245UnicastAddress_iP6Address;
-   	unicastAddrs->u.iP6Address = (H245UnicastAddress_iP6Address*)
-               memAlloc(pctxt, sizeof(H245UnicastAddress_iP6Address));
-   	iP6Address = unicastAddrs->u.iP6Address;
-   	memset(iP6Address, 0, sizeof(H245UnicastAddress_iP6Address));
-   } else {
-   	unicastAddrs->t = T_H245UnicastAddress_iPAddress;
-   	unicastAddrs->u.iPAddress = (H245UnicastAddress_iPAddress*)
+   unicastAddrs->t = T_H245UnicastAddress_iPAddress;
+   unicastAddrs->u.iPAddress = (H245UnicastAddress_iPAddress*)
                memAlloc(pctxt, sizeof(H245UnicastAddress_iPAddress));
-   	iPAddress = unicastAddrs->u.iPAddress;
-   	memset(iPAddress, 0, sizeof(H245UnicastAddress_iPAddress));
-   }
+   iPAddress = unicastAddrs->u.iPAddress;
+   memset(iPAddress, 0, sizeof(H245UnicastAddress_iPAddress));
 
    pLogicalChannel = ooAddNewLogicalChannel(call, 
                         olc->forwardLogicalChannelNumber, h2250lcap->sessionID,
@@ -1662,16 +1656,10 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
                   "(%s, %s)\n", call->callType, call->callToken);
       return OO_FAILED;
    }
+   ooSocketConvertIpToNwAddr(call->localIP, iPAddress->network.data);
 
-   if (call->versionIP == 6) {
-	inet_pton(AF_INET6, call->localIP, iP6Address->network.data);
-   	iP6Address->network.numocts = 16;
-   	iP6Address->tsapIdentifier = pLogicalChannel->localRtpPort;
-   } else {
-	inet_pton(AF_INET, call->localIP, iPAddress->network.data);
-   	iPAddress->network.numocts = 4;
-   	iPAddress->tsapIdentifier = pLogicalChannel->localRtpPort;
-   }
+   iPAddress->network.numocts = 4;
+   iPAddress->tsapIdentifier = pLogicalChannel->localRtpPort;
 
    /* media contrcol channel */
    h2250lcap->mediaControlChannel.t = 
@@ -1680,28 +1668,17 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
                          ASN1MALLOC(pctxt, sizeof(H245UnicastAddress));
 
    unicastAddrs1 = h2250lcap->mediaControlChannel.u.unicastAddress;
-
    memset(unicastAddrs1, 0, sizeof(H245UnicastAddress));
-   if (call->versionIP == 6) {
-   	unicastAddrs1->t = T_H245UnicastAddress_iP6Address;
-   	unicastAddrs1->u.iP6Address = (H245UnicastAddress_iP6Address*)
-               memAlloc(pctxt, sizeof(H245UnicastAddress_iP6Address));
-   	iP6Address1 = unicastAddrs1->u.iP6Address;
-   	memset(iP6Address1, 0, sizeof(H245UnicastAddress_iP6Address));
-	inet_pton(AF_INET6, call->localIP, iP6Address1->network.data);
-   	iP6Address1->network.numocts = 16;
-   	iP6Address1->tsapIdentifier = pLogicalChannel->localRtcpPort;
-   } else {
-   	unicastAddrs1->t = T_H245UnicastAddress_iPAddress;
-   	unicastAddrs1->u.iPAddress = (H245UnicastAddress_iPAddress*)
-               	memAlloc(pctxt, sizeof(H245UnicastAddress_iPAddress));
-   	iPAddress1 = unicastAddrs1->u.iPAddress;
-   	memset(iPAddress1, 0, sizeof(H245UnicastAddress_iPAddress));
+   unicastAddrs1->t = T_H245UnicastAddress_iPAddress;
+   unicastAddrs1->u.iPAddress = (H245UnicastAddress_iPAddress*)
+               memAlloc(pctxt, sizeof(H245UnicastAddress_iPAddress));
+   iPAddress1 = unicastAddrs1->u.iPAddress;
+   memset(iPAddress1, 0, sizeof(H245UnicastAddress_iPAddress));
 
-	inet_pton(AF_INET, call->localIP, iPAddress1->network.data);
-   	iPAddress1->network.numocts = 4;
-   	iPAddress1->tsapIdentifier = pLogicalChannel->localRtcpPort;
-   }
+   ooSocketConvertIpToNwAddr(call->localIP, iPAddress1->network.data);
+
+   iPAddress1->network.numocts = 4;
+   iPAddress1->tsapIdentifier = pLogicalChannel->localRtcpPort;
 
    OOTRACEDBGA3("Built OpenLogicalChannelAck (%s, %s)\n", call->callType, 
                  call->callToken);
@@ -1792,16 +1769,14 @@ int ooSendOpenLogicalChannelReject
 int ooOnReceivedOpenLogicalChannelAck(OOH323CallData *call,
                                       H245OpenLogicalChannelAck *olcAck)
 {
-   char remoteip[2+8*4+7];
+   char remoteip[20];
    regmatch_t pmatch[1];
    ooLogicalChannel *pLogicalChannel;
    H245H2250LogicalChannelAckParameters *h2250lcap;
    H245UnicastAddress *unicastAddr;
-   H245UnicastAddress_iPAddress *iPAddress = NULL;
-   H245UnicastAddress_iP6Address *iP6Address = NULL;
+   H245UnicastAddress_iPAddress *iPAddress;
    H245UnicastAddress *unicastAddr1;
    H245UnicastAddress_iPAddress *iPAddress1 = NULL;
-   H245UnicastAddress_iP6Address *iP6Address1 = NULL;
 
    if(!((olcAck->m.forwardMultiplexAckParametersPresent == 1) &&
         (olcAck->forwardMultiplexAckParameters.t == 
@@ -1831,28 +1806,19 @@ int ooOnReceivedOpenLogicalChannelAck(OOH323CallData *call,
    }
    
    unicastAddr = h2250lcap->mediaChannel.u.unicastAddress;
-   if (call->versionIP == 6) {
-   	if(unicastAddr->t != T_H245UnicastAddress_iP6Address)
-   	{
-      	OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media channel "
-                  "address type is not IP6 (%s, %s)\n", call->callType, 
-                   call->callToken);
-      	return OO_FAILED;
-   	}
-   	iP6Address = unicastAddr->u.iP6Address;
-	inet_ntop(AF_INET6, iP6Address->network.data, remoteip, sizeof(remoteip));
-   
-   } else {
-   	if(unicastAddr->t != T_H245UnicastAddress_iPAddress)
-   	{
-      	OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media channel "
+   if(unicastAddr->t != T_H245UnicastAddress_iPAddress)
+   {
+      OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media channel "
                   "address type is not IP (%s, %s)\n", call->callType, 
                    call->callToken);
-      	return OO_FAILED;
-   	}
-   	iPAddress = unicastAddr->u.iPAddress;
-	inet_ntop(AF_INET, iPAddress->network.data, remoteip, sizeof(remoteip));
+      return OO_FAILED;
    }
+   iPAddress = unicastAddr->u.iPAddress;
+   
+   sprintf(remoteip,"%d.%d.%d.%d", iPAddress->network.data[0],
+                                  iPAddress->network.data[1], 
+                                  iPAddress->network.data[2], 
+                                  iPAddress->network.data[3]);
    
    /* Extract media control channel address */
    if(h2250lcap->m.mediaControlChannelPresent == 1) {
@@ -1866,23 +1832,14 @@ int ooOnReceivedOpenLogicalChannelAck(OOH323CallData *call,
    	}
    
    	unicastAddr1 = h2250lcap->mediaControlChannel.u.unicastAddress;
-	if (call->versionIP == 6) {
-   		if(unicastAddr1->t != T_H245UnicastAddress_iP6Address) {
-      			OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media control "
-                  	"channel address type is not IP6 (%s, %s)\n", call->callType, 
-                   	call->callToken);
-      		return OO_FAILED;
-   		}
-   		iP6Address1 = unicastAddr1->u.iP6Address;
-	} else {
-   		if(unicastAddr1->t != T_H245UnicastAddress_iPAddress) {
-      			OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media control "
-                  	"channel address type is not IP (%s, %s)\n", call->callType, 
-                   	call->callToken);
-      		return OO_FAILED;
-   		}
-   		iPAddress1 = unicastAddr1->u.iPAddress;
-	}
+   	if(unicastAddr1->t != T_H245UnicastAddress_iPAddress) {
+      		OOTRACEERR3("Error: Processing OpenLogicalChannelAck - media control "
+                  "channel address type is not IP (%s, %s)\n", call->callType, 
+                   call->callToken);
+      	return OO_FAILED;
+   	}
+
+   	iPAddress1 = unicastAddr1->u.iPAddress;
    } else {
       OOTRACEDBGA3("Warning: Processing OpenLogicalChannelAck - Missing media "
                 "control channel (%s, %s)\n", call->callType, call->callToken);
@@ -1917,15 +1874,10 @@ int ooOnReceivedOpenLogicalChannelAck(OOH323CallData *call,
    }
 
    strcpy(pLogicalChannel->remoteIP, remoteip);   
-   if (call->versionIP == 6) {
-   	pLogicalChannel->remoteMediaPort = iP6Address->tsapIdentifier;
-   	if (iP6Address1)
-   		pLogicalChannel->remoteMediaControlPort = iP6Address1->tsapIdentifier;
-   } else {
-   	pLogicalChannel->remoteMediaPort = iPAddress->tsapIdentifier;
-   	if (iPAddress1)
-   		pLogicalChannel->remoteMediaControlPort = iPAddress1->tsapIdentifier;
-   }
+   pLogicalChannel->remoteMediaPort = iPAddress->tsapIdentifier;
+   if (iPAddress1)
+   	pLogicalChannel->remoteMediaControlPort = iPAddress1->tsapIdentifier;
+
    if(pLogicalChannel->chanCap->startTransmitChannel)
    {
       pLogicalChannel->chanCap->startTransmitChannel(call, pLogicalChannel);
@@ -2173,6 +2125,9 @@ int ooOnReceivedTerminalCapabilitySetAck(OOH323CallData* call)
    {
       if(gH323ep.h323Callbacks.openLogicalChannels)
          gH323ep.h323Callbacks.openLogicalChannels(call);
+
+      /* ooSendStatusInquiry(call); */
+      
       if(!ooGetTransmitLogicalChannel(call))
          ooOpenLogicalChannels(call);
 #if 0
@@ -3121,7 +3076,12 @@ int ooOnReceivedTerminalCapabilitySet(OOH323CallData *call, H245Message *pmsg)
    we can accept new capability set only. We must remember also that new join caps
    will be previously joined caps with new cap set.
  */
-   if(call->remoteTermCapSeqNo == tcs->sequenceNumber)
+
+/* 20111103 */
+/* for addition for previous we must check repeated tcs if it's not first 
+   tcs i.e. SeqNo is not null */
+
+   if(call->remoteTermCapSeqNo && call->remoteTermCapSeqNo == tcs->sequenceNumber)
     call->localTermCapState = OO_LocalTermCapExchange_Idle;
    }
   
@@ -3208,6 +3168,9 @@ int ooOnReceivedTerminalCapabilitySet(OOH323CallData *call, H245Message *pmsg)
  
    if(gH323ep.h323Callbacks.openLogicalChannels)
       gH323ep.h323Callbacks.openLogicalChannels(call);
+
+   /* ooSendStatusInquiry(call); */
+
    if(!ooGetTransmitLogicalChannel(call))
       ooOpenLogicalChannels(call);
 #if 0
@@ -3667,7 +3630,6 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
    H245H2250LogicalChannelParameters *h2250lcp = NULL;
    H245UnicastAddress *unicastAddrs = NULL;
    H245UnicastAddress_iPAddress *iPAddress = NULL;
-   H245UnicastAddress_iP6Address *iP6Address = NULL;
    unsigned session_id=0;
    ooLogicalChannel *pLogicalChannel = NULL;
    
@@ -3811,27 +3773,16 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
 
    unicastAddrs = h2250lcp->mediaControlChannel.u.unicastAddress;
    memset(unicastAddrs, 0, sizeof(H245UnicastAddress));
-   if (call->versionIP == 6) {
-   	unicastAddrs->t = T_H245UnicastAddress_iP6Address;
-   	unicastAddrs->u.iP6Address = (H245UnicastAddress_iP6Address*)
-               ASN1MALLOC(pctxt, sizeof(H245UnicastAddress_iP6Address));
-   	iP6Address = unicastAddrs->u.iP6Address;
-   	memset(iP6Address, 0, sizeof(H245UnicastAddress_iP6Address));
-
-	inet_pton(AF_INET6, pLogicalChannel->localIP, iP6Address->network.data);
-   	iP6Address->network.numocts = 16;
-   	iP6Address->tsapIdentifier = pLogicalChannel->localRtcpPort;
-   } else {
-   	unicastAddrs->t = T_H245UnicastAddress_iPAddress;
-   	unicastAddrs->u.iPAddress = (H245UnicastAddress_iPAddress*)
+   unicastAddrs->t = T_H245UnicastAddress_iPAddress;
+   unicastAddrs->u.iPAddress = (H245UnicastAddress_iPAddress*)
                ASN1MALLOC(pctxt, sizeof(H245UnicastAddress_iPAddress));
-   	iPAddress = unicastAddrs->u.iPAddress;
-   	memset(iPAddress, 0, sizeof(H245UnicastAddress_iPAddress));
+   iPAddress = unicastAddrs->u.iPAddress;
+   memset(iPAddress, 0, sizeof(H245UnicastAddress_iPAddress));
 
-	inet_pton(AF_INET, pLogicalChannel->localIP, iPAddress->network.data);
-   	iPAddress->network.numocts = 4;
-   	iPAddress->tsapIdentifier = pLogicalChannel->localRtcpPort;
-   }
+   ooSocketConvertIpToNwAddr(pLogicalChannel->localIP,iPAddress->network.data);
+
+   iPAddress->network.numocts = 4;
+   iPAddress->tsapIdentifier = pLogicalChannel->localRtcpPort;
    pLogicalChannel->state = OO_LOGICALCHAN_PROPOSED; 
    OOTRACEDBGA4("Built OpenLogicalChannel-%s (%s, %s)\n", 
                  ooGetCapTypeText(epCap->cap), call->callType, 
@@ -3864,7 +3815,6 @@ int ooBuildFastStartOLC
    H245H2250LogicalChannelParameters *pH2250lcp1=NULL, *pH2250lcp2=NULL;
    H245UnicastAddress *pUnicastAddrs=NULL, *pUniAddrs=NULL;
    H245UnicastAddress_iPAddress *pIpAddrs=NULL, *pUniIpAddrs=NULL;
-   H245UnicastAddress_iP6Address *pIp6Addrs=NULL, *pUniIp6Addrs=NULL;
    unsigned session_id = 0;
    ooLogicalChannel *pLogicalChannel = NULL;
    int outgoing=FALSE;
@@ -3947,29 +3897,17 @@ int ooBuildFastStartOLC
                                                    sizeof(H245UnicastAddress));
          memset(pUniAddrs, 0, sizeof(H245UnicastAddress));
          pH2250lcp1->mediaChannel.u.unicastAddress =  pUniAddrs;
-	 if (call->versionIP == 6) {
-         	pUniAddrs->t = T_H245UnicastAddress_iP6Address;
-         	pUniIp6Addrs = (H245UnicastAddress_iP6Address*) ASN1MALLOC(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-         	memset(pUniIp6Addrs, 0, sizeof(H245UnicastAddress_iP6Address));
-         	pUniAddrs->u.iP6Address = pUniIp6Addrs;
-     
-		inet_pton(AF_INET6, pLogicalChannel->localIP, pUniIp6Addrs->network.data);
-
-         	pUniIp6Addrs->network.numocts = 16;
-         	pUniIp6Addrs->tsapIdentifier = pLogicalChannel->localRtpPort;
-	 } else {
-         	pUniAddrs->t = T_H245UnicastAddress_iPAddress;
-         	pUniIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
+         pUniAddrs->t = T_H245UnicastAddress_iPAddress;
+         pUniIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
                                          sizeof(H245UnicastAddress_iPAddress));
-         	memset(pUniIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
-         	pUniAddrs->u.iPAddress = pUniIpAddrs;
+         memset(pUniIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
+         pUniAddrs->u.iPAddress = pUniIpAddrs;
      
-		inet_pton(AF_INET, pLogicalChannel->localIP, pUniIpAddrs->network.data);
+         ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                pUniIpAddrs->network.data);
 
-         	pUniIpAddrs->network.numocts = 4;
-         	pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
-	 }
+         pUniIpAddrs->network.numocts = 4;
+         pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
       }
       pH2250lcp1->m.mediaControlChannelPresent = 1;
       pH2250lcp1->mediaControlChannel.t = 
@@ -3978,30 +3916,17 @@ int ooBuildFastStartOLC
                                                    sizeof(H245UnicastAddress));
       memset(pUnicastAddrs, 0, sizeof(H245UnicastAddress));
       pH2250lcp1->mediaControlChannel.u.unicastAddress =  pUnicastAddrs;
-      if (call->versionIP == 6) {
-         	pUnicastAddrs->t = T_H245UnicastAddress_iP6Address;
-         	pIp6Addrs = (H245UnicastAddress_iP6Address*) ASN1MALLOC(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-         	memset(pIp6Addrs, 0, sizeof(H245UnicastAddress_iP6Address));
-         	pUnicastAddrs->u.iP6Address = pIp6Addrs;
-     
-		inet_pton(AF_INET6, pLogicalChannel->localIP, pIp6Addrs->network.data);
-
-         	pIp6Addrs->network.numocts = 16;
-         	pIp6Addrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-	 } else {
-         	pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
-         	pIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
+      pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
+      pIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
                                          sizeof(H245UnicastAddress_iPAddress));
-         	memset(pIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
-         	pUnicastAddrs->u.iPAddress = pIpAddrs;
+      memset(pIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
+      pUnicastAddrs->u.iPAddress = pIpAddrs;
      
-		inet_pton(AF_INET, pLogicalChannel->localIP, pIpAddrs->network.data);
+       ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                      pIpAddrs->network.data);
 
-         	pIpAddrs->network.numocts = 4;
-         	pIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-	}
-
+      pIpAddrs->network.numocts = 4;
+      pIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
       if(!outgoing)
       {
          if(epCap->startReceiveChannel)
@@ -4064,33 +3989,18 @@ int ooBuildFastStartOLC
                                                   sizeof(H245UnicastAddress));
          memset(pUnicastAddrs, 0, sizeof(H245UnicastAddress));
          pH2250lcp2->mediaChannel.u.unicastAddress =  pUnicastAddrs;
-
-	 /* May 20101022 */
       
-      	 if (call->versionIP == 6) {
-         	pUnicastAddrs->t = T_H245UnicastAddress_iP6Address;
-         	pIp6Addrs = (H245UnicastAddress_iP6Address*) ASN1MALLOC(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-         	memset(pIp6Addrs, 0, sizeof(H245UnicastAddress_iP6Address));
-         	pUnicastAddrs->u.iP6Address = pIp6Addrs;
-     
-		inet_pton(AF_INET6, pLogicalChannel->localIP, pIp6Addrs->network.data);
-
-         	pIp6Addrs->network.numocts = 16;
-         	pIp6Addrs->tsapIdentifier = pLogicalChannel->localRtpPort;
-	 } else {
-         	pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
-         	pIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
+         pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
+         pIpAddrs = (H245UnicastAddress_iPAddress*) memAlloc(pctxt, 
                                          sizeof(H245UnicastAddress_iPAddress));
-         	memset(pIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
-         	pUnicastAddrs->u.iPAddress = pIpAddrs;
-     
-		inet_pton(AF_INET, pLogicalChannel->localIP, pIpAddrs->network.data);
+         memset(pIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
+         pUnicastAddrs->u.iPAddress = pIpAddrs;      
 
-         	pIpAddrs->network.numocts = 4;
-         	pIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
-	}
+         ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                       pIpAddrs->network.data);
 
+         pIpAddrs->network.numocts = 4;
+         pIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
       }
       pH2250lcp2->m.mediaControlChannelPresent = 1;
       pH2250lcp2->mediaControlChannel.t = 
@@ -4100,32 +4010,17 @@ int ooBuildFastStartOLC
       memset(pUniAddrs, 0, sizeof(H245UnicastAddress));
       pH2250lcp2->mediaControlChannel.u.unicastAddress =  pUniAddrs;
 
-      /* May 20101023 */
       
-	 if (call->versionIP == 6) {
-         	pUniAddrs->t = T_H245UnicastAddress_iP6Address;
-         	pUniIp6Addrs = (H245UnicastAddress_iP6Address*) ASN1MALLOC(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-         	memset(pUniIp6Addrs, 0, sizeof(H245UnicastAddress_iP6Address));
-         	pUniAddrs->u.iP6Address = pUniIp6Addrs;
-     
-		inet_pton(AF_INET6, pLogicalChannel->localIP, pUniIp6Addrs->network.data);
+      pUniAddrs->t = T_H245UnicastAddress_iPAddress;
+      pUniIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, sizeof(H245UnicastAddress_iPAddress));
+      memset(pUniIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
+      pUniAddrs->u.iPAddress = pUniIpAddrs; 
 
-         	pUniIp6Addrs->network.numocts = 16;
-         	pUniIp6Addrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-	 } else {
-         	pUniAddrs->t = T_H245UnicastAddress_iPAddress;
-         	pUniIpAddrs = (H245UnicastAddress_iPAddress*) ASN1MALLOC(pctxt, 
-                                         sizeof(H245UnicastAddress_iPAddress));
-         	memset(pUniIpAddrs, 0, sizeof(H245UnicastAddress_iPAddress));
-         	pUniAddrs->u.iPAddress = pUniIpAddrs;
-     
-		inet_pton(AF_INET, pLogicalChannel->localIP, pUniIpAddrs->network.data);
-
-         	pUniIpAddrs->network.numocts = 4;
-         	pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-	 }
-
+      ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                    pUniIpAddrs->network.data);
+      pUniIpAddrs->network.numocts = 4;
+      pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
+          
       /*
          In case of fast start, the local endpoint need to be ready to
          receive all the media types proposed in the fast connect, before
@@ -4323,7 +4218,6 @@ int ooGetIpPortFromH245TransportAddress
 {
    H245UnicastAddress *unicastAddress = NULL;
    H245UnicastAddress_iPAddress *ipAddress = NULL;
-   H245UnicastAddress_iP6Address *ip6Address = NULL;
    regmatch_t pmatch[1];
 
    if(h245Address->t != T_H245TransportAddress_unicastAddress)
@@ -4334,17 +4228,7 @@ int ooGetIpPortFromH245TransportAddress
    } 
       
    unicastAddress = h245Address->u.unicastAddress;
-   if (call->versionIP == 6) {
-	if (unicastAddress->t != T_H245UnicastAddress_iP6Address) {
-      		OOTRACEERR3("ERROR:H245 Address type is not IP6"
-                   "(%s, %s)\n", call->callType, call->callToken);
-      		return OO_FAILED;
-	}
-	ip6Address = unicastAddress->u.iP6Address;
-	*port = ip6Address->tsapIdentifier;
-	inet_ntop(AF_INET6, ip6Address->network.data, ip, INET6_ADDRSTRLEN);
-
-   } else { if(unicastAddress->t != T_H245UnicastAddress_iPAddress)
+   if(unicastAddress->t != T_H245UnicastAddress_iPAddress)
    {
       OOTRACEERR3("ERROR:H245 Address type is not IP"
                    "(%s, %s)\n", call->callType, call->callToken);
@@ -4353,8 +4237,11 @@ int ooGetIpPortFromH245TransportAddress
    ipAddress = unicastAddress->u.iPAddress;
 
    *port = ipAddress->tsapIdentifier;
-   inet_ntop(AF_INET,  ipAddress->network.data, ip, INET_ADDRSTRLEN);
-   }
+
+   sprintf(ip, "%d.%d.%d.%d", ipAddress->network.data[0], 
+                              ipAddress->network.data[1],
+                              ipAddress->network.data[2],
+                              ipAddress->network.data[3]);
    if (call->rtpMaskStr[0]) {
      if (regexec(&call->rtpMask->regex, ip, 1, pmatch, 0)) {
 		OOTRACEERR5("ERROR:H245 Address is not matched with filter %s/%s"
@@ -4362,6 +4249,7 @@ int ooGetIpPortFromH245TransportAddress
 	 return OO_FAILED;
 	}
    }
+
    return OO_OK;
 }
 
@@ -4376,7 +4264,6 @@ int ooPrepareFastStartResponseOLC
    H245H2250LogicalChannelParameters *pH2250lcp1=NULL, *pH2250lcp2=NULL;
    H245UnicastAddress *pUnicastAddrs=NULL, *pUniAddrs=NULL;
    H245UnicastAddress_iPAddress *pIpAddrs=NULL, *pUniIpAddrs=NULL;
-   H245UnicastAddress_iP6Address *pIp6Addrs=NULL, *pUniIp6Addrs=NULL;
    unsigned session_id = 0;
    ooLogicalChannel *pLogicalChannel = NULL;
    
@@ -4422,82 +4309,53 @@ int ooPrepareFastStartResponseOLC
 
       pH2250lcp1->m.mediaChannelPresent = 1;
       pH2250lcp1->mediaChannel.t = T_H245TransportAddress_unicastAddress;
-      pUniAddrs = (H245UnicastAddress*) memAllocZ(pctxt, 
+      pUniAddrs = (H245UnicastAddress*) memAlloc(pctxt, 
                                                    sizeof(H245UnicastAddress));
-      pH2250lcp1->mediaChannel.u.unicastAddress =  pUniAddrs;
-      if (call->versionIP == 6) {
-      	pUniIp6Addrs = (H245UnicastAddress_iP6Address*) memAllocZ(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-      	if(!pUniAddrs || !pUniIpAddrs) {
-         	OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - pUniAddrs"
-                     "/pUniIpAddrs (%s, %s)\n", call->callType, 
-                     call->callToken);
-         return OO_FAILED;
-      	}
-
-      	pUniAddrs->t = T_H245UnicastAddress_iP6Address;
-      	pUniAddrs->u.iP6Address = pUniIp6Addrs;
-     	inet_pton(AF_INET6, pLogicalChannel->localIP, pUniIp6Addrs->network.data);
-
-      	pUniIp6Addrs->network.numocts = 16;
-      	pUniIp6Addrs->tsapIdentifier = pLogicalChannel->localRtpPort;
-
-      } else {
-      	pUniIpAddrs = (H245UnicastAddress_iPAddress*) memAllocZ(pctxt, 
+      pUniIpAddrs = (H245UnicastAddress_iPAddress*) memAlloc(pctxt, 
                                          sizeof(H245UnicastAddress_iPAddress));
-      	if(!pUniAddrs || !pUniIpAddrs) {
+      if(!pUniAddrs || !pUniIpAddrs)
+      {
          OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - pUniAddrs"
                      "/pUniIpAddrs (%s, %s)\n", call->callType, 
                      call->callToken);
          return OO_FAILED;
-      	}
-
-      	pUniAddrs->t = T_H245UnicastAddress_iPAddress;
-      	pUniAddrs->u.iPAddress = pUniIpAddrs;
-	inet_pton(AF_INET, pLogicalChannel->localIP, pUniIpAddrs->network.data);
-     
-      	pUniIpAddrs->network.numocts = 4;
-      	pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
       }
 
+      pH2250lcp1->mediaChannel.u.unicastAddress =  pUniAddrs;
+      pUniAddrs->t = T_H245UnicastAddress_iPAddress;
+      pUniAddrs->u.iPAddress = pUniIpAddrs;
+     
+      ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                    pUniIpAddrs->network.data);
+
+      pUniIpAddrs->network.numocts = 4;
+      pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtpPort;
 
       pH2250lcp1->m.mediaControlChannelPresent = 1;
       pH2250lcp1->mediaControlChannel.t = 
                                  T_H245TransportAddress_unicastAddress;
-      pUnicastAddrs = (H245UnicastAddress*) memAllocZ(pctxt, 
+      pUnicastAddrs = (H245UnicastAddress*) memAlloc(pctxt, 
                                                    sizeof(H245UnicastAddress));
-      pH2250lcp1->mediaControlChannel.u.unicastAddress =  pUnicastAddrs;
-
-      if (call->versionIP == 6) {
-      	pIp6Addrs = (H245UnicastAddress_iP6Address*) memAllocZ(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-      	if(!pUnicastAddrs || !pIp6Addrs) {
+      pIpAddrs = (H245UnicastAddress_iPAddress*) memAlloc(pctxt, 
+                                         sizeof(H245UnicastAddress_iPAddress));
+      if(!pUnicastAddrs || !pIpAddrs)
+      {
          OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - "
                      "pUnicastAddrs/pIpAddrs (%s, %s)\n", call->callType, 
                      call->callToken);
          return OO_FAILED;
-      	}
-      	pUnicastAddrs->t = T_H245UnicastAddress_iP6Address;
-      	pUnicastAddrs->u.iP6Address = pIp6Addrs;
-      	inet_pton(AF_INET6, pLogicalChannel->localIP, pIp6Addrs->network.data);
-      	pIp6Addrs->network.numocts = 16;
-      	pIp6Addrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-      } else {
-
-      	pIpAddrs = (H245UnicastAddress_iPAddress*) memAllocZ(pctxt, 
-                                         sizeof(H245UnicastAddress_iPAddress));
-      	if(!pUnicastAddrs || !pIpAddrs) {
-         	OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - "
-                     "pUnicastAddrs/pIpAddrs (%s, %s)\n", call->callType, 
-                     call->callToken);
-         	return OO_FAILED;
-      	}
-      	pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
-      	pUnicastAddrs->u.iPAddress = pIpAddrs;
-      	inet_pton(AF_INET, pLogicalChannel->localIP, pIpAddrs->network.data);
-      	pIpAddrs->network.numocts = 4;
-      	pIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
       }
+      memset(pUnicastAddrs, 0, sizeof(H245UnicastAddress));
+      pH2250lcp1->mediaControlChannel.u.unicastAddress =  pUnicastAddrs;
+      pUnicastAddrs->t = T_H245UnicastAddress_iPAddress;
+      
+      pUnicastAddrs->u.iPAddress = pIpAddrs;
+     
+      ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                       pIpAddrs->network.data);
+
+      pIpAddrs->network.numocts = 4;
+      pIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
    }
 
    if(reverse)
@@ -4516,42 +4374,26 @@ int ooPrepareFastStartResponseOLC
                                  T_H245TransportAddress_unicastAddress;
       pUniAddrs = (H245UnicastAddress*) memAlloc(pctxt, 
                                                    sizeof(H245UnicastAddress));
-      pH2250lcp2->mediaControlChannel.u.unicastAddress =  pUniAddrs;
-
-      if (call->versionIP == 6) {
-      	pUniIp6Addrs = (H245UnicastAddress_iP6Address*) memAlloc(pctxt, 
-                                         sizeof(H245UnicastAddress_iP6Address));
-      	if(!pUniAddrs || !pUniIp6Addrs) {
-         	OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - "
-                    "pUniAddrs/pUniIpAddrs (%s, %s)\n", call->callType, 
-                     call->callToken);
-         return OO_FAILED;
-      	}
-
-      
-      	pUniAddrs->t = T_H245UnicastAddress_iP6Address;
-      	pUniAddrs->u.iP6Address = pUniIp6Addrs; 
-	inet_pton(AF_INET6, pLogicalChannel->localIP, pUniIp6Addrs->network.data);
-	pUniIp6Addrs->network.numocts = 16;
-      	pUniIp6Addrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
-      } else {
-      	pUniIpAddrs = (H245UnicastAddress_iPAddress*) memAlloc(pctxt, 
+      pUniIpAddrs = (H245UnicastAddress_iPAddress*) memAlloc(pctxt, 
                                          sizeof(H245UnicastAddress_iPAddress));
-      	if(!pUniAddrs || !pUniIpAddrs) {
-         	OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - "
+      if(!pUniAddrs || !pUniIpAddrs)
+      {
+         OOTRACEERR3("Error:Memory - ooPrepareFastStartResponseOLC - "
                     "pUniAddrs/pUniIpAddrs (%s, %s)\n", call->callType, 
                      call->callToken);
          return OO_FAILED;
-      	}
-
-      	pH2250lcp2->mediaControlChannel.u.unicastAddress =  pUniAddrs;
-      
-      	pUniAddrs->t = T_H245UnicastAddress_iPAddress;
-      	pUniAddrs->u.iPAddress = pUniIpAddrs; 
-	inet_pton(AF_INET, pLogicalChannel->localIP, pUniIpAddrs->network.data);
-	pUniIpAddrs->network.numocts = 4;
-      	pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
       }
+
+      pH2250lcp2->mediaControlChannel.u.unicastAddress =  pUniAddrs;
+      
+      pUniAddrs->t = T_H245UnicastAddress_iPAddress;
+
+      pUniAddrs->u.iPAddress = pUniIpAddrs; 
+
+      ooSocketConvertIpToNwAddr(pLogicalChannel->localIP, 
+                                                    pUniIpAddrs->network.data);
+      pUniIpAddrs->network.numocts = 4;
+      pUniIpAddrs->tsapIdentifier = pLogicalChannel->localRtcpPort;
           
    }
 

@@ -205,7 +205,6 @@ ifeq ($(findstring -Wall,$(_ASTCFLAGS) $(ASTCFLAGS)),)
 endif
 
 _ASTCFLAGS+=-Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations $(DEBUG)
-ADDL_TARGETS=
 
 ifeq ($(AST_DEVMODE),yes)
   _ASTCFLAGS+=-Werror
@@ -215,7 +214,6 @@ ifeq ($(AST_DEVMODE),yes)
   _ASTCFLAGS+=-Wundef 
   _ASTCFLAGS+=-Wmissing-format-attribute
   _ASTCFLAGS+=-Wformat=2
-  ADDL_TARGETS+=validate-docs
 endif
 
 ifneq ($(findstring BSD,$(OSARCH)),)
@@ -223,12 +221,8 @@ ifneq ($(findstring BSD,$(OSARCH)),)
 endif
 
 ifeq ($(findstring -march,$(_ASTCFLAGS) $(ASTCFLAGS)),)
-  ifneq ($(AST_MARCH_NATIVE),)
-    _ASTCFLAGS+=$(AST_MARCH_NATIVE)
-  else
-    ifneq ($(PROC),ultrasparc)
-      _ASTCFLAGS+=$(shell if $(CC) -march=$(PROC) -S -o /dev/null -xc /dev/null >/dev/null 2>&1; then echo "-march=$(PROC)"; fi)
-    endif
+  ifneq ($(PROC),ultrasparc)
+    _ASTCFLAGS+=$(shell if $(CC) -march=$(PROC) -S -o /dev/null -xc /dev/null >/dev/null 2>&1; then echo "-march=$(PROC)"; fi)
   endif
 endif
 
@@ -237,10 +231,8 @@ ifeq ($(PROC),ppc)
 endif
 
 ifeq ($(OSARCH),FreeBSD)
-  ifeq ($(findstring -march,$(_ASTCFLAGS) $(ASTCFLAGS)),)
-    ifeq ($(PROC),i386)
-      _ASTCFLAGS+=-march=i686
-    endif
+  ifeq ($(PROC),i386)
+    _ASTCFLAGS+=-march=i686
   endif
   # -V is understood by BSD Make, not by GNU make.
   BSDVERSION=$(shell make -V OSVERSION -f /usr/share/mk/bsd.port.subdir.mk)
@@ -344,7 +336,7 @@ all: _all
 	@echo " +               $(mK) install               +"  
 	@echo " +-------------------------------------------+"  
 
-_all: cleantest makeopts $(SUBDIRS) doc/core-en_US.xml $(ADDL_TARGETS)
+_all: cleantest makeopts $(SUBDIRS) doc/core-en_US.xml
 
 makeopts: configure
 	@echo "****"
@@ -470,12 +462,6 @@ datafiles: _all doc/core-en_US.xml
 		$(INSTALL) -m 644 $$x "$(DESTDIR)$(ASTDATADIR)/static-http" ; \
 	done
 	$(INSTALL) -m 644 doc/core-en_US.xml "$(DESTDIR)$(ASTDATADIR)/static-http";
-	if [ -d doc/tex/asterisk ] ; then \
-		$(INSTALL) -d "$(DESTDIR)$(ASTDATADIR)/static-http/docs" ; \
-		for n in doc/tex/asterisk/* ; do \
-			$(INSTALL) -m 644 $$n "$(DESTDIR)$(ASTDATADIR)/static-http/docs" ; \
-		done \
-	fi
 	for x in images/*.jpg; do \
 		$(INSTALL) -m 644 $$x "$(DESTDIR)$(ASTDATADIR)/images" ; \
 	done
@@ -567,7 +553,7 @@ bininstall: _all installdirs $(SUBDIRS_INSTALL)
 	$(INSTALL) -m 755 contrib/scripts/astgenkey "$(DESTDIR)$(ASTSBINDIR)/"
 	$(INSTALL) -m 755 contrib/scripts/autosupport "$(DESTDIR)$(ASTSBINDIR)/"
 	if [ ! -f "$(DESTDIR)$(ASTSBINDIR)/safe_asterisk" -a ! -f /sbin/launchd ]; then \
-		cat contrib/scripts/safe_asterisk | sed 's|__ASTERISK_SBIN_DIR__|$(ASTSBINDIR)|;s|__ASTERISK_VARRUN_DIR__|$(ASTVARRUNDIR)|;s|__ASTERISK_LOG_DIR__|$(ASTLOGDIR)|;' > contrib/scripts/safe.tmp ; \
+		cat contrib/scripts/safe_asterisk | sed 's|__ASTERISK_SBIN_DIR__|$(ASTSBINDIR)|;s|__ASTERISK_VARRUN_DIR__|$(ASTVARRUNDIR)|;' > contrib/scripts/safe.tmp ; \
 		$(INSTALL) -m 755 contrib/scripts/safe.tmp "$(DESTDIR)$(ASTSBINDIR)/safe_asterisk" ; \
 		rm -f contrib/scripts/safe.tmp ; \
 	fi
@@ -840,7 +826,6 @@ sounds:
 
 cleantest:
 	@cmp -s .cleancount .lastclean || $(MAKE) clean
-	@[ -f "$(DESTDIR)$(ASTDBDIR)/astdb.sqlite3" ] || [ ! -f "$(DESTDIR)$(ASTDBDIR)/astdb" ] || [ ! -f menuselect.makeopts ] || grep -q MENUSELECT_UTILS=.*astdb2sqlite3 menuselect.makeopts || (sed -i.orig -e's/MENUSELECT_UTILS=\(.*\)/MENUSELECT_UTILS=\1 astdb2sqlite3/' menuselect.makeopts && echo "Updating menuselect.makeopts to include astdb2sqlite3" && echo "Original version backed up to menuselect.makeopts.orig")
 
 $(SUBDIRS_UNINSTALL):
 	+@$(SUBMAKE) -C $(@:-uninstall=) uninstall

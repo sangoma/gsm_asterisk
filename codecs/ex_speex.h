@@ -18,6 +18,7 @@ static struct ast_frame *speex_sample(void)
 {
 	static struct ast_frame f = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SPEEX,
 		.datalen = sizeof(ex_speex),
 		/* All frames are 20 ms long */
 		.samples = SPEEX_SAMPLES,
@@ -26,8 +27,6 @@ static struct ast_frame *speex_sample(void)
 		.src = __PRETTY_FUNCTION__,
 		.data.ptr = ex_speex,
 	};
-
-	ast_format_set(&f.subclass.format, AST_FORMAT_SPEEX, 0);
 
 	return &f;
 }
@@ -50,6 +49,7 @@ static struct ast_frame *speex16_sample(void)
 {
 	static struct ast_frame f = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SPEEX16,
 		.datalen = sizeof(ex_speex16),
 		/* All frames are 20 ms long */
 		.samples = SPEEX_SAMPLES,
@@ -58,7 +58,6 @@ static struct ast_frame *speex16_sample(void)
 		.src = __PRETTY_FUNCTION__,
 		.data.ptr = ex_speex16,
 	};
-	ast_format_set(&f.subclass.format, AST_FORMAT_SPEEX16, 0);
 
 	return &f;
 }

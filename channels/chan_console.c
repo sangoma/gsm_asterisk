@@ -54,7 +54,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335064 $")
 
 #include <sys/signal.h>  /* SIGURG */
 
@@ -185,7 +185,7 @@ static struct ast_jb_conf default_jbconf = {
 static struct ast_jb_conf global_jbconf;
 
 /*! Channel Technology Callbacks @{ */
-static struct ast_channel *console_request(const char *type, struct ast_format_cap *cap,
+static struct ast_channel *console_request(const char *type, format_t format,
 	const struct ast_channel *requestor, void *data, int *cause);
 static int console_digit_begin(struct ast_channel *c, char digit);
 static int console_digit_end(struct ast_channel *c, char digit, unsigned int duration);
@@ -200,9 +200,15 @@ static int console_indicate(struct ast_channel *chan, int cond,
 static int console_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
 /*! @} */
 
-static struct ast_channel_tech console_tech = {
+/*!
+ * \brief Formats natively supported by this module.
+ */
+#define SUPPORTED_FORMATS ( AST_FORMAT_SLINEAR16 )
+
+static const struct ast_channel_tech console_tech = {
 	.type = "Console",
 	.description = "Console Channel Driver",
+	.capabilities = SUPPORTED_FORMATS,
 	.requester = console_request,
 	.send_digit_begin = console_digit_begin,
 	.send_digit_end = console_digit_end,
@@ -261,12 +267,12 @@ static void *stream_monitor(void *data)
 	PaError res;
 	struct ast_frame f = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SLINEAR16,
 		.src = "console_stream_monitor",
 		.data.ptr = buf,
 		.datalen = sizeof(buf),
 		.samples = sizeof(buf) / sizeof(int16_t),
 	};
-	ast_format_set(&f.subclass.format, AST_FORMAT_SLINEAR16, 0);
 
 	for (;;) {
 		pthread_testcancel();
@@ -420,9 +426,9 @@ static struct ast_channel *console_new(struct console_pvt *pvt, const char *ext,
 	}
 
 	chan->tech = &console_tech;
-	ast_format_set(&chan->readformat, AST_FORMAT_SLINEAR16, 0);
-	ast_format_set(&chan->writeformat, AST_FORMAT_SLINEAR16, 0);
-	ast_format_cap_add(chan->nativeformats, &chan->readformat);
+	chan->nativeformats = AST_FORMAT_SLINEAR16;
+	chan->readformat = AST_FORMAT_SLINEAR16;
+	chan->writeformat = AST_FORMAT_SLINEAR16;
 	chan->tech_pvt = ref_pvt(pvt);
 
 	pvt->owner = chan;
@@ -444,8 +450,9 @@ static struct ast_channel *console_new(struct console_pvt *pvt, const char *ext,
 	return chan;
 }
 
-static struct ast_channel *console_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *console_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
 {
+	format_t oldformat = format;
 	struct ast_channel *chan = NULL;
 	struct console_pvt *pvt;
 	char buf[512];
@@ -455,8 +462,9 @@ static struct ast_channel *console_request(const char *type, struct ast_format_c
 		return NULL;
 	}
 
-	if (!(ast_format_cap_has_joint(cap, console_tech.capabilities))) {
-		ast_log(LOG_NOTICE, "Channel requested with unsupported format(s): '%s'\n", ast_getformatname_multiple(buf, sizeof(buf), cap));
+	format &= SUPPORTED_FORMATS;
+	if (!format) {
+		ast_log(LOG_NOTICE, "Channel requested with unsupported format(s): '%s'\n", ast_getformatname_multiple(buf, sizeof(buf), oldformat));
 		goto return_unref;
 	}
 
@@ -1452,7 +1460,6 @@ static void stop_streams(void)
 
 static int unload_module(void)
 {
-	console_tech.capabilities = ast_format_cap_destroy(console_tech.capabilities);
 	ast_channel_unregister(&console_tech);
 	ast_cli_unregister_multiple(cli_console, ARRAY_LEN(cli_console));
 
@@ -1470,13 +1477,7 @@ static int unload_module(void)
 
 static int load_module(void)
 {
-	struct ast_format tmpfmt;
 	PaError res;
-
-	if (!(console_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_add(console_tech.capabilities, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR16, 0));
 
 	init_pvt(&globals, NULL);
 

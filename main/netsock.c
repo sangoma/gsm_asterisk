@@ -27,12 +27,10 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 298052 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 298051 $")
 
-#ifndef __linux__ 
-#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__Darwin__) || defined(__GLIBC__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__Darwin__)
 #include <net/if_dl.h>
-#endif
 #endif
 
 #if defined (SOLARIS)

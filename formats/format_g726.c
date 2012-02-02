@@ -34,7 +34,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -123,7 +123,7 @@ static struct ast_frame *g726_read(struct ast_filestream *s, int *whennext)
 
 	/* Send a frame from the file to the appropriate channel */
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_G726, 0);
+	s->fr.subclass.codec = AST_FORMAT_G726;
 	s->fr.mallocd = 0;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, frame_size[fs->rate]);
 	s->fr.samples = 8 * FRAME_TIME;
@@ -145,9 +145,9 @@ static int g726_write(struct ast_filestream *s, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_G726) {
+	if (f->subclass.codec != AST_FORMAT_G726) {
 		ast_log(LOG_WARNING, "Asked to write non-G726 frame (%s)!\n", 
-						ast_getformatname(&f->subclass.format));
+						ast_getformatname(f->subclass.codec));
 		return -1;
 	}
 	if (f->datalen % frame_size[fs->rate]) {
@@ -178,10 +178,11 @@ static off_t g726_tell(struct ast_filestream *fs)
 	return -1;
 }
 
-static struct ast_format_def f[] = {
+static const struct ast_format f[] = {
 	{
 		.name = "g726-40",
 		.exts = "g726-40",
+		.format = AST_FORMAT_G726,
 		.open = g726_40_open,
 		.rewrite = g726_40_rewrite,
 		.write = g726_write,
@@ -195,6 +196,7 @@ static struct ast_format_def f[] = {
 	{
 		.name = "g726-32",
 		.exts = "g726-32",
+		.format = AST_FORMAT_G726,
 		.open = g726_32_open,
 		.rewrite = g726_32_rewrite,
 		.write = g726_write,
@@ -208,6 +210,7 @@ static struct ast_format_def f[] = {
 	{
 		.name = "g726-24",
 		.exts = "g726-24",
+		.format = AST_FORMAT_G726,
 		.open = g726_24_open,
 		.rewrite = g726_24_rewrite,
 		.write = g726_write,
@@ -221,6 +224,7 @@ static struct ast_format_def f[] = {
 	{
 		.name = "g726-16",
 		.exts = "g726-16",
+		.format = AST_FORMAT_G726,
 		.open = g726_16_open,
 		.rewrite = g726_16_rewrite,
 		.write = g726_write,
@@ -231,16 +235,15 @@ static struct ast_format_def f[] = {
 		.buf_size = BUF_SIZE + AST_FRIENDLY_OFFSET,
 		.desc_size = sizeof(struct g726_desc),
 	},
-	{	.desc_size = 0 }	/* terminator */
+	{	.format = 0 }	/* terminator */
 };
 
 static int load_module(void)
 {
 	int i;
 
-	for (i = 0; f[i].desc_size ; i++) {
-		ast_format_set(&f[i].format, AST_FORMAT_G726, 0);
-		if (ast_format_def_register(&f[i])) {	/* errors are fatal */
+	for (i = 0; f[i].format ; i++) {
+		if (ast_format_register(&f[i])) {	/* errors are fatal */
 			ast_log(LOG_WARNING, "Failed to register format %s.\n", f[i].name);
 			return AST_MODULE_LOAD_FAILURE;
 		}
@@ -252,8 +255,8 @@ static int unload_module(void)
 {
 	int i;
 
-	for (i = 0; f[i].desc_size ; i++) {
-		if (ast_format_def_unregister(f[i].name))
+	for (i = 0; f[i].format ; i++) {
+		if (ast_format_unregister(f[i].name))
 			ast_log(LOG_WARNING, "Failed to unregister format %s.\n", f[i].name);
 	}
 	return(0);

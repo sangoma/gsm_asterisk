@@ -36,14 +36,13 @@
 
 /*** MODULEINFO
 	<depend>sqlite</depend>
-	<defaultenabled>no</defaultenabled>
 	<support_level>deprecated</support_level>
 	<replacement>sqlite3_custom</replacement>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328446 $")
 
 #include <sqlite.h>
 

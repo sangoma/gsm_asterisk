@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342716 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/calendar.h"
@@ -199,7 +199,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342716 $")
 #define CALENDAR_BUCKETS 19
 
 static struct ao2_container *calendars;
-static struct ast_sched_context *sched;
+static struct sched_context *sched;
 static pthread_t refresh_thread = AST_PTHREADT_NULL;
 static ast_mutex_t refreshlock;
 static ast_cond_t refresh_condition;
@@ -317,10 +317,6 @@ static void calendar_destructor(void *obj)
 	}
 	ast_calendar_clear_events(cal);
 	ast_string_field_free_memory(cal);
-	if (cal->vars) {
-		ast_variables_destroy(cal->vars);
-		cal->vars = NULL;
-	}
 	ao2_ref(cal->events, -1);
 	ao2_unlock(cal);
 }
@@ -377,7 +373,7 @@ static enum ast_device_state calendarstate(const char *data)
 static struct ast_calendar *build_calendar(struct ast_config *cfg, const char *cat, const struct ast_calendar_tech *tech)
 {
 	struct ast_calendar *cal;
-	struct ast_variable *v, *last = NULL;
+	struct ast_variable *v;
 	int new_calendar = 0;
 
 	if (!(cal = find_calendar(cat))) {
@@ -431,26 +427,6 @@ static struct ast_calendar *build_calendar(struct ast_config *cfg, const char *c
 			cal->refresh = atoi(v->value);
 		} else if (!strcasecmp(v->name, "timeframe")) {
 			cal->timeframe = atoi(v->value);
-		} else if (!strcasecmp(v->name, "setvar")) {
-			char *name, *value;
-			struct ast_variable *var;
-
-			if ((name = (value = ast_strdup(v->value)))) {
-				strsep(&value, "=");
-				if (value) {
-					if ((var = ast_variable_new(ast_strip(name), ast_strip(value), ""))) {
-						if (last) {
-							last->next = var;
-						} else {
-							cal->vars = var;
-						}
-						last = var;
-					}
-				} else {
-					ast_log(LOG_WARNING, "Malformed argument. Should be '%s: variable=value'\n", v->name);
-				}
-				ast_free(name);
-			}
 		}
 	}
 
@@ -694,11 +670,10 @@ static void *do_notify(void *data)
 {
 	struct ast_calendar_event *event = data;
 	struct ast_dial *dial = NULL;
-	struct ast_str *apptext = NULL, *tmpstr = NULL;
+	struct ast_str *apptext = NULL;
 	struct ast_datastore *datastore;
 	enum ast_dial_result res;
 	struct ast_channel *chan = NULL;
-	struct ast_variable *itervar;
 	char *tech, *dest;
 	char buf[8];
 
@@ -731,12 +706,8 @@ static void *do_notify(void *data)
 	}
 
 	chan->tech = &null_tech;
-	ast_format_set(&chan->writeformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&chan->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&chan->rawwriteformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&chan->rawreadformat, AST_FORMAT_SLINEAR, 0);
-	/* clear native formats and set to slinear. write format is signlear so just use that to set it */
-	ast_format_cap_set(chan->nativeformats, &chan->writeformat);
+	chan->nativeformats = chan->writeformat = chan->rawwriteformat =
+		chan->readformat = chan->rawreadformat = AST_FORMAT_SLINEAR;
 
 	if (!(datastore = ast_datastore_alloc(&event_notification_datastore, NULL))) {
 		ast_log(LOG_ERROR, "Could not allocate datastore, notification not being sent!\n");
@@ -748,15 +719,6 @@ static void *do_notify(void *data)
 
 	ao2_ref(event, +1);
 	res = ast_channel_datastore_add(chan, datastore);
-
-	if (!(tmpstr = ast_str_create(32))) {
-		goto notify_cleanup;
-	}
-
-	for (itervar = event->owner->vars; itervar; itervar = itervar->next) {
-		ast_str_substitute_variables(&tmpstr, 0, chan, itervar->value);
-		pbx_builtin_setvar_helper(chan, itervar->name, tmpstr->str);
-	}
 
 	if (!(apptext = ast_str_create(32))) {
 		goto notify_cleanup;
@@ -788,9 +750,6 @@ static void *do_notify(void *data)
 notify_cleanup:
 	if (apptext) {
 		ast_free(apptext);
-	}
-	if (tmpstr) {
-		ast_free(tmpstr);
 	}
 	if (dial) {
 		ast_dial_destroy(dial);
@@ -1483,35 +1442,6 @@ static char *handle_show_calendars(struct ast_cli_entry *e, int cmd, struct ast_
 #undef FORMAT
 }
 
-/*! \brief CLI command to list of all calendars types currently loaded on the backend */
-static char *handle_show_calendars_types(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-#define FORMAT "%-10.10s %-30.30s\n"
-        struct ast_calendar_tech *iter;
-
-
-	switch(cmd) {
-	case CLI_INIT:
-		e->command = "calendar show types";
-		e->usage =
-			"Usage: calendar show types\n"
-			"       Lists all registered calendars types.\n";
-		return NULL;
-	case CLI_GENERATE:
-		return NULL;
-	}
-
-	ast_cli(a->fd, FORMAT, "Type", "Description");
-	AST_LIST_LOCK(&techs);
-	AST_LIST_TRAVERSE(&techs, iter, list) {
-		ast_cli(a->fd, FORMAT, iter->type, iter->description);
-	}
-	AST_LIST_UNLOCK(&techs);
-
-	return CLI_SUCCESS;
-#undef FORMAT
-}
-
 static char *epoch_to_string(char *buf, size_t buflen, time_t epoch)
 {
 	struct ast_tm tm;
@@ -1632,7 +1562,6 @@ static struct ast_cli_entry calendar_cli[] = {
 	AST_CLI_DEFINE(handle_show_calendar, "Display information about a calendar"),
 	AST_CLI_DEFINE(handle_show_calendars, "Show registered calendars"),
 	AST_CLI_DEFINE(handle_dump_sched, "Dump calendar sched context"),
-	AST_CLI_DEFINE(handle_show_calendars_types, "Show all calendar types loaded"),
 };
 
 static int calendar_event_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
@@ -1800,7 +1729,7 @@ static int load_module(void)
 	ast_cond_init(&refresh_condition, NULL);
 	ast_mutex_init(&reloadlock);
 
-	if (!(sched = ast_sched_context_create())) {
+	if (!(sched = sched_context_create())) {
 		ast_log(LOG_ERROR, "Unable to create sched context\n");
 		return AST_MODULE_LOAD_FAILURE;
 	}

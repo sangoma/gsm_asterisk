@@ -32,7 +32,7 @@
 
 #include <inttypes.h>
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332178 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332176 $")
 
 #include "asterisk/module.h"
 #include "asterisk/utils.h"
@@ -47,7 +47,7 @@ static int sched_cb(const void *data)
 
 AST_TEST_DEFINE(sched_test_order)
 {
-	struct ast_sched_context *con;
+	struct sched_context *con;
 	enum ast_test_result_state res = AST_TEST_FAIL;
 	int id1, id2, id3, wait;
 
@@ -64,7 +64,7 @@ AST_TEST_DEFINE(sched_test_order)
 		break;
 	}
 
-	if (!(con = ast_sched_context_create())) {
+	if (!(con = sched_context_create())) {
 		ast_test_status_update(test,
 				"Test failed - could not create scheduler context\n");
 		return AST_TEST_FAIL;
@@ -155,14 +155,14 @@ AST_TEST_DEFINE(sched_test_order)
 	res = AST_TEST_PASS;
 
 return_cleanup:
-	ast_sched_context_destroy(con);
+	sched_context_destroy(con);
 
 	return res;
 }
 
 static char *handle_cli_sched_bench(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
-	struct ast_sched_context *con;
+	struct sched_context *con;
 	struct timeval start;
 	unsigned int num, i;
 	int *sched_ids = NULL;
@@ -186,7 +186,7 @@ static char *handle_cli_sched_bench(struct ast_cli_entry *e, int cmd, struct ast
 		return CLI_SHOWUSAGE;
 	}
 
-	if (!(con = ast_sched_context_create())) {
+	if (!(con = sched_context_create())) {
 		ast_cli(a->fd, "Test failed - could not create scheduler context\n");
 		return CLI_FAILURE;
 	}
@@ -226,7 +226,7 @@ static char *handle_cli_sched_bench(struct ast_cli_entry *e, int cmd, struct ast
 	ast_cli(a->fd, "Test complete - %" PRIi64 " us\n", ast_tvdiff_us(ast_tvnow(), start));
 
 return_cleanup:
-	ast_sched_context_destroy(con);
+	sched_context_destroy(con);
 	if (sched_ids) {
 		ast_free(sched_ids);
 	}

@@ -254,10 +254,10 @@ forcejitterbuffer=no
 ;
 ; subscribe_network_change_event = yes ; on by default
 ;
-; You can enable authentication debugging to increase the amount of
+; You can disable authentication debugging to reduce the amount of
 ; debugging traffic.
 ;
-;authdebug = yes
+;authdebug=no
 ;
 ; See https://wiki.asterisk.org/wiki/display/AST/IP+Quality+of+Service for a description of these parameters.
 ;tos=ef
@@ -504,7 +504,6 @@ type=peer
 username=asterisk
 secret=supersecret
 host=216.207.245.47
-description=Demo System At Digium	; Description of this peer, as listed by 'iax2 show peers'
 ;sendani=no
 ;host=asterisk.linux-support.net
 ;port=5036
@@ -545,7 +544,6 @@ description=Demo System At Digium	; Description of this peer, as listed by 'iax2
 ;[biggateway]
 ;type=peer
 ;host=192.168.0.1
-;description=Gateway to PSTN
 ;context=*
 ;secret=myscret
 ;trunk=yes			; Use IAX2 trunking with this host

@@ -47,7 +47,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 331201 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 329471 $")
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -856,7 +856,6 @@ int ast_get_enum(struct ast_channel *chan, const char *number, char *dst, int ds
 
 	if (ret < 0) {
 		ast_debug(1, "No such number found: %s (%s)\n", tmp, strerror(errno));
-		context->naptr_rrs_count = -1;
 		strcpy(dst, "0");
 		ret = 0;
 	}
@@ -897,7 +896,7 @@ int ast_get_enum(struct ast_channel *chan, const char *number, char *dst, int ds
 	} else if (!(context->options & ENUMLOOKUP_OPTIONS_COUNT)) {
 		context->dst[0] = 0;
 	} else if ((context->options & ENUMLOOKUP_OPTIONS_COUNT)) {
-		snprintf(context->dst, context->dstlen, "%d", context->naptr_rrs_count + context->count);
+		snprintf(context->dst, context->dstlen, "%d", context->count);
 	}
 
 	if (chan) {

@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "mp3/mpg123.h"
 #include "mp3/mpglib.h"
@@ -225,7 +225,7 @@ static struct ast_frame *mp3_read(struct ast_filestream *s, int *whennext)
 	p->offset += p->buflen;
 	delay = p->buflen/2;
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_SLINEAR, 0);
+	s->fr.subclass.codec = AST_FORMAT_SLINEAR;
 	AST_FRAME_SET_BUFFER(&s->fr, s->buf, AST_FRIENDLY_OFFSET, p->buflen);
 	s->fr.mallocd = 0;
 	s->fr.samples = delay;
@@ -294,9 +294,10 @@ static char *mp3_getcomment(struct ast_filestream *s)
 	return NULL;
 }
 
-static struct ast_format_def mp3_f = {
+static const struct ast_format mp3_f = {
 	.name = "mp3",
 	.exts = "mp3",
+	.format = AST_FORMAT_SLINEAR,
 	.open = mp3_open,
 	.write = mp3_write,
 	.rewrite = mp3_rewrite,
@@ -313,14 +314,13 @@ static struct ast_format_def mp3_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&mp3_f.format, AST_FORMAT_SLINEAR, 0);
 	InitMP3Constants();
-	return ast_format_def_register(&mp3_f);
+	return ast_format_register(&mp3_f);
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(name);
+	return ast_format_unregister(name);
 }	
 
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "MP3 format [Any rate but 8000hz mono is optimal]");

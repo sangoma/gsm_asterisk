@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/config.h"
@@ -82,6 +82,8 @@ static int lintoulaw_framein(struct ast_trans_pvt *pvt, struct ast_frame *f)
 
 static struct ast_translator ulawtolin = {
 	.name = "ulawtolin",
+	.srcfmt = AST_FORMAT_ULAW,
+	.dstfmt = AST_FORMAT_SLINEAR,
 	.framein = ulawtolin_framein,
 	.sample = ulaw_sample,
 	.buffer_samples = BUFFER_SAMPLES,
@@ -90,6 +92,8 @@ static struct ast_translator ulawtolin = {
 
 static struct ast_translator testlawtolin = {
 	.name = "testlawtolin",
+	.srcfmt = AST_FORMAT_TESTLAW,
+	.dstfmt = AST_FORMAT_SLINEAR,
 	.framein = ulawtolin_framein,
 	.sample = ulaw_sample,
 	.buffer_samples = BUFFER_SAMPLES,
@@ -102,6 +106,8 @@ static struct ast_translator testlawtolin = {
 
 static struct ast_translator lintoulaw = {
 	.name = "lintoulaw",
+	.srcfmt = AST_FORMAT_SLINEAR,
+	.dstfmt = AST_FORMAT_ULAW,
 	.framein = lintoulaw_framein,
 	.sample = slin8_sample,
 	.buf_size = BUFFER_SAMPLES,
@@ -110,6 +116,8 @@ static struct ast_translator lintoulaw = {
 
 static struct ast_translator lintotestlaw = {
 	.name = "lintotestlaw",
+	.srcfmt = AST_FORMAT_SLINEAR,
+	.dstfmt = AST_FORMAT_TESTLAW,
 	.framein = lintoulaw_framein,
 	.sample = slin8_sample,
 	.buf_size = BUFFER_SAMPLES,
@@ -136,18 +144,6 @@ static int unload_module(void)
 static int load_module(void)
 {
 	int res;
-
-	ast_format_set(&lintoulaw.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintoulaw.dst_format, AST_FORMAT_ULAW, 0);
-
-	ast_format_set(&lintotestlaw.src_format, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&lintotestlaw.dst_format, AST_FORMAT_TESTLAW, 0);
-
-	ast_format_set(&ulawtolin.src_format, AST_FORMAT_ULAW, 0);
-	ast_format_set(&ulawtolin.dst_format, AST_FORMAT_SLINEAR, 0);
-
-	ast_format_set(&testlawtolin.src_format, AST_FORMAT_TESTLAW, 0);
-	ast_format_set(&testlawtolin.dst_format, AST_FORMAT_SLINEAR, 0);
 
 	res = ast_register_translator(&ulawtolin);
 	if (!res) {

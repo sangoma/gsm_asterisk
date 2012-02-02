@@ -24,7 +24,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 308582 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 275105 $")
 
 #include "asterisk/_private.h"
 
@@ -3100,7 +3100,7 @@ static int manager_data_get(struct mansession *s, const struct message *m)
 	return RESULT_SUCCESS;
 }
 
-int ast_data_add_codec(struct ast_data *root, const char *node_name, struct ast_format *format)
+int ast_data_add_codecs(struct ast_data *root, const char *node_name, format_t capability)
 {
 	struct ast_data *codecs, *codec;
 	size_t fmlist_size;
@@ -3111,12 +3111,11 @@ int ast_data_add_codec(struct ast_data *root, const char *node_name, struct ast_
 	if (!codecs) {
 		return -1;
 	}
-	fmlist = ast_format_list_get(&fmlist_size);
+	fmlist = ast_get_format_list(&fmlist_size);
 	for (x = 0; x < fmlist_size; x++) {
-		if (ast_format_cmp(&fmlist[x].format, format) == AST_FORMAT_CMP_EQUAL) {
+		if (fmlist[x].bits & capability) {
 			codec = ast_data_add_node(codecs, "codec");
 			if (!codec) {
-				ast_format_list_destroy(fmlist);
 				return -1;
 			}
 			ast_data_add_str(codec, "name", fmlist[x].name);
@@ -3125,37 +3124,6 @@ int ast_data_add_codec(struct ast_data *root, const char *node_name, struct ast_
 			ast_data_add_int(codec, "frame_length", fmlist[x].fr_len);
 		}
 	}
-	ast_format_list_destroy(fmlist);
-
-	return 0;
-}
-
-int ast_data_add_codecs(struct ast_data *root, const char *node_name, struct ast_format_cap *cap)
-{
-	struct ast_data *codecs, *codec;
-	size_t fmlist_size;
-	const struct ast_format_list *fmlist;
-	int x;
-
-	codecs = ast_data_add_node(root, node_name);
-	if (!codecs) {
-		return -1;
-	}
-	fmlist = ast_format_list_get(&fmlist_size);
-	for (x = 0; x < fmlist_size; x++) {
-		if (ast_format_cap_iscompatible(cap, &fmlist[x].format)) {
-			codec = ast_data_add_node(codecs, "codec");
-			if (!codec) {
-				ast_format_list_destroy(fmlist);
-				return -1;
-			}
-			ast_data_add_str(codec, "name", fmlist[x].name);
-			ast_data_add_int(codec, "samplespersecond", fmlist[x].samplespersecond);
-			ast_data_add_str(codec, "description", fmlist[x].desc);
-			ast_data_add_int(codec, "frame_length", fmlist[x].fr_len);
-		}
-	}
-	ast_format_list_destroy(fmlist);
 
 	return 0;
 }

@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -82,10 +82,10 @@ static int milliwatt_generate(struct ast_channel *chan, void *data, int len, int
 	int i, *indexp = (int *) data;
 	struct ast_frame wf = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_ULAW,
 		.offset = AST_FRIENDLY_OFFSET,
 		.src = __FUNCTION__,
 	};
-	ast_format_set(&wf.subclass.format, AST_FORMAT_ULAW, 0);
 	wf.data.ptr = buf + AST_FRIENDLY_OFFSET;
 
 	/* Instead of len, use samples, because channel.c generator_force
@@ -124,8 +124,8 @@ static struct ast_generator milliwattgen = {
 
 static int old_milliwatt_exec(struct ast_channel *chan)
 {
-	ast_set_write_format_by_id(chan, AST_FORMAT_ULAW);
-	ast_set_read_format_by_id(chan, AST_FORMAT_ULAW);
+	ast_set_write_format(chan, AST_FORMAT_ULAW);
+	ast_set_read_format(chan, AST_FORMAT_ULAW);
 
 	if (chan->_state != AST_STATE_UP) {
 		ast_answer(chan);

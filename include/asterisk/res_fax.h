@@ -42,8 +42,6 @@ enum ast_fax_capabilities {
 	AST_FAX_TECH_T38       = (1 << 3),
 	/*! sending mulitple documents supported */
 	AST_FAX_TECH_MULTI_DOC = (1 << 4),
-	/*! T.38 - T.30 Gateway */
-	AST_FAX_TECH_GATEWAY = (1 << 5),
 };
 
 /*! \brief fax modem capabilities */
@@ -170,12 +168,6 @@ struct ast_fax_session_details {
 	struct ast_fax_t38_parameters our_t38_parameters;
 	/*! the other endpoint's T.38 session parameters, if any */
 	struct ast_fax_t38_parameters their_t38_parameters;
-	/*! the id of the t.38 gateway framehook for this channel */
-	int gateway_id;
-	/*! the timeout for this gateway in seconds */
-	int gateway_timeout;
-	/*! the id of the faxdetect framehook for this channel */
-	int faxdetect_id;
 };
 
 struct ast_fax_tech;
@@ -211,9 +203,6 @@ struct ast_fax_session {
 	/*! used to take variable-sized frames in and output frames of an expected size to the fax stack */
 	struct ast_smoother *smoother;
 };
-
-/* if this overlaps with any AST_FRFLAG_* values, problems will occur */
-#define AST_FAX_FRFLAG_GATEWAY (1 << 13)
 
 /*! \brief used to register a FAX technology module with res_fax */
 struct ast_fax_tech {

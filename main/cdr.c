@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335170 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321547 $")
 
 #include <signal.h>
 
@@ -80,7 +80,7 @@ static int cdr_sequence =  0;
 
 static int cdr_seq_inc(struct ast_cdr *cdr);
 
-static struct ast_sched_context *sched;
+static struct sched_context *sched;
 static int cdr_sched = -1;
 static pthread_t cdr_thread = AST_PTHREADT_NULL;
 
@@ -92,9 +92,6 @@ static const int BATCHMODE_DEFAULT = 0;
 
 static int unanswered;
 static const int UNANSWERED_DEFAULT = 0;
-
-static int congestion;
-static const int CONGESTION_DEFAULT = 0;
 
 static int batchsize;
 static const int BATCH_SIZE_DEFAULT = 100;
@@ -182,11 +179,6 @@ void ast_cdr_unregister(const char *name)
 int ast_cdr_isset_unanswered(void)
 {
 	return unanswered;
-}
-
-int ast_cdr_isset_congestion(void)
-{
-	return congestion;
 }
 
 struct ast_cdr *ast_cdr_dup_unique(struct ast_cdr *cdr)
@@ -784,31 +776,6 @@ void ast_cdr_noanswer(struct ast_cdr *cdr)
 	}
 }
 
-void ast_cdr_congestion(struct ast_cdr *cdr)
-{
-	char *chan;
-
-	/* if congestion log is disabled, pass the buck to ast_cdr_failed */
-	if (!congestion) {
-		ast_cdr_failed(cdr);
-	}
-
-	while (cdr && congestion) {
-		if (!ast_test_flag(cdr, AST_CDR_FLAG_LOCKED)) {
-			chan = !ast_strlen_zero(cdr->channel) ? cdr->channel : "<unknown>";
-
-			if (ast_test_flag(cdr, AST_CDR_FLAG_POSTED)) {
-				ast_log(LOG_WARNING, "CDR on channel '%s' already posted\n", chan);
-			}
-
-			if (cdr->disposition < AST_CDR_CONGESTION) {
-				cdr->disposition = AST_CDR_CONGESTION;
-			}
-		}
-		cdr = cdr->next;
-	}
-}
-
 /* everywhere ast_cdr_disposition is called, it will call ast_cdr_failed()
    if ast_cdr_disposition returns a non-zero value */
 
@@ -824,9 +791,6 @@ int ast_cdr_disposition(struct ast_cdr *cdr, int cause)
 			break;
 		case AST_CAUSE_NO_ANSWER:
 			ast_cdr_noanswer(cdr);
-			break;
-		case AST_CAUSE_NORMAL_CIRCUIT_CONGESTION:
-			ast_cdr_congestion(cdr);
 			break;
 		case AST_CAUSE_NORMAL:
 			break;
@@ -997,8 +961,6 @@ char *ast_cdr_disp2str(int disposition)
 		return "BUSY";
 	case AST_CDR_ANSWERED:
 		return "ANSWERED";
-	case AST_CDR_CONGESTION:
-		return "CONGESTION";
 	}
 	return "UNKNOWN";
 }
@@ -1454,8 +1416,7 @@ static char *handle_cli_status(struct ast_cli_entry *e, int cmd, struct ast_cli_
 	ast_cli(a->fd, "  Logging:                    %s\n", enabled ? "Enabled" : "Disabled");
 	ast_cli(a->fd, "  Mode:                       %s\n", batchmode ? "Batch" : "Simple");
 	if (enabled) {
-		ast_cli(a->fd, "  Log unanswered calls:       %s\n", unanswered ? "Yes" : "No");
-		ast_cli(a->fd, "  Log congestion:             %s\n\n", congestion ? "Yes" : "No");
+		ast_cli(a->fd, "  Log unanswered calls:       %s\n\n", unanswered ? "Yes" : "No");
 		if (batchmode) {
 			ast_cli(a->fd, "* Batch Mode Settings\n");
 			ast_cli(a->fd, "  -------------------\n");
@@ -1514,12 +1475,20 @@ static struct ast_cli_entry cli_status = AST_CLI_DEFINE(handle_cli_status, "Disp
 static int do_reload(int reload)
 {
 	struct ast_config *config;
-	struct ast_variable *v;
+	const char *enabled_value;
+	const char *unanswered_value;
+	const char *batched_value;
+	const char *scheduleronly_value;
+	const char *batchsafeshutdown_value;
+	const char *size_value;
+	const char *time_value;
+	const char *end_before_h_value;
+	const char *initiatedseconds_value;
 	int cfg_size;
 	int cfg_time;
 	int was_enabled;
 	int was_batchmode;
-	int res = 0;
+	int res=0;
 	struct ast_flags config_flags = { reload ? CONFIG_FLAG_FILEUNCHANGED : 0 };
 
 	if ((config = ast_config_load2("cdr.conf", "cdr", config_flags)) == CONFIG_STATUS_FILEUNCHANGED) {
@@ -1538,7 +1507,6 @@ static int do_reload(int reload)
 	enabled = ENABLED_DEFAULT;
 	batchmode = BATCHMODE_DEFAULT;
 	unanswered = UNANSWERED_DEFAULT;
-	congestion = CONGESTION_DEFAULT;
 
 	if (config == CONFIG_STATUS_FILEMISSING || config == CONFIG_STATUS_FILEINVALID) {
 		ast_mutex_unlock(&cdr_batch_lock);
@@ -1548,40 +1516,42 @@ static int do_reload(int reload)
 	/* don't run the next scheduled CDR posting while reloading */
 	AST_SCHED_DEL(sched, cdr_sched);
 
-	for (v = ast_variable_browse(config, "general"); v; v = v->next) {
-		if (!strcasecmp(v->name, "enable")) {
-			enabled = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "unanswered")) {
-			unanswered = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "congestion")) {
-			congestion = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "batch")) {
-			batchmode = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "scheduleronly")) {
-			batchscheduleronly = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "safeshutdown")) {
-			batchsafeshutdown = ast_true(v->value);
-		} else if (!strcasecmp(v->name, "size")) {
-			if (sscanf(v->value, "%30d", &cfg_size) < 1) {
-				ast_log(LOG_WARNING, "Unable to convert '%s' to a numeric value.\n", v->value);
-			} else if (cfg_size < 0) {
-				ast_log(LOG_WARNING, "Invalid maximum batch size '%d' specified, using default\n", cfg_size);
-			} else {
-				batchsize = cfg_size;
-			}
-		} else if (!strcasecmp(v->name, "time")) {
-			if (sscanf(v->value, "%30d", &cfg_time) < 1) {
-				ast_log(LOG_WARNING, "Unable to convert '%s' to a numeric value.\n", v->value);
-			} else if (cfg_time < 0) {
-				ast_log(LOG_WARNING, "Invalid maximum batch time '%d' specified, using default\n", cfg_time);
-			} else {
-				batchtime = cfg_time;
-			}
-		} else if (!strcasecmp(v->name, "endbeforehexten")) {
-			ast_set2_flag(&ast_options, ast_true(v->value), AST_OPT_FLAG_END_CDR_BEFORE_H_EXTEN);
-		} else if (!strcasecmp(v->name, "initiatedseconds")) {
-			ast_set2_flag(&ast_options, ast_true(v->value), AST_OPT_FLAG_INITIATED_SECONDS);
+	if (config) {
+		if ((enabled_value = ast_variable_retrieve(config, "general", "enable"))) {
+			enabled = ast_true(enabled_value);
 		}
+		if ((unanswered_value = ast_variable_retrieve(config, "general", "unanswered"))) {
+			unanswered = ast_true(unanswered_value);
+		}
+		if ((batched_value = ast_variable_retrieve(config, "general", "batch"))) {
+			batchmode = ast_true(batched_value);
+		}
+		if ((scheduleronly_value = ast_variable_retrieve(config, "general", "scheduleronly"))) {
+			batchscheduleronly = ast_true(scheduleronly_value);
+		}
+		if ((batchsafeshutdown_value = ast_variable_retrieve(config, "general", "safeshutdown"))) {
+			batchsafeshutdown = ast_true(batchsafeshutdown_value);
+		}
+		if ((size_value = ast_variable_retrieve(config, "general", "size"))) {
+			if (sscanf(size_value, "%30d", &cfg_size) < 1)
+				ast_log(LOG_WARNING, "Unable to convert '%s' to a numeric value.\n", size_value);
+			else if (cfg_size < 0)
+				ast_log(LOG_WARNING, "Invalid maximum batch size '%d' specified, using default\n", cfg_size);
+			else
+				batchsize = cfg_size;
+		}
+		if ((time_value = ast_variable_retrieve(config, "general", "time"))) {
+			if (sscanf(time_value, "%30d", &cfg_time) < 1)
+				ast_log(LOG_WARNING, "Unable to convert '%s' to a numeric value.\n", time_value);
+			else if (cfg_time < 0)
+				ast_log(LOG_WARNING, "Invalid maximum batch time '%d' specified, using default\n", cfg_time);
+			else
+				batchtime = cfg_time;
+		}
+		if ((end_before_h_value = ast_variable_retrieve(config, "general", "endbeforehexten")))
+			ast_set2_flag(&ast_options, ast_true(end_before_h_value), AST_OPT_FLAG_END_CDR_BEFORE_H_EXTEN);
+		if ((initiatedseconds_value = ast_variable_retrieve(config, "general", "initiatedseconds")))
+			ast_set2_flag(&ast_options, ast_true(initiatedseconds_value), AST_OPT_FLAG_INITIATED_SECONDS);
 	}
 
 	if (enabled && !batchmode) {
@@ -1637,7 +1607,7 @@ int ast_cdr_engine_init(void)
 {
 	int res;
 
-	sched = ast_sched_context_create();
+	sched = sched_context_create();
 	if (!sched) {
 		ast_log(LOG_ERROR, "Unable to create schedule context.\n");
 		return -1;

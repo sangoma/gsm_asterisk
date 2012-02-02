@@ -29,7 +29,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328209 $")
 
 #include "asterisk/mod_format.h"
 #include "asterisk/module.h"
@@ -57,7 +57,7 @@ static struct ast_frame *gsm_read(struct ast_filestream *s, int *whennext)
 	int res;
 
 	s->fr.frametype = AST_FRAME_VOICE;
-	ast_format_set(&s->fr.subclass.format, AST_FORMAT_GSM, 0);
+	s->fr.subclass.codec = AST_FORMAT_GSM;
 	AST_FRAME_SET_BUFFER(&(s->fr), s->buf, AST_FRIENDLY_OFFSET, GSM_FRAME_SIZE)
 	s->fr.mallocd = 0;
 	if ((res = fread(s->fr.data.ptr, 1, GSM_FRAME_SIZE, s->f)) != GSM_FRAME_SIZE) {
@@ -78,8 +78,8 @@ static int gsm_write(struct ast_filestream *fs, struct ast_frame *f)
 		ast_log(LOG_WARNING, "Asked to write non-voice frame!\n");
 		return -1;
 	}
-	if (f->subclass.format.id != AST_FORMAT_GSM) {
-		ast_log(LOG_WARNING, "Asked to write non-GSM frame (%s)!\n", ast_getformatname(&f->subclass.format));
+	if (f->subclass.codec != AST_FORMAT_GSM) {
+		ast_log(LOG_WARNING, "Asked to write non-GSM frame (%s)!\n", ast_getformatname(f->subclass.codec));
 		return -1;
 	}
 	if (!(f->datalen % 65)) {
@@ -149,9 +149,10 @@ static off_t gsm_tell(struct ast_filestream *fs)
 	return (offset/GSM_FRAME_SIZE)*GSM_SAMPLES;
 }
 
-static struct ast_format_def gsm_f = {
+static const struct ast_format gsm_f = {
 	.name = "gsm",
 	.exts = "gsm",
+	.format = AST_FORMAT_GSM,
 	.write = gsm_write,
 	.seek =	gsm_seek,
 	.trunc = gsm_trunc,
@@ -162,15 +163,14 @@ static struct ast_format_def gsm_f = {
 
 static int load_module(void)
 {
-	ast_format_set(&gsm_f.format, AST_FORMAT_GSM, 0);
-	if (ast_format_def_register(&gsm_f))
+	if (ast_format_register(&gsm_f))
 		return AST_MODULE_LOAD_FAILURE;
 	return AST_MODULE_LOAD_SUCCESS;
 }
 
 static int unload_module(void)
 {
-	return ast_format_def_unregister(gsm_f.name);
+	return ast_format_unregister(gsm_f.name);
 }
 
 AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Raw GSM data",

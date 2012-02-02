@@ -30,7 +30,7 @@
 #include "asterisk/hashtab.h"
 #include "asterisk/stringfields.h"
 #include "asterisk/xmldoc.h"
-#include "asterisk/format.h"
+#include "asterisk/frame_defs.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -76,7 +76,10 @@ struct ast_ignorepat;
 struct ast_sw;
 
 /*! \brief Typedef for devicestate and hint callbacks */
-typedef int (*ast_state_cb_type)(const char *context, const char *exten, enum ast_extension_states state, void *data);
+typedef int (*ast_state_cb_type)(char *context, char *id, enum ast_extension_states state, void *data);
+
+/*! \brief Typedef for devicestate and hint callback removal indication callback */
+typedef void (*ast_state_cb_destroy_type)(int id, void *data);
 
 /*! \brief Data structure associated with a custom dialplan function */
 struct ast_custom_function {
@@ -408,33 +411,54 @@ int ast_extension_state(struct ast_channel *c, const char *context, const char *
 const char *ast_extension_state2str(int extension_state);
 
 /*!
+ * \brief Registers a state change callback with destructor.
+ * \since 1.8.9
+ * \since 10.1.0
+ *
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param change_cb callback to call if state changed
+ * \param destroy_cb callback to call when registration destroyed.
+ * \param data to pass to callback
+ *
+ * \note The change_cb is called if the state of an extension is changed.
+ *
+ * \note The destroy_cb is called when the registration is
+ * deleted so the registerer can release any associated
+ * resources.
+ *
+ * \retval -1 on failure
+ * \retval ID on success
+ */
+int ast_extension_state_add_destroy(const char *context, const char *exten,
+	ast_state_cb_type change_cb, ast_state_cb_destroy_type destroy_cb, void *data);
+
+/*!
  * \brief Registers a state change callback
  *
  * \param context which context to look in
  * \param exten which extension to get state
- * \param callback callback to call if state changed
+ * \param change_cb callback to call if state changed
  * \param data to pass to callback
  *
- * The callback is called if the state of an extension is changed.
+ * \note The change_cb is called if the state of an extension is changed.
  *
  * \retval -1 on failure
  * \retval ID on success
  */
 int ast_extension_state_add(const char *context, const char *exten,
-			    ast_state_cb_type callback, void *data);
+	ast_state_cb_type change_cb, void *data);
 
 /*!
  * \brief Deletes a registered state change callback by ID
  *
- * \param id of the callback to delete
- * \param callback callback
- *
- * Removes the callback from list of callbacks
+ * \param id of the registered state callback to delete
+ * \param change_cb callback to call if state changed (Used if id == 0 (global))
  *
  * \retval 0 success
  * \retval -1 failure
  */
-int ast_extension_state_del(int id, ast_state_cb_type callback);
+int ast_extension_state_del(int id, ast_state_cb_type change_cb);
 
 /*!
  * \brief If an extension hint exists, return non-zero
@@ -889,11 +913,11 @@ int ast_async_goto_by_name(const char *chan, const char *context, const char *ex
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular extension */
-int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_exten(const char *type, format_t format, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular application with given extension */
-int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_app(const char *type, format_t format, void *data, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
 
 /*!
  * \brief Evaluate a condition

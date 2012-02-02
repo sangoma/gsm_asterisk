@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# $Id: install_prereq 303547 2011-01-24 20:41:17Z russell $
+# $Id: install_prereq 302831 2011-01-19 23:29:45Z pabelanger $
 #
 
 # install_prereq: a script to install distribution-specific
@@ -10,7 +10,7 @@ set -e
 
 usage() {
   echo "$0: a script to install distribution-specific prerequirement"
-  echo 'Revision: $Id: install_prereq 303547 2011-01-24 20:41:17Z russell $'
+  echo 'Revision: $Id: install_prereq 302831 2011-01-19 23:29:45Z pabelanger $'
   echo ""
   echo "Usage: $0:                    Shows this message."
   echo "Usage: $0 test                Prints commands it is about to run."
@@ -32,7 +32,7 @@ PACKAGES_DEBIAN="$PACKAGES_DEBIAN libresample-dev libc-client-dev binutils-dev"
 PACKAGES_RH="automake gcc gcc-c++ ncurses-devel openssl-devel libxml2-devel unixODBC-devel libcurl-devel libogg-devel libvorbis-devel speex-devel"
 PACKAGES_RH="$PACKAGES_RH spandsp-devel freetds-devel net-snmp-devel iksemel-devel openais-devel newt-devel popt-devel libtool-ltdl-devel lua-devel"
 PACKAGES_RH="$PACKAGES_RH libsqlite3x-devel radiusclient-ng-devel portaudio-devel postgresql-devel libresample-devel neon-devel libical-devel"
-PACKAGES_RH="$PACKAGES_RH openldap-devel gmime22-devel sqlite2-devel mysql-devel bluez-libs-devel jack-audio-connection-kit-devel gsm-devel"
+PACKAGES_RH="$PACKAGES_RH openldap-devel gmime22-devel sqlite2-devel mysql-devel bluez-libs-devel jack-audio-connection-kit-devel"
 
 PACKAGES_OBSD="popt gmake wget libxml libogg libvorbis curl iksemel spandsp speex iodbc freetds-0.63p1-msdblib mysql-client gmime sqlite sqlite3 jack"
 

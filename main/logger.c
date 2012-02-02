@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337973 $")
 
 /* When we include logger.h again it will trample on some stuff in syslog.h, but
  * nothing we care about in here. */
@@ -48,8 +48,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
 #include "asterisk/pbx.h"
 #include "asterisk/app.h"
 #include "asterisk/syslog.h"
-#include "asterisk/buildinfo.h"
-#include "asterisk/ast_version.h"
 
 #include <signal.h>
 #include <time.h>
@@ -64,6 +62,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
 #  endif
 #endif
 
+#if defined(__linux__) && !defined(__NR_gettid)
+#include <asm/unistd.h>
+#endif
+
+#if defined(__linux__) && defined(__NR_gettid)
+#define GETTID() syscall(__NR_gettid)
+#else
+#define GETTID() getpid()
+#endif
 static char dateformat[256] = "%b %e %T";		/* Original Asterisk Format */
 
 static char queue_log_name[256] = QUEUELOG;
@@ -126,7 +133,7 @@ struct logmsg {
 	enum logmsgtypes type;
 	int level;
 	int line;
-	int lwp;
+	long process_id;
 	AST_DECLARE_STRING_FIELDS(
 		AST_STRING_FIELD(date);
 		AST_STRING_FIELD(file);
@@ -237,9 +244,6 @@ static struct logchannel *make_logchannel(const char *channel, const char *compo
 {
 	struct logchannel *chan;
 	char *facility;
-	struct ast_tm tm;
-	struct timeval now = ast_tvnow();
-	char datestring[256];
 
 	if (ast_strlen_zero(channel) || !(chan = ast_calloc(1, sizeof(*chan) + strlen(components) + 1)))
 		return NULL;
@@ -288,15 +292,6 @@ static struct logchannel *make_logchannel(const char *channel, const char *compo
 			ast_console_puts_mutable("'\n", __LOG_ERROR);
 			ast_free(chan);
 			return NULL;
-		} else {
-			/* Create our date/time */
-			ast_localtime(&now, &tm, NULL);
-			ast_strftime(datestring, sizeof(datestring), dateformat, &tm);
-
-			fprintf(chan->fileptr, "[%s] Asterisk %s built by %s @ %s on a %s running %s on %s\n",
-				datestring, ast_get_version(), ast_build_user, ast_build_hostname,
-				ast_build_machine, ast_build_os, ast_build_date);
-			fflush(chan->fileptr);
 		}
 		chan->type = LOGTYPE_FILE;
 	}
@@ -305,7 +300,7 @@ static struct logchannel *make_logchannel(const char *channel, const char *compo
 	return chan;
 }
 
-static void init_logger_chain(int locked, const char *altconf)
+static void init_logger_chain(int locked)
 {
 	struct logchannel *chan;
 	struct ast_config *cfg;
@@ -313,7 +308,7 @@ static void init_logger_chain(int locked, const char *altconf)
 	const char *s;
 	struct ast_flags config_flags = { 0 };
 
-	if (!(cfg = ast_config_load2(S_OR(altconf, "logger.conf"), "logger", config_flags)) || cfg == CONFIG_STATUS_FILEINVALID) {
+	if (!(cfg = ast_config_load2("logger.conf", "logger", config_flags)) || cfg == CONFIG_STATUS_FILEINVALID) {
 		return;
 	}
 
@@ -733,7 +728,7 @@ static int logger_queue_restart(int queue_rotate)
 	return res;
 }
 
-static int reload_logger(int rotate, const char *altconf)
+static int reload_logger(int rotate)
 {
 	int queue_rotate = rotate;
 	struct logchannel *f;
@@ -781,7 +776,7 @@ static int reload_logger(int rotate, const char *altconf)
 
 	filesize_reload_needed = 0;
 
-	init_logger_chain(1 /* locked */, altconf);
+	init_logger_chain(1 /* locked */);
 
 	ast_unload_realtime("queue_log");
 	if (logfiles.queue_log) {
@@ -800,7 +795,7 @@ static int reload_logger(int rotate, const char *altconf)
 	a full Asterisk reload) */
 int logger_reload(void)
 {
-	if (reload_logger(0, NULL)) {
+	if (reload_logger(0)) {
 		return RESULT_FAILURE;
 	}
 	return RESULT_SUCCESS;
@@ -811,14 +806,14 @@ static char *handle_logger_reload(struct ast_cli_entry *e, int cmd, struct ast_c
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "logger reload";
-		e->usage =
-			"Usage: logger reload [<alt-conf>]\n"
+		e->usage = 
+			"Usage: logger reload\n"
 			"       Reloads the logger subsystem state.  Use after restarting syslogd(8) if you are using syslog logging.\n";
 		return NULL;
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (reload_logger(0, a->argc == 3 ? a->argv[2] : NULL)) {
+	if (reload_logger(0)) {
 		ast_cli(a->fd, "Failed to reload the logger\n");
 		return CLI_FAILURE;
 	}
@@ -837,7 +832,7 @@ static char *handle_logger_rotate(struct ast_cli_entry *e, int cmd, struct ast_c
 	case CLI_GENERATE:
 		return NULL;	
 	}
-	if (reload_logger(1, NULL)) {
+	if (reload_logger(1)) {
 		ast_cli(a->fd, "Failed to reload the logger and rotate log files\n");
 		return CLI_FAILURE;
 	} 
@@ -961,8 +956,8 @@ static void ast_log_vsyslog(struct logmsg *msg)
 		return;
 	}
 
-	snprintf(buf, sizeof(buf), "%s[%d]: %s:%d in %s: %s",
-		 levels[msg->level], msg->lwp, msg->file, msg->line, msg->function, msg->message);
+	snprintf(buf, sizeof(buf), "%s[%ld]: %s:%d in %s: %s",
+		 levels[msg->level], msg->process_id, msg->file, msg->line, msg->function, msg->message);
 
 	term_strip(buf, buf, strlen(buf) + 1);
 	syslog(syslog_level, "%s", buf);
@@ -1007,10 +1002,10 @@ static void logger_print_normal(struct logmsg *logmsg)
 				/* Turn the numerical line number into a string */
 				snprintf(linestr, sizeof(linestr), "%d", logmsg->line);
 				/* Build string to print out */
-				snprintf(buf, sizeof(buf), "[%s] %s[%d]: %s:%s %s: %s",
+				snprintf(buf, sizeof(buf), "[%s] %s[%ld]: %s:%s %s: %s",
 					 logmsg->date,
 					 term_color(tmp1, logmsg->level_name, colors[logmsg->level], 0, sizeof(tmp1)),
-					 logmsg->lwp,
+					 logmsg->process_id,
 					 term_color(tmp2, logmsg->file, COLOR_BRWHITE, 0, sizeof(tmp2)),
 					 term_color(tmp3, linestr, COLOR_BRWHITE, 0, sizeof(tmp3)),
 					 term_color(tmp4, logmsg->function, COLOR_BRWHITE, 0, sizeof(tmp4)),
@@ -1027,8 +1022,8 @@ static void logger_print_normal(struct logmsg *logmsg)
 				}
 
 				/* Print out to the file */
-				res = fprintf(chan->fileptr, "[%s] %s[%d] %s: %s",
-					      logmsg->date, logmsg->level_name, logmsg->lwp, logmsg->file, term_strip(buf, logmsg->message, BUFSIZ));
+				res = fprintf(chan->fileptr, "[%s] %s[%ld] %s: %s",
+					      logmsg->date, logmsg->level_name, logmsg->process_id, logmsg->file, term_strip(buf, logmsg->message, BUFSIZ));
 				if (res <= 0 && !ast_strlen_zero(logmsg->message)) {
 					fprintf(stderr, "**** Asterisk Logging Error: ***********\n");
 					if (errno == ENOMEM || errno == ENOSPC)
@@ -1050,7 +1045,7 @@ static void logger_print_normal(struct logmsg *logmsg)
 
 	/* If we need to reload because of the file size, then do so */
 	if (filesize_reload_needed) {
-		reload_logger(-1, NULL);
+		reload_logger(-1);
 		ast_verb(1, "Rotated Logs Per SIGXFSZ (Exceeded file size limit)\n");
 	}
 
@@ -1146,7 +1141,7 @@ int init_logger(void)
 	ast_mkdir(ast_config_AST_LOG_DIR, 0777);
 
 	/* create log channels */
-	init_logger_chain(0 /* locked */, NULL);
+	init_logger_chain(0 /* locked */);
 	logger_initialized = 1;
 
 	return 0;
@@ -1267,7 +1262,7 @@ void ast_log(int level, const char *file, int line, const char *function, const 
 	ast_string_field_set(logmsg, level_name, levels[level]);
 	ast_string_field_set(logmsg, file, file);
 	ast_string_field_set(logmsg, function, function);
-	logmsg->lwp = ast_get_tid();
+	logmsg->process_id = (long) GETTID();
 
 	/* If the logger thread is active, append it to the tail end of the list - otherwise skip that step */
 	if (logthread != AST_PTHREADT_NULL) {
@@ -1357,7 +1352,7 @@ char **ast_bt_get_symbols(void **addresses, size_t num_frames)
 			char asteriskpath[256];
 			if (!(dli.dli_fname = ast_utils_which("asterisk", asteriskpath, sizeof(asteriskpath)))) {
 				/* This will fail to find symbols */
-				ast_debug(1, "Failed to find asterisk binary for debug symbols.\n");
+				ast_log(LOG_DEBUG, "Failed to find asterisk binary for debug symbols.\n");
 				dli.dli_fname = "asterisk";
 			}
 		}
@@ -1477,7 +1472,7 @@ void ast_backtrace(void)
 	if ((strings = ast_bt_get_symbols(bt->addresses, bt->num_frames))) {
 		ast_debug(1, "Got %d backtrace record%c\n", bt->num_frames, bt->num_frames != 1 ? 's' : ' ');
 		for (i = 3; i < bt->num_frames - 2; i++) {
-			ast_debug(1, "#%d: [%p] %s\n", i - 3, bt->addresses[i], strings[i]);
+			ast_log(LOG_DEBUG, "#%d: [%p] %s\n", i - 3, bt->addresses[i], strings[i]);
 		}
 
 		/* MALLOC_DEBUG will erroneously report an error here, unless we undef the macro. */

@@ -20,7 +20,7 @@ AC_CONFIG_SRCDIR([main/asterisk.c])
 AC_CONFIG_AUX_DIR(`pwd`)
 
 AC_COPYRIGHT("Asterisk")
-AC_REVISION($Revision: 339721 $)
+AC_REVISION($Revision: 348647 $)
 
 # preserve any CFLAGS or LDFLAGS that may be set
 # NOTE: This must be done before calling any macros that end up
@@ -36,10 +36,6 @@ AC_SUBST(CONFIG_LDFLAGS)
 
 # specify output header file
 AC_CONFIG_HEADER(include/asterisk/autoconfig.h)
-
-# Note: AC_PROG_CC *must* be specified before AC_USE_SYSTEM_EXTENSIONS or any
-# other macro that uses the C compiler, or the default order will be used.
-AC_PROG_CC([gcc cc])
 
 AC_USE_SYSTEM_EXTENSIONS	dnl note- does not work on FreeBSD
 
@@ -179,9 +175,6 @@ case "${host_os}" in
      linux-gnueabi)
      OSARCH=linux-gnu
      ;;
-     kfreebsd*-gnu)
-     OSARCH=kfreebsd-gnu
-     ;;
      *)
      OSARCH=${host_os}
      ;;
@@ -219,6 +212,7 @@ then
 fi
 
 # Checks for programs.
+AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_CPP
 AC_PROG_CXXCPP
@@ -415,9 +409,6 @@ AST_EXT_LIB_SETUP([POPT], [popt], [popt])
 AST_EXT_LIB_SETUP([PORTAUDIO], [PortAudio], [portaudio])
 AST_EXT_LIB_SETUP([PRI], [ISDN PRI], [pri])
 AST_EXT_LIB_SETUP_OPTIONAL([PRI_L2_PERSISTENCE], [ISDN Layer 2 persistence option], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_DATETIME_SEND], [ISDN PRI Date/time ie send policy], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_MWI_V2], [ISDN PRI Message Waiting Indication (Fixed)], [PRI], [pri])
-AST_EXT_LIB_SETUP_OPTIONAL([PRI_DISPLAY_TEXT], [ISDN PRI user display text IE contents during call], [PRI], [pri])
 AST_EXT_LIB_SETUP_OPTIONAL([PRI_MWI], [ISDN PRI Message Waiting Indication], [PRI], [pri])
 AST_EXT_LIB_SETUP_OPTIONAL([PRI_MCID], [ISDN PRI Malicious Call ID], [PRI], [pri])
 AST_EXT_LIB_SETUP_OPTIONAL([PRI_CALL_WAITING], [ISDN PRI call waiting supplementary service], [PRI], [pri])
@@ -445,7 +436,6 @@ AST_EXT_LIB_SETUP([SDL_IMAGE], [Sdl Image], [SDL_image])
 AST_OPTION_ONLY([sounds-cache], [SOUNDS_CACHE_DIR], [cached sound tarfiles], [])
 AST_EXT_LIB_SETUP([SPANDSP], [SPANDSP], [spandsp])
 AST_EXT_LIB_SETUP([SS7], [ISDN SS7], [ss7])
-AST_EXT_LIB_SETUP([WAT], [GSM AT], [wat])
 AST_EXT_LIB_SETUP([SPEEX], [Speex], [speex])
 AST_EXT_LIB_SETUP([SPEEX_PREPROCESS], [Speex preprocess routines], [speex])
 AST_EXT_LIB_SETUP([SPEEXDSP], [SpeexDSP], [speexdsp])
@@ -826,9 +816,6 @@ AC_LINK_IFELSE(
 #)
 #fi
 
-# for FreeBSD thr_self
-AC_CHECK_HEADERS([sys/thr.h])
-
 AC_MSG_CHECKING(for compiler atomic operations)
 AC_LINK_IFELSE(
 AC_LANG_PROGRAM([], [int foo1; int foo2 = __sync_fetch_and_add(&foo1, 1);]),
@@ -899,9 +886,37 @@ AST_GCC_ATTRIBUTE(always_inline)
 AST_GCC_ATTRIBUTE(deprecated)
 AST_GCC_ATTRIBUTE(sentinel)
 AST_GCC_ATTRIBUTE(warn_unused_result)
-AST_GCC_ATTRIBUTE(weak_import, [], [], PBX_WEAKREF)
-AST_GCC_ATTRIBUTE(weak, [], [], PBX_WEAKREF)
-AST_GCC_ATTRIBUTE(weakref, [weakref("foo")], static, PBX_WEAKREF)
+
+# Support weak symbols on a platform specific basis.  The Mac OS X
+# (Darwin) support must be isolated from the other platforms because
+# it has caused other platforms to fail.
+#
+case "${OSARCH}" in
+	darwin*)
+	# Allow weak symbol support on Darwin platforms only because there
+	# is active community support for it.
+	# However, Darwin seems to break weak symbols for each new version.
+	#
+	AST_GCC_ATTRIBUTE(weak_import, [], [], PBX_WEAKREF)
+
+	# Several other platforms including Linux have GCC versions that
+	# define the weak attribute.  However, this attribute is only
+	# setup for use in the code by Darwin.
+	AST_GCC_ATTRIBUTE(weak, [], [], PBX_WEAKREF)
+	;;
+	linux-gnu)
+	# Primarily support weak symbols on Linux platforms.
+	#
+	AST_GCC_ATTRIBUTE(weakref, [weakref("foo")], static, PBX_WEAKREF)
+	;;
+	*)
+	# Allow weak symbols on other platforms.  However, any problems
+	# with this feature on other platforms must be fixed by the
+	# community.
+	#
+	AST_GCC_ATTRIBUTE(weakref, [weakref("foo")], static, PBX_WEAKREF)
+	;;
+esac
 
 AC_MSG_CHECKING(for -ffunction-sections support)
 saved_CFLAGS="${CFLAGS}"
@@ -965,16 +980,6 @@ else
 	AST_SHADOW_WARNINGS=
 fi
 AC_SUBST(AST_SHADOW_WARNINGS)
-
-AC_MSG_CHECKING(for -march=native)
-if $(${CC} -march=native -S -o /dev/null -xc /dev/null > /dev/null 2>&1); then
-	AC_MSG_RESULT(yes)
-	AST_MARCH_NATIVE="-march=native"
-else
-	AC_MSG_RESULT(no)
-	AST_MARCH_NATIVE=
-fi
-AC_SUBST(AST_MARCH_NATIVE)
 
 AC_MSG_CHECKING(for sysinfo)
 AC_LINK_IFELSE(
@@ -1847,9 +1852,6 @@ AST_EXT_LIB_CHECK([PORTAUDIO], [portaudio], [Pa_GetDeviceCount], [portaudio.h])
 
 AST_EXT_LIB_CHECK([PRI], [pri], [pri_connected_line_update], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_L2_PERSISTENCE], [pri], [pri_persistent_layer2_option], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_DATETIME_SEND], [pri], [pri_date_time_send_option], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_MWI_V2], [pri], [pri_mwi_indicate_v2], [libpri.h])
-AST_EXT_LIB_CHECK([PRI_DISPLAY_TEXT], [pri], [pri_display_text], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_MWI], [pri], [pri_mwi_indicate], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_MCID], [pri], [pri_mcid_enable], [libpri.h])
 AST_EXT_LIB_CHECK([PRI_CALL_WAITING], [pri], [pri_connect_ack_enable], [libpri.h])
@@ -1891,8 +1893,6 @@ if test "x${PBX_SPANDSP}" = "x1" ; then
 	PBX_SPANDSP=0
 	AST_EXT_LIB_CHECK([SPANDSP], [spandsp], [t38_terminal_init], [spandsp.h], [-ltiff])
 fi
-
-AST_EXT_LIB_CHECK([WAT], [wat], [wat_register], [libwat.h])
 
 AST_EXT_LIB_CHECK([SS7], [ss7], [ss7_pollflags], [libss7.h])
 
@@ -1993,12 +1993,6 @@ AST_EXT_LIB_CHECK([SQLITE], [sqlite], [sqlite_exec], [sqlite.h])
 
 AST_EXT_LIB_CHECK([SQLITE3], [sqlite3], [sqlite3_open], [sqlite3.h], [${PTHREAD_LIBS}], [${PTHREAD_CFLAGS}])
 
-if test "${PBX_SQLITE3}" != 1; then
-	AC_MSG_WARN(*** Asterisk now uses SQLite3 for the internal Asterisk database.)
-	AC_MSG_WARN(*** Please install the SQLite3 development package.)
-	exit 1
-fi
-
 AST_EXT_LIB_CHECK([CRYPTO], [crypto], [AES_encrypt], [openssl/aes.h])
 
 if test "$PBX_CRYPTO" = "1";
@@ -2008,7 +2002,7 @@ fi
 
 if test "$PBX_OPENSSL" = "1";
 then
-    AST_CHECK_OSPTK([4], [0], [0])
+    AST_CHECK_OSPTK([3], [6], [0])
 fi
 
 AST_EXT_LIB_CHECK([SRTP], [srtp], [srtp_init], [srtp/srtp.h])

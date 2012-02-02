@@ -49,12 +49,12 @@
 
  \note Please try to \b re-use \b existing \b headers to simplify manager message parsing in clients.
     Don't re-use an existing header with a new meaning, please.
-    You can find a reference of standard headers in doc/manager.txt
+    You can find a reference of standard headers in http://wiki.asterisk.org
 
 - \ref manager.c Main manager code file
  */
 
-#define AMI_VERSION                     "1.2"
+#define AMI_VERSION                     "1.1"
 #define DEFAULT_MANAGER_PORT 5038	/* Default port for Asterisk management via TCP */
 
 /*! \name Constant return values

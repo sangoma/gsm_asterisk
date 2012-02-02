@@ -31,7 +31,6 @@
 #include <asterisk/rtp_engine.h>
 
 struct sdp_crypto;
-struct sip_srtp;
 
 /*! \brief Initialize an return an sdp_crypto struct
  *
@@ -52,12 +51,11 @@ void sdp_crypto_destroy(struct sdp_crypto *crypto);
  * \param p A valid sdp_crypto struct
  * \param attr the a:crypto line from SDP
  * \param rtp The rtp instance associated with the SDP being parsed
- * \param srtp SRTP structure
  *
  * \retval 0 success
  * \retval nonzero failure
  */
-int sdp_crypto_process(struct sdp_crypto *p, const char *attr, struct ast_rtp_instance *rtp, struct sip_srtp *srtp);
+int sdp_crypto_process(struct sdp_crypto *p, const char *attr, struct ast_rtp_instance *rtp);
 
 
 /*! \brief Generate an SRTP a=crypto offer
@@ -70,7 +68,7 @@ int sdp_crypto_process(struct sdp_crypto *p, const char *attr, struct ast_rtp_in
  * \retval 0 success
  * \retval nonzero failure
  */
-int sdp_crypto_offer(struct sdp_crypto *p, int taglen);
+int sdp_crypto_offer(struct sdp_crypto *p);
 
 
 /*! \brief Return the a_crypto value of the sdp_crypto struct

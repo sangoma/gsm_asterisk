@@ -53,12 +53,12 @@ typedef struct OOLogicalChannel {
    int  sessionID;
    enum OOCapType type;
    char dir[10];  /* receive/transmit */
-   char remoteIP[2+8*4+7];
+   char remoteIP[20];
    int  remoteMediaPort;
    int  remoteMediaControlPort;
    int  localRtpPort;
    int  localRtcpPort;
-   char localIP[2+8*4+7];
+   char localIP[20];
    OOLogicalChannelState state;         
    struct ooH323EpCapability *chanCap;
    struct OOLogicalChannel *next;

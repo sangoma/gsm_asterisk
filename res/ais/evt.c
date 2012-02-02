@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335511 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335497 $");
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -189,18 +189,18 @@ static void ast_event_cb(const struct ast_event *ast_event, void *data)
 	const char *filter_str;
 	SaEvtEventIdT event_id;
 
-	ast_debug(1, "Got an event to forward\n");
+	ast_log(LOG_DEBUG, "Got an event to forward\n");
 
 	if (ast_eid_cmp(&ast_eid_default, ast_event_get_ie_raw(ast_event, AST_EVENT_IE_EID))) {
 		/* If the event didn't originate from this server, don't send it back out. */
-		ast_debug(1, "Returning here\n");
+		ast_log(LOG_DEBUG, "Returning here\n");
 		return;
 	}
 
 	ais_res = saEvtEventAllocate(event_channel->handle, &event_handle);
 	if (ais_res != SA_AIS_OK) {
 		ast_log(LOG_ERROR, "Error allocating event: %s\n", ais_err2str(ais_res));
-		ast_debug(1, "Returning here\n");
+		ast_log(LOG_DEBUG, "Returning here\n");
 		return;
 	}
 
@@ -244,7 +244,7 @@ return_event_free:
 	if (ais_res != SA_AIS_OK) {
 		ast_log(LOG_ERROR, "Error freeing allocated event: %s\n", ais_err2str(ais_res));
 	}
-	ast_debug(1, "Returning here (event_free)\n");
+	ast_log(LOG_DEBUG, "Returning here (event_free)\n");
 }
 
 static char *ais_evt_show_event_channels(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
@@ -332,7 +332,7 @@ static void add_publish_event(struct event_channel *event_channel, const char *e
 	}
 
 	publish_event->type = type;
-	ast_debug(1, "Subscribing to event type %d\n", type);
+	ast_log(LOG_DEBUG, "Subscribing to event type %d\n", type);
 	publish_event->sub = ast_event_subscribe(type, ast_event_cb, "AIS", event_channel,
 		AST_EVENT_IE_END);
 	ast_event_dump_cache(publish_event->sub);

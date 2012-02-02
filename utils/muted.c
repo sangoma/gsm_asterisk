@@ -46,7 +46,7 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <sys/stat.h>
-#elif defined(__linux__) || defined(__FreeBSD__) || defined(__GLIBC__)
+#elif defined(__linux__) || defined(__FreeBSD__)
 #include <sys/soundcard.h>
 #endif
 #include <stdio.h>

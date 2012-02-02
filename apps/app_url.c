@@ -31,7 +31,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339778 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339776 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"

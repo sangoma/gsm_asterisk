@@ -61,23 +61,6 @@ monitor-type = MixMonitor
 ;
 ;shared_lastcall=no
 ;
-; Negative_penalty_invalid will treat members with a negative penalty as logged off
-;
-;negative_penalty_invalid = no
-;
-; log_membername_as_agent will cause app_queue to log the membername rather than
-; the interface for the ADDMEMBER and REMOVEMEMBER events when a state_interface
-; is set.  The default value (no) maintains backward compatibility.
-;
-;log_membername_as_agent = no
-;
-; app_queue allows calls to members in a "Unknown" state to be treated as available
-; setting check_state_unknown = yes will cause app_queue to query the channel driver
-; to better determine the state this only applies to queues with ringinuse or ignorebusy
-; set appropriately. 
-;
-;check_state_unknown = no
-;
 ;[markq]
 ;
 ; A sample call queue
@@ -100,7 +83,7 @@ monitor-type = MixMonitor
 ; A strategy may be specified.  Valid strategies include:
 ;
 ; ringall - ring all available channels until one answers (default)
-; leastrecent - ring interface which was least recently called by this queue
+; leastrecent - ring interface which was least recently hung up by this queue
 ; fewestcalls - ring the one with fewest completed calls from this queue
 ; random - ring random interface
 ; rrmemory - round robin with memory, remember where we left off last ring pass
@@ -212,20 +195,6 @@ monitor-type = MixMonitor
 ; yes: Member will be paused only in the queue where the timeout took place
 ; all: Memeber will be paused in all queues he/she is a member
 ;autopause=yes
-;
-; Autopausedelay delay autopause for autopausedelay seconds from the
-; last call if a member has not taken a call the delay has no effect.
-;autopausedelay=60
-;
-; Autopausebusy controls whether or not a queue member is set as paused
-; automatically upon the member device reporting busy. The autopausedelay
-; option applies. Defaults to 'no'.
-;autopausebusy=no
-;
-; Autopauseunavail controls whether or not a queue member is set as paused
-; automatically upon the member device reporting congestion. The autopausedely
-; option applies. Defaults to 'no'.
-;autopauseunavail=no
 ;
 ; Maximum number of people waiting in the queue (0 for unlimited)
 ;
@@ -406,7 +375,16 @@ monitor-type = MixMonitor
 ;
 ; You can specify a post recording command to be executed after the end of
 ; recording by calling (from the dialplan)
+;
 ;   Set(MONITOR_EXEC=mv /var/spool/asterisk/monitor/^{MONITOR_FILENAME} /tmp/^{MONITOR_FILENAME})
+;
+; or
+;
+;   Set(MONITOR_EXEC=mv /var/spool/asterisk/monitor/^{MIXMONITOR_FILENAME} /tmp/^{MIXMONITOR_FILENAME})
+;
+; If you choose to use the latter, you will not be able to switch the monitor-type back to Monitor
+; without changing this in the dialplan.
+;
 ;
 ; The command specified within the contents of MONITOR_EXEC will be executed when
 ; the recording is over. Any strings matching ^{X} will be unescaped to ${X} and
@@ -490,9 +468,6 @@ monitor-type = MixMonitor
 ; known to be 'in use' (via the channel driver supporting that device state)
 ; uncomment this option. (Note: only the SIP channel driver currently is able
 ; to report 'in use'.)
-;
-; A member can have the ignorebusy flag set or unset when ringinuse is set to
-; allow a per member control.
 ;
 ; ringinuse = no
 ;

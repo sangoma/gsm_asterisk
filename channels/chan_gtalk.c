@@ -34,13 +34,14 @@
 /*** MODULEINFO
 	<depend>iksemel</depend>
 	<depend>res_jabber</depend>
-	<use type="external">openssl</use>
+	<use>openssl</use>
 	<support_level>extended</support_level>
  ***/
 
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341437 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 346086 $")
 
 #include <sys/socket.h>
 #include <fcntl.h>
@@ -75,9 +76,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 341437 $")
 #include "asterisk/abstract_jb.h"
 #include "asterisk/jabber.h"
 #include "asterisk/jingle.h"
-#include "asterisk/features.h"
 
-#define GOOGLE_CONFIG		"gtalk.conf"
+#define GOOGLE_CONFIG "gtalk.conf"
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
@@ -112,6 +112,7 @@ struct gtalk_pvt {
 	iksrule *ringrule;               /*!< Rule for matching RING request */
 	int initiator;                   /*!< If we're the initiator */
 	int alreadygone;
+	int capability;
 	struct ast_codec_pref prefs;
 	struct gtalk_candidate *theircandidates;
 	struct gtalk_candidate *ourcandidates;
@@ -121,9 +122,8 @@ struct gtalk_pvt {
 	struct ast_channel *owner;       /*!< Master Channel */
 	struct ast_rtp_instance *rtp;             /*!< RTP audio session */
 	struct ast_rtp_instance *vrtp;            /*!< RTP video session */
-	struct ast_format_cap *cap;
-	struct ast_format_cap *jointcap;             /*!< Supported capability at both ends (codecs ) */
-	struct ast_format_cap *peercap;
+	format_t jointcapability;             /*!< Supported capability at both ends (codecs ) */
+	format_t peercapability;
 	struct gtalk_pvt *next;	/* Next entity */
 };
 
@@ -153,7 +153,7 @@ struct gtalk {
 	char context[AST_MAX_CONTEXT];
 	char parkinglot[AST_MAX_CONTEXT];	/*!<  Parkinglot */
 	char accountcode[AST_MAX_ACCOUNT_CODE];	/*!< Account code */
-	struct ast_format_cap *cap;
+	format_t capability;
 	ast_group_t callgroup;	/*!< Call group */
 	ast_group_t pickupgroup;	/*!< Pickup group */
 	int callingpres;		/*!< Calling presentation */
@@ -166,16 +166,14 @@ struct gtalk_container {
 	ASTOBJ_CONTAINER_COMPONENTS(struct gtalk);
 };
 
-static const char desc[]		= "Gtalk Channel";
-static const char DEFAULT_CONTEXT[]	= "default";
-static const int DEFAULT_ALLOWGUEST	= 1;
+static const char desc[] = "Gtalk Channel";
 
-static struct ast_format_cap *global_capability;
+static format_t global_capability = AST_FORMAT_ULAW | AST_FORMAT_ALAW | AST_FORMAT_GSM | AST_FORMAT_H263;
 
 AST_MUTEX_DEFINE_STATIC(gtalklock); /*!< Protect the interface list (of gtalk_pvt's) */
 
 /* Forward declarations */
-static struct ast_channel *gtalk_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+static struct ast_channel *gtalk_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause);
 /*static int gtalk_digit(struct ast_channel *ast, char digit, unsigned int duration);*/
 static int gtalk_sendtext(struct ast_channel *ast, const char *text);
 static int gtalk_digit_begin(struct ast_channel *ast, char digit);
@@ -195,15 +193,15 @@ static struct gtalk_pvt *gtalk_alloc(struct gtalk *client, const char *us, const
 static int gtalk_update_stun(struct gtalk *client, struct gtalk_pvt *p);
 /* static char *gtalk_do_reload(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a); */
 static char *gtalk_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
-static char *gtalk_show_settings(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 static int gtalk_update_externip(void);
 static int gtalk_parser(void *data, ikspak *pak);
 static int gtalk_create_candidates(struct gtalk *client, struct gtalk_pvt *p, char *sid, char *from, char *to);
 
 /*! \brief PBX interface structure for channel registration */
-static struct ast_channel_tech gtalk_tech = {
+static const struct ast_channel_tech gtalk_tech = {
 	.type = "Gtalk",
 	.description = "Gtalk Channel Driver",
+	.capabilities = AST_FORMAT_AUDIO_MASK,
 	.requester = gtalk_request,
 	.send_text = gtalk_sendtext,
 	.send_digit_begin = gtalk_digit_begin,
@@ -226,28 +224,22 @@ static struct ast_channel_tech gtalk_tech = {
 
 static struct sockaddr_in bindaddr = { 0, };	/*!< The address we bind to */
 
-static struct ast_sched_context *sched;	/*!< The scheduling context */
+static struct sched_context *sched;	/*!< The scheduling context */
 static struct io_context *io;	/*!< The IO context */
 static struct in_addr __ourip;
 
 static struct ast_cli_entry gtalk_cli[] = {
 /*	AST_CLI_DEFINE(gtalk_do_reload, "Reload GoogleTalk configuration"), XXX TODO reloads are not possible yet. */
 	AST_CLI_DEFINE(gtalk_show_channels, "Show GoogleTalk channels"),
-	AST_CLI_DEFINE(gtalk_show_settings, "Show GoogleTalk global settings"),
 };
 
 static char externip[16];
-static char global_context[AST_MAX_CONTEXT];
-static char global_parkinglot[AST_MAX_CONTEXT];
-static int global_allowguest;
 static struct sockaddr_in stunaddr; /*!< the stun server we get the externip from */
-static int global_stunaddr;
 
 static struct gtalk_container gtalk_list;
 
 static void gtalk_member_destroy(struct gtalk *obj)
 {
-	obj->cap = ast_format_cap_destroy(obj->cap);
 	ast_free(obj);
 }
 
@@ -283,10 +275,10 @@ static struct gtalk *find_gtalk(char *name, char *connection)
 }
 
 
-static int add_codec_to_answer(const struct gtalk_pvt *p, struct ast_format *codec, iks *dcodecs)
+static int add_codec_to_answer(const struct gtalk_pvt *p, int codec, iks *dcodecs)
 {
 	int res = 0;
-	const char *format = ast_getformatname(codec);
+	char *format = ast_getformatname(codec);
 
 	if (!strcasecmp("ulaw", format)) {
 		iks *payload_eg711u, *payload_pcmu;
@@ -393,17 +385,17 @@ static int gtalk_invite(struct gtalk_pvt *p, char *to, char *from, char *sid, in
 	struct gtalk *client = p->parent;
 	iks *iq, *gtalk, *dcodecs, *payload_telephone, *transport;
 	int x;
-	struct ast_format_cap *alreadysent;
+	int pref_codec = 0;
+	int alreadysent = 0;
 	int codecs_num = 0;
 	char *lowerto = NULL;
-	struct ast_format tmpfmt;
 
 	iq = iks_new("iq");
 	gtalk = iks_new("session");
 	dcodecs = iks_new("description");
 	transport = iks_new("transport");
 	payload_telephone = iks_new("payload-type");
-	if (!(iq && gtalk && dcodecs && transport && payload_telephone)) {
+	if (!(iq && gtalk && dcodecs && transport && payload_telephone)){
 		iks_delete(iq);
 		iks_delete(gtalk);
 		iks_delete(dcodecs);
@@ -416,23 +408,16 @@ static int gtalk_invite(struct gtalk_pvt *p, char *to, char *from, char *sid, in
 	iks_insert_attrib(dcodecs, "xmlns", GOOGLE_AUDIO_NS);
 	iks_insert_attrib(dcodecs, "xml:lang", "en");
 
-	if (!(alreadysent = ast_format_cap_alloc_nolock())) {
-		return 0;
-	}
-	for (x = 0; x < AST_CODEC_PREF_SIZE; x++) {
-		if (!(ast_codec_pref_index(&client->prefs, x, &tmpfmt))) {
+	for (x = 0; x < 64; x++) {
+		if (!(pref_codec = ast_codec_pref_index(&client->prefs, x)))
 			break;
-		}
-		if (!(ast_format_cap_iscompatible(client->cap, &tmpfmt))) {
+		if (!(client->capability & pref_codec))
 			continue;
-		}
-		if (ast_format_cap_iscompatible(alreadysent, &tmpfmt)) {
+		if (alreadysent & pref_codec)
 			continue;
-		}
-		codecs_num = add_codec_to_answer(p, &tmpfmt, dcodecs);
-		ast_format_cap_add(alreadysent, &tmpfmt);
+		codecs_num = add_codec_to_answer(p, pref_codec, dcodecs);
+		alreadysent |= pref_codec;
 	}
-	alreadysent = ast_format_cap_destroy(alreadysent);
 
 	if (codecs_num) {
 		/* only propose DTMF within an audio session */
@@ -500,7 +485,7 @@ static int gtalk_ringing_ack(void *data, ikspak *pak)
 				  (redirect = iks_find_cdata(traversenodes, "sta:redirect"))) &&
 				(redirect = strstr(redirect, "xmpp:"))) {
 				redirect += 5;
-				ast_debug(1, "redirect %s\n", redirect);
+				ast_log(LOG_DEBUG, "redirect %s\n", redirect);
 				ast_copy_string(p->them, redirect, sizeof(p->them));
 
 				gtalk_invite(p, p->them, p->us, p->sid, 1);
@@ -553,15 +538,13 @@ static enum ast_rtp_glue_result gtalk_get_rtp_peer(struct ast_channel *chan, str
 	return res;
 }
 
-static void gtalk_get_codec(struct ast_channel *chan, struct ast_format_cap *result)
+static format_t gtalk_get_codec(struct ast_channel *chan)
 {
 	struct gtalk_pvt *p = chan->tech_pvt;
-	ast_mutex_lock(&p->lock);
-	ast_format_cap_copy(result, p->peercap);
-	ast_mutex_unlock(&p->lock);
+	return p->peercapability;
 }
 
-static int gtalk_set_rtp_peer(struct ast_channel *chan, struct ast_rtp_instance *rtp, struct ast_rtp_instance *vrtp, struct ast_rtp_instance *trtp, const struct ast_format_cap *cap, int nat_active)
+static int gtalk_set_rtp_peer(struct ast_channel *chan, struct ast_rtp_instance *rtp, struct ast_rtp_instance *vrtp, struct ast_rtp_instance *trtp, format_t codecs, int nat_active)
 {
 	struct gtalk_pvt *p;
 
@@ -628,7 +611,7 @@ static int gtalk_is_answered(struct gtalk *client, ikspak *pak)
 	char s1[BUFSIZ], s2[BUFSIZ], s3[BUFSIZ];
 	int peernoncodeccapability;
 
-	ast_debug(1, "The client is %s\n", client->name);
+	ast_log(LOG_DEBUG, "The client is %s\n", client->name);
 
 	/* Make sure our new call does exist */
 	for (tmp = client->p; tmp; tmp = tmp->next) {
@@ -669,15 +652,15 @@ static int gtalk_is_answered(struct gtalk *client, ikspak *pak)
 	}
 
 	/* Now gather all of the codecs that we are asked for */
-	ast_rtp_codecs_payload_formats(ast_rtp_instance_get_codecs(tmp->rtp), tmp->peercap, &peernoncodeccapability);
+	ast_rtp_codecs_payload_formats(ast_rtp_instance_get_codecs(tmp->rtp), &tmp->peercapability, &peernoncodeccapability);
 
-	/* at this point, we received an answer from the remote Gtalk client,
+	/* at this point, we received an awser from the remote Gtalk client,
 	   which allows us to compare capabilities */
-	ast_format_cap_joint_copy(tmp->cap, tmp->peercap, tmp->jointcap);
-	if (ast_format_cap_is_empty(tmp->jointcap)) {
-		ast_log(LOG_WARNING, "Capabilities don't match : us - %s, peer - %s, combined - %s \n", ast_getformatname_multiple(s1, BUFSIZ, tmp->cap),
-			ast_getformatname_multiple(s2, BUFSIZ, tmp->peercap),
-			ast_getformatname_multiple(s3, BUFSIZ, tmp->jointcap));
+	tmp->jointcapability = tmp->capability & tmp->peercapability;
+	if (!tmp->jointcapability) {
+		ast_log(LOG_WARNING, "Capabilities don't match : us - %s, peer - %s, combined - %s \n", ast_getformatname_multiple(s1, BUFSIZ, tmp->capability),
+			ast_getformatname_multiple(s2, BUFSIZ, tmp->peercapability),
+			ast_getformatname_multiple(s3, BUFSIZ, tmp->jointcapability));
 		/* close session if capabilities don't match */
 		ast_queue_hangup(tmp->owner);
 
@@ -703,7 +686,7 @@ static int gtalk_is_accepted(struct gtalk *client, ikspak *pak)
 	struct gtalk_pvt *tmp;
 	char *from;
 
-	ast_debug(1, "The client is %s\n", client->name);
+	ast_log(LOG_DEBUG, "The client is %s\n", client->name);
 	/* find corresponding call */
 	for (tmp = client->p; tmp; tmp = tmp->next) {
 		if (iks_find_with_attrib(pak->x, "session", "id", tmp->sid)) {
@@ -995,7 +978,7 @@ static struct gtalk_pvt *gtalk_alloc(struct gtalk *client, const char *us, const
 {
 	struct gtalk_pvt *tmp = NULL;
 	struct aji_resource *resources = NULL;
-	struct aji_buddy *buddy;
+	struct aji_buddy *buddy = NULL;
 	char idroster[200];
 	char *data, *exten = NULL;
 	struct ast_sockaddr bindaddr_tmp;
@@ -1023,20 +1006,16 @@ static struct gtalk_pvt *gtalk_alloc(struct gtalk *client, const char *us, const
 			snprintf(idroster, sizeof(idroster), "%s", them);
 		} else {
 			ast_log(LOG_ERROR, "no gtalk capable clients to talk to.\n");
+			if (buddy) {
+				ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+			}
 			return NULL;
+		}
+		if (buddy) {
+			ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
 		}
 	}
 	if (!(tmp = ast_calloc(1, sizeof(*tmp)))) {
-		return NULL;
-	}
-	tmp->cap = ast_format_cap_alloc_nolock();
-	tmp->jointcap = ast_format_cap_alloc_nolock();
-	tmp->peercap = ast_format_cap_alloc_nolock();
-	if (!tmp->jointcap || !tmp->peercap || !tmp->cap) {
-		tmp->cap = ast_format_cap_destroy(tmp->cap);
-		tmp->jointcap = ast_format_cap_destroy(tmp->jointcap);
-		tmp->peercap = ast_format_cap_destroy(tmp->peercap);
-		ast_free(tmp);
 		return NULL;
 	}
 
@@ -1067,10 +1046,10 @@ static struct gtalk_pvt *gtalk_alloc(struct gtalk *client, const char *us, const
 	ast_rtp_codecs_payloads_clear(ast_rtp_instance_get_codecs(tmp->rtp), tmp->rtp);
 
 	/* add user configured codec capabilites */
-	if (!(ast_format_cap_is_empty(client->cap))) {
-		ast_format_cap_copy(tmp->cap, client->cap);
-	} else if (!(ast_format_cap_is_empty(global_capability))) {
-		ast_format_cap_copy(tmp->cap, global_capability);
+	if (client->capability) {
+		tmp->capability = client->capability;
+	} else if (global_capability) {
+		tmp->capability = global_capability;
 	}
 
 	tmp->parent = client;
@@ -1102,9 +1081,9 @@ static struct gtalk_pvt *gtalk_alloc(struct gtalk *client, const char *us, const
 static struct ast_channel *gtalk_new(struct gtalk *client, struct gtalk_pvt *i, int state, const char *title, const char *linkedid)
 {
 	struct ast_channel *tmp;
+	int fmt;
+	int what;
 	const char *n2;
-	struct ast_format_cap *what; /* used as SHALLOW COPY DO NOT DESTROY */
-	struct ast_format tmpfmt;
 
 	if (title)
 		n2 = title;
@@ -1119,29 +1098,20 @@ static struct ast_channel *gtalk_new(struct gtalk *client, struct gtalk_pvt *i, 
 
 	/* Select our native format based on codec preference until we receive
 	   something from another device to the contrary. */
-	if (!(ast_format_cap_is_empty(i->jointcap))) {
-		what = i->jointcap;
-	} else if (i->cap) {
-		what = i->cap;
-	} else {
+	if (i->jointcapability)
+		what = i->jointcapability;
+	else if (i->capability)
+		what = i->capability;
+	else
 		what = global_capability;
-	}
 
 	/* Set Frame packetization */
 	if (i->rtp) {
 		ast_rtp_codecs_packetization_set(ast_rtp_instance_get_codecs(i->rtp), i->rtp, &i->prefs);
 	}
 
-	ast_codec_choose(&i->prefs, what, 1, &tmpfmt);
-	ast_format_cap_add(tmp->nativeformats, &tmpfmt);
-
-	ast_format_cap_iter_start(i->jointcap);
-	while (!(ast_format_cap_iter_next(i->jointcap, &tmpfmt))) {
-		if (AST_FORMAT_GET_TYPE(tmpfmt.id) == AST_FORMAT_TYPE_VIDEO) {
-			ast_format_cap_add(tmp->nativeformats, &tmpfmt);
-		}
-	}
-	ast_format_cap_iter_end(i->jointcap);
+	tmp->nativeformats = ast_codec_choose(&i->prefs, what, 1) | (i->jointcapability & AST_FORMAT_VIDEO_MASK);
+	fmt = ast_best_codec(tmp->nativeformats);
 
 	if (i->rtp) {
 		ast_channel_set_fd(tmp, 0, ast_rtp_instance_fd(i->rtp, 0));
@@ -1154,12 +1124,10 @@ static struct ast_channel *gtalk_new(struct gtalk *client, struct gtalk_pvt *i, 
 	if (state == AST_STATE_RING)
 		tmp->rings = 1;
 	tmp->adsicpe = AST_ADSI_UNAVAILABLE;
-
-	ast_best_codec(tmp->nativeformats, &tmpfmt);
-	ast_format_copy(&tmp->writeformat, &tmpfmt);
-	ast_format_copy(&tmp->rawwriteformat, &tmpfmt);
-	ast_format_copy(&tmp->readformat, &tmpfmt);
-	ast_format_copy(&tmp->rawreadformat, &tmpfmt);
+	tmp->writeformat = fmt;
+	tmp->rawwriteformat = fmt;
+	tmp->readformat = fmt;
+	tmp->rawreadformat = fmt;
 	tmp->tech_pvt = i;
 
 	tmp->callgroup = client->callgroup;
@@ -1272,9 +1240,6 @@ static void gtalk_free_pvt(struct gtalk *client, struct gtalk_pvt *p)
 	if (p->vrtp)
 		ast_rtp_instance_destroy(p->vrtp);
 	gtalk_free_candidates(p->theircandidates);
-	p->cap = ast_format_cap_destroy(p->cap);
-	p->jointcap = ast_format_cap_destroy(p->jointcap);
-	p->peercap = ast_format_cap_destroy(p->peercap);
 	ast_free(p);
 }
 
@@ -1309,6 +1274,9 @@ static int gtalk_newcall(struct gtalk *client, ikspak *pak)
 	if (!strcasecmp(client->name, "guest")){
 		/* the guest account is not tied to any configured XMPP client,
 		   let's set it now */
+		if (client->connection) {
+			ASTOBJ_UNREF(client->connection, ast_aji_client_destroy);
+		}
 		client->connection = ast_aji_get_client(from);
 		if (!client->connection) {
 			ast_log(LOG_ERROR, "No XMPP client to talk to, us (partial JID) : %s\n", from);
@@ -1376,15 +1344,15 @@ static int gtalk_newcall(struct gtalk *client, ikspak *pak)
 	}
 
 	/* Now gather all of the codecs that we are asked for */
-	ast_rtp_codecs_payload_formats(ast_rtp_instance_get_codecs(p->rtp), p->peercap, &peernoncodeccapability);
-	ast_format_cap_joint_copy(p->cap, p->peercap, p->jointcap);
+	ast_rtp_codecs_payload_formats(ast_rtp_instance_get_codecs(p->rtp), &p->peercapability, &peernoncodeccapability);
+	p->jointcapability = p->capability & p->peercapability;
 	ast_mutex_unlock(&p->lock);
 
 	ast_setstate(chan, AST_STATE_RING);
-	if (ast_format_cap_is_empty(p->jointcap)) {
-		ast_log(LOG_WARNING, "Capabilities don't match : us - %s, peer - %s, combined - %s \n", ast_getformatname_multiple(s1, BUFSIZ, p->cap),
-			ast_getformatname_multiple(s2, BUFSIZ, p->peercap),
-			ast_getformatname_multiple(s3, BUFSIZ, p->jointcap));
+	if (!p->jointcapability) {
+		ast_log(LOG_WARNING, "Capabilities don't match : us - %s, peer - %s, combined - %s \n", ast_getformatname_multiple(s1, BUFSIZ, p->capability),
+			ast_getformatname_multiple(s2, BUFSIZ, p->peercapability),
+			ast_getformatname_multiple(s3, BUFSIZ, p->jointcapability));
 		/* close session if capabilities don't match */
 		gtalk_action(client, p, "reject");
 		p->alreadygone = 1;
@@ -1607,12 +1575,12 @@ static struct ast_frame *gtalk_rtp_read(struct ast_channel *ast, struct gtalk_pv
 	if (p->owner) {
 		/* We already hold the channel lock */
 		if (f->frametype == AST_FRAME_VOICE) {
-			if (!ast_format_cap_iscompatible(p->owner->nativeformats, &f->subclass.format)) {
-				ast_debug(1, "Oooh, format changed to %s\n", ast_getformatname(&f->subclass.format));
-				ast_format_cap_remove_bytype(p->owner->nativeformats, AST_FORMAT_TYPE_AUDIO);
-				ast_format_cap_add(p->owner->nativeformats, &f->subclass.format);
-				ast_set_read_format(p->owner, &p->owner->readformat);
-				ast_set_write_format(p->owner, &p->owner->writeformat);
+			if (f->subclass.codec != (p->owner->nativeformats & AST_FORMAT_AUDIO_MASK)) {
+				ast_debug(1, "Oooh, format changed to %s\n", ast_getformatname(f->subclass.codec));
+				p->owner->nativeformats =
+					(p->owner->nativeformats & AST_FORMAT_VIDEO_MASK) | f->subclass.codec;
+				ast_set_read_format(p->owner, p->owner->readformat);
+				ast_set_write_format(p->owner, p->owner->writeformat);
 			}
 			/* if ((ast_test_flag(p, SIP_DTMF) == SIP_DTMF_INBAND) && p->vad) {
 				f = ast_dsp_process(p->owner, p->vad, f);
@@ -1644,13 +1612,13 @@ static int gtalk_write(struct ast_channel *ast, struct ast_frame *frame)
 
 	switch (frame->frametype) {
 	case AST_FRAME_VOICE:
-		if (!(ast_format_cap_iscompatible(ast->nativeformats, &frame->subclass.format))) {
+		if (!(frame->subclass.codec & ast->nativeformats)) {
 			ast_log(LOG_WARNING,
 					"Asked to transmit frame type %s, while native formats is %s (read/write = %s/%s)\n",
-					ast_getformatname(&frame->subclass.format),
+					ast_getformatname(frame->subclass.codec),
 					ast_getformatname_multiple(buf, sizeof(buf), ast->nativeformats),
-					ast_getformatname(&ast->readformat),
-					ast_getformatname(&ast->writeformat));
+					ast_getformatname(ast->readformat),
+					ast_getformatname(ast->writeformat));
 			return 0;
 		}
 		if (p) {
@@ -1880,7 +1848,7 @@ static int gtalk_hangup(struct ast_channel *ast)
 }
 
 /*!\brief Part of PBX interface */
-static struct ast_channel *gtalk_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *gtalk_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
 {
 	struct gtalk_pvt *p = NULL;
 	struct gtalk *client = NULL;
@@ -1909,6 +1877,9 @@ static struct ast_channel *gtalk_request(const char *type, struct ast_format_cap
 	if (!strcasecmp(client->name, "guest")){
 		/* the guest account is not tied to any configured XMPP client,
 		   let's set it now */
+		if (client->connection) {
+			ASTOBJ_UNREF(client->connection, ast_aji_client_destroy);
+		}
 		client->connection = ast_aji_get_client(sender);
 		if (!client->connection) {
 			ast_log(LOG_ERROR, "No XMPP client to talk to, us (partial JID) : %s\n", sender);
@@ -1972,8 +1943,8 @@ static char *gtalk_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cl
 					chan->name,
 					jid,
 					resource,
-					ast_getformatname(&chan->readformat),
-					ast_getformatname(&chan->writeformat)
+					ast_getformatname(chan->readformat),
+					ast_getformatname(chan->writeformat)
 					);
 			else
 				ast_log(LOG_WARNING, "No available channel\n");
@@ -1986,42 +1957,6 @@ static char *gtalk_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cl
 	ast_mutex_unlock(&gtalklock);
 
 	ast_cli(a->fd, "%d active gtalk channel%s\n", numchans, (numchans != 1) ? "s" : "");
-	return CLI_SUCCESS;
-#undef FORMAT
-}
-
-/*! \brief List global settings for the GoogleTalk channel */
-static char *gtalk_show_settings(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	char codec_buf[BUFSIZ];
-	switch (cmd) {
-	case CLI_INIT:
-		e->command = "gtalk show settings";
-		e->usage =
-			"Usage: gtalk show settings\n"
-			"       Provides detailed list of the configuration on the GoogleTalk channel.\n";
-		return NULL;
-	case CLI_GENERATE:
-		return NULL;
-	}
-
-	if (a->argc != 3) {
-		return CLI_SHOWUSAGE;
-	}
-
-#define FORMAT "  %-25.20s  %-15.30s\n"
-
-	ast_cli(a->fd, "\nGlobal Settings:\n");
-	ast_cli(a->fd, "----------------\n");
-	ast_cli(a->fd, FORMAT, "UDP Bindaddress:", ast_inet_ntoa(bindaddr.sin_addr));
-	ast_cli(a->fd, FORMAT, "Stun Address:", global_stunaddr != 0 ? ast_inet_ntoa(stunaddr.sin_addr) : "Disabled");
-	ast_cli(a->fd, FORMAT, "External IP:", S_OR(externip, "Disabled"));
-	ast_cli(a->fd, FORMAT, "Context:", global_context);
-	ast_cli(a->fd, FORMAT, "Codecs:", ast_getformatname_multiple(codec_buf, sizeof(codec_buf) - 1, global_capability));
-	ast_cli(a->fd, FORMAT, "Parking Lot:", global_parkinglot);
-	ast_cli(a->fd, FORMAT, "Allow Guest:", AST_CLI_YESNO(global_allowguest));
-	ast_cli(a->fd, "\n----\n");
-
 	return CLI_SUCCESS;
 #undef FORMAT
 }
@@ -2108,9 +2043,9 @@ static int gtalk_create_member(char *label, struct ast_variable *var, int allowg
 		if (!strcasecmp(var->name, "username"))
 			ast_copy_string(member->user, var->value, sizeof(member->user));
 		else if (!strcasecmp(var->name, "disallow"))
-			ast_parse_allow_disallow(&member->prefs, member->cap, var->value, 0);
+			ast_parse_allow_disallow(&member->prefs, &member->capability, var->value, 0);
 		else if (!strcasecmp(var->name, "allow"))
-			ast_parse_allow_disallow(&member->prefs, member->cap, var->value, 1);
+			ast_parse_allow_disallow(&member->prefs, &member->capability, var->value, 1);
 		else if (!strcasecmp(var->name, "context"))
 			ast_copy_string(member->context, var->value, sizeof(member->context));
 		else if (!strcasecmp(var->name, "parkinglot"))
@@ -2142,6 +2077,9 @@ static int gtalk_load_config(void)
 {
 	char *cat = NULL;
 	struct ast_config *cfg = NULL;
+	char context[AST_MAX_CONTEXT];
+	char parkinglot[AST_MAX_CONTEXT];
+	int allowguest = 1;
 	struct ast_variable *var;
 	struct gtalk *member;
 	struct ast_codec_pref prefs;
@@ -2163,32 +2101,26 @@ static int gtalk_load_config(void)
 	memcpy(&global_jbconf, &default_jbconf, sizeof(struct ast_jb_conf));
 
 	/* set defaults */
-	memset(&prefs, 0, sizeof(prefs));
 	memset(&stunaddr, 0, sizeof(stunaddr));
-	global_stunaddr = 0;
-	global_allowguest = DEFAULT_ALLOWGUEST;
-	ast_copy_string(global_context, DEFAULT_CONTEXT, sizeof(global_context));
-	ast_copy_string(global_parkinglot, DEFAULT_PARKINGLOT, sizeof(global_parkinglot));
 
 	cat = ast_category_browse(cfg, NULL);
 	for (var = ast_variable_browse(cfg, "general"); var; var = var->next) {
 		/* handle jb conf */
-		if (!ast_jb_read_conf(&global_jbconf, var->name, var->value)) {
+		if (!ast_jb_read_conf(&global_jbconf, var->name, var->value))
 			continue;
-		}
 
 		if (!strcasecmp(var->name, "allowguest")) {
-			global_allowguest = (ast_true(ast_variable_retrieve(cfg, "general", "allowguest"))) ? 1 : 0;
+			allowguest = (ast_true(ast_variable_retrieve(cfg, "general", "allowguest"))) ? 1 : 0;
 		} else if (!strcasecmp(var->name, "disallow")) {
-			ast_parse_allow_disallow(&prefs, global_capability, var->value, 0);
+			ast_parse_allow_disallow(&prefs, &global_capability, var->value, 0);
 		} else if (!strcasecmp(var->name, "allow")) {
-			ast_parse_allow_disallow(&prefs, global_capability, var->value, 1);
+			ast_parse_allow_disallow(&prefs, &global_capability, var->value, 1);
 		} else if (!strcasecmp(var->name, "context")) {
-			ast_copy_string(global_context, var->value, sizeof(global_context));
+			ast_copy_string(context, var->value, sizeof(context));
 		} else if (!strcasecmp(var->name, "externip")) {
 			ast_copy_string(externip, var->value, sizeof(externip));
 		} else if (!strcasecmp(var->name, "parkinglot")) {
-			ast_copy_string(global_parkinglot, var->value, sizeof(global_parkinglot));
+			ast_copy_string(parkinglot, var->value, sizeof(parkinglot));
 		} else if (!strcasecmp(var->name, "bindaddr")) {
 			if (!(hp = ast_gethostbyname(var->value, &ahp))) {
 				ast_log(LOG_WARNING, "Invalid address: %s\n", var->value);
@@ -2197,7 +2129,6 @@ static int gtalk_load_config(void)
 			}
 		} else if (!strcasecmp(var->name, "stunaddr")) {
 			stunaddr.sin_port = htons(STANDARD_STUN_PORT);
-			global_stunaddr = 1;
 			if (ast_parse_arg(var->value, PARSE_INADDR, &stunaddr)) {
 				ast_log(LOG_WARNING, "Invalid STUN server address: %s\n", var->value);
 			}
@@ -2209,20 +2140,19 @@ static int gtalk_load_config(void)
 			member = ast_calloc(1, sizeof(*member));
 			ASTOBJ_INIT(member);
 			ASTOBJ_WRLOCK(member);
-			member->cap = ast_format_cap_alloc_nolock();
 			if (!strcasecmp(cat, "guest")) {
 				ast_copy_string(member->name, "guest", sizeof(member->name));
 				ast_copy_string(member->user, "guest", sizeof(member->user));
-				ast_copy_string(member->context, global_context, sizeof(member->context));
-				ast_copy_string(member->parkinglot, global_parkinglot, sizeof(member->parkinglot));
-				member->allowguest = global_allowguest;
+				ast_copy_string(member->context, context, sizeof(member->context));
+				ast_copy_string(member->parkinglot, parkinglot, sizeof(member->parkinglot));
+				member->allowguest = allowguest;
 				member->prefs = prefs;
 				while (var) {
 					if (!strcasecmp(var->name, "disallow")) {
-						ast_parse_allow_disallow(&member->prefs, member->cap,
+						ast_parse_allow_disallow(&member->prefs, &member->capability,
 												 var->value, 0);
 					} else if (!strcasecmp(var->name, "allow")) {
-						ast_parse_allow_disallow(&member->prefs, member->cap,
+						ast_parse_allow_disallow(&member->prefs, &member->capability,
 												 var->value, 1);
 					} else if (!strcasecmp(var->name, "context")) {
 						ast_copy_string(member->context, var->value,
@@ -2239,6 +2169,9 @@ static int gtalk_load_config(void)
 					ASTOBJ_CONTAINER_TRAVERSE(clients, 1, {
 						ASTOBJ_WRLOCK(iterator);
 						ASTOBJ_WRLOCK(member);
+						if (member->connection) {
+							ASTOBJ_UNREF(member->connection, ast_aji_client_destroy);
+						}
 						member->connection = NULL;
 						iks_filter_add_rule(iterator->f, gtalk_parser, member, IKS_RULE_TYPE, IKS_PAK_IQ, IKS_RULE_NS, GOOGLE_NS, IKS_RULE_DONE);
 						iks_filter_add_rule(iterator->f, gtalk_parser, member, IKS_RULE_TYPE, IKS_PAK_IQ, IKS_RULE_NS, GOOGLE_JINGLE_NS, IKS_RULE_DONE);
@@ -2254,9 +2187,8 @@ static int gtalk_load_config(void)
 				}
 			} else {
 				ASTOBJ_UNLOCK(member);
-				if (gtalk_create_member(cat, var, global_allowguest, prefs, global_context, member)) {
+				if (gtalk_create_member(cat, var, allowguest, prefs, context, member))
 					ASTOBJ_CONTAINER_LINK(&gtalk_list, member);
-				}
 				ASTOBJ_UNREF(member, gtalk_member_destroy);
 			}
 		}
@@ -2273,22 +2205,8 @@ static int load_module(void)
 {
 	struct ast_sockaddr bindaddr_tmp;
 	struct ast_sockaddr ourip_tmp;
+
 	char *jabber_loaded = ast_module_helper("", "res_jabber.so", 0, 0, 0, 0);
-	struct ast_format tmpfmt;
-
-	if (!(gtalk_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	if (!(global_capability = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-
-	ast_format_cap_add_all_by_type(gtalk_tech.capabilities, AST_FORMAT_TYPE_AUDIO);
-	ast_format_cap_add(global_capability, ast_format_set(&tmpfmt, AST_FORMAT_ULAW, 0));
-	ast_format_cap_add(global_capability, ast_format_set(&tmpfmt, AST_FORMAT_GSM, 0));
-	ast_format_cap_add(global_capability, ast_format_set(&tmpfmt, AST_FORMAT_ALAW, 0));
-	ast_format_cap_add(global_capability, ast_format_set(&tmpfmt, AST_FORMAT_H263, 0));
-
 	free(jabber_loaded);
 	if (!jabber_loaded) {
 		/* If embedded, check for a different module name */
@@ -2306,7 +2224,7 @@ static int load_module(void)
 		return 0;
 	}
 
-	sched = ast_sched_context_create();
+	sched = sched_context_create();
 	if (!sched) {
 		ast_log(LOG_WARNING, "Unable to create schedule context\n");
 	}
@@ -2371,8 +2289,6 @@ static int unload_module(void)
 	}
 	ASTOBJ_CONTAINER_DESTROYALL(&gtalk_list, gtalk_member_destroy);
 	ASTOBJ_CONTAINER_DESTROY(&gtalk_list);
-	global_capability = ast_format_cap_destroy(global_capability);
-	gtalk_tech.capabilities = ast_format_cap_destroy(gtalk_tech.capabilities);
 	return 0;
 }
 

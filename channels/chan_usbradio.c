@@ -60,7 +60,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338229 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338227 $")
 
 #include <stdio.h>
 #include <ctype.h>
@@ -665,7 +665,7 @@ static char *usbradio_active;	 /* the active device */
 
 static int setformat(struct chan_usbradio_pvt *o, int mode);
 
-static struct ast_channel *usbradio_request(const char *type, struct ast_format_cap *cap,
+static struct ast_channel *usbradio_request(const char *type, format_t format,
 		const struct ast_channel *requestor,
 		void *data, int *cause);
 static int usbradio_digit_begin(struct ast_channel *c, char digit);
@@ -686,11 +686,10 @@ static int RxTestIt(struct chan_usbradio_pvt *o);
 
 static char tdesc[] = "USB (CM108) Radio Channel Driver";
 
-static struct ast_format slin;
-
-static struct ast_channel_tech usbradio_tech = {
+static const struct ast_channel_tech usbradio_tech = {
 	.type = "Radio",
 	.description = tdesc,
+	.capabilities = AST_FORMAT_SLINEAR,
 	.requester = usbradio_request,
 	.send_digit_begin = usbradio_digit_begin,
 	.send_digit_end = usbradio_digit_end,
@@ -2065,7 +2064,7 @@ static struct ast_frame *usbradio_read(struct ast_channel *c)
 		return f;
 	/* ok we can build and deliver the frame to the caller */
 	f->frametype = AST_FRAME_VOICE;
-	ast_format_set(&f->subclass.format, AST_FORMAT_SLINEAR, 0);
+	f->subclass.codec = AST_FORMAT_SLINEAR;
 	f->samples = FRAME_SIZE;
 	f->datalen = FRAME_SIZE * 2;
 	f->data.ptr = o->usbradio_read_buf_8k + AST_FRIENDLY_OFFSET;
@@ -2184,9 +2183,9 @@ static struct ast_channel *usbradio_new(struct chan_usbradio_pvt *o, char *ext, 
 	if (o->sounddev < 0)
 		setformat(o, O_RDWR);
 	c->fds[0] = o->sounddev;	/* -1 if device closed, override later */
-	ast_format_cap_add(c->nativeformats, &slin);
-	ast_format_set(&c->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&c->writeformat, AST_FORMAT_SLINEAR, 0);
+	c->nativeformats = AST_FORMAT_SLINEAR;
+	c->readformat = AST_FORMAT_SLINEAR;
+	c->writeformat = AST_FORMAT_SLINEAR;
 	c->tech_pvt = o;
 
 	if (!ast_strlen_zero(o->language))
@@ -2218,7 +2217,7 @@ static struct ast_channel *usbradio_new(struct chan_usbradio_pvt *o, char *ext, 
 }
 /*
 */
-static struct ast_channel *usbradio_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *usbradio_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
 {
 	struct ast_channel *c;
 	struct chan_usbradio_pvt *o = find_desc(data);
@@ -2234,7 +2233,8 @@ static struct ast_channel *usbradio_request(const char *type, struct ast_format_
 		/* XXX we could default to 'dsp' perhaps ? */
 		return NULL;
 	}
-	if (!(ast_format_cap_iscompatible(cap, &slin))) {
+	if ((format & AST_FORMAT_SLINEAR) == 0) {
+		ast_log(LOG_NOTICE, "Format 0x%" PRIx64 " unsupported\n", format);
 		return NULL;
 	}
 	if (o->owner) {
@@ -3938,11 +3938,6 @@ static int load_module(void)
 	struct ast_flags zeroflag = {0};
 #endif
 
-	if (!(usbradio_tech.capabilities = ast_format_cap_alloc())) {
-		return AST_MODULE_LOAD_DECLINE;
-	}
-	ast_format_cap_add(usbradio_tech.capabilities, ast_format_set(&slin, AST_FORMAT_SLINEAR, 0));
-
 	if (hid_device_mklist()) {
 		ast_log(LOG_NOTICE, "Unable to make hid list\n");
 		return AST_MODULE_LOAD_DECLINE;
@@ -4027,8 +4022,6 @@ static int unload_module(void)
 		/* XXX what about the thread ? */
 		/* XXX what about the memory allocated ? */
 	}
-
-	usbradio_tech.capabilities = ast_format_cap_destroy(usbradio_tech.capabilities);
 	return 0;
 }
 

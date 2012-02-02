@@ -25,7 +25,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337124 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337118 $")
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -374,7 +374,7 @@ int ast_app_messagecount(const char *context, const char *mailbox, const char *f
 	return 0;
 }
 
-int ast_dtmf_stream(struct ast_channel *chan, struct ast_channel *peer, const char *digits, int between, unsigned int duration)
+int ast_dtmf_stream(struct ast_channel *chan, struct ast_channel *peer, const char *digits, int between, unsigned int duration) 
 {
 	const char *ptr;
 	int res = 0;
@@ -446,15 +446,15 @@ struct linear_state {
 	int fd;
 	int autoclose;
 	int allowoverride;
-	struct ast_format origwfmt;
+	int origwfmt;
 };
 
 static void linear_release(struct ast_channel *chan, void *params)
 {
 	struct linear_state *ls = params;
 
-	if (ls->origwfmt.id && ast_set_write_format(chan, &ls->origwfmt)) {
-		ast_log(LOG_WARNING, "Unable to restore channel '%s' to format '%d'\n", chan->name, ls->origwfmt.id);
+	if (ls->origwfmt && ast_set_write_format(chan, ls->origwfmt)) {
+		ast_log(LOG_WARNING, "Unable to restore channel '%s' to format '%d'\n", chan->name, ls->origwfmt);
 	}
 
 	if (ls->autoclose) {
@@ -470,12 +470,11 @@ static int linear_generator(struct ast_channel *chan, void *data, int len, int s
 	struct linear_state *ls = data;
 	struct ast_frame f = {
 		.frametype = AST_FRAME_VOICE,
+		.subclass.codec = AST_FORMAT_SLINEAR,
 		.data.ptr = buf + AST_FRIENDLY_OFFSET / 2,
 		.offset = AST_FRIENDLY_OFFSET,
 	};
 	int res;
-
-	ast_format_set(&f.subclass.format, AST_FORMAT_SLINEAR, 0);
 
 	len = samples * 2;
 	if (len > sizeof(buf) - AST_FRIENDLY_OFFSET) {
@@ -509,9 +508,9 @@ static void *linear_alloc(struct ast_channel *chan, void *params)
 		ast_clear_flag(chan, AST_FLAG_WRITE_INT);
 	}
 
-	ast_format_copy(&ls->origwfmt, &chan->writeformat);
+	ls->origwfmt = chan->writeformat;
 
-	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR)) {
+	if (ast_set_write_format(chan, AST_FORMAT_SLINEAR)) {
 		ast_log(LOG_WARNING, "Unable to set '%s' to linear format (write)\n", chan->name);
 		ast_free(ls);
 		ls = params = NULL;
@@ -750,11 +749,10 @@ static int __ast_play_and_record(struct ast_channel *chan, const char *playfile,
 	int totalsilence = 0;
 	int dspsilence = 0;
 	int olddspsilence = 0;
-	struct ast_format rfmt;
+	int rfmt = 0;
 	struct ast_silence_generator *silgen = NULL;
-	char prependfile[PATH_MAX];
+	char prependfile[80];
 
-	ast_format_clear(&rfmt);
 	if (silencethreshold < 0) {
 		silencethreshold = global_silence_threshold;
 	}
@@ -825,8 +823,8 @@ static int __ast_play_and_record(struct ast_channel *chan, const char *playfile,
 			return -1;
 		}
 		ast_dsp_set_threshold(sildet, silencethreshold);
-		ast_format_copy(&rfmt, &chan->readformat);
-		res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
+		rfmt = chan->readformat;
+		res = ast_set_read_format(chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear mode, giving up\n");
 			ast_dsp_free(sildet);
@@ -979,7 +977,6 @@ static int __ast_play_and_record(struct ast_channel *chan, const char *playfile,
 		if (dspsilence > 0) {
 			*duration -= (dspsilence - 200) / 1000;
 		}
-
 		if (*duration < 0) {
 			*duration = 0;
 		}
@@ -994,7 +991,7 @@ static int __ast_play_and_record(struct ast_channel *chan, const char *playfile,
 			 * to trim ANY part of the recording.
 			 */
 			if (res > 0 && dspsilence) {
-				/* rewind only the trailing silence */
+                                /* rewind only the trailing silence */
 				ast_stream_rewind(others[x], dspsilence - 200);
 			}
 			ast_truncstream(others[x]);
@@ -1029,8 +1026,8 @@ static int __ast_play_and_record(struct ast_channel *chan, const char *playfile,
 			ast_filedelete(prependfile, sfmt[x]);
 		}
 	}
-	if (rfmt.id && ast_set_read_format(chan, &rfmt)) {
-		ast_log(LOG_WARNING, "Unable to restore format %s to channel '%s'\n", ast_getformatname(&rfmt), chan->name);
+	if (rfmt && ast_set_read_format(chan, rfmt)) {
+		ast_log(LOG_WARNING, "Unable to restore format %s to channel '%s'\n", ast_getformatname(rfmt), chan->name);
 	}
 	if ((outmsg == 2) && (!skip_confirmation_sound)) {
 		ast_stream_and_wait(chan, "auth-thankyou", "");
@@ -1503,9 +1500,9 @@ static int ast_unlock_path_flock(const char *path)
 		snprintf(s, strlen(path) + 19, "%s/lock", path);
 		unlink(s);
 		path_lock_destroy(p);
-		ast_debug(1, "Unlocked path '%s'\n", path);
+		ast_log(LOG_DEBUG, "Unlocked path '%s'\n", path);
 	} else {
-		ast_debug(1, "Failed to unlock path '%s': "
+		ast_log(LOG_DEBUG, "Failed to unlock path '%s': "
 				"lock not found\n", path);
 	}
 
