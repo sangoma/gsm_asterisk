@@ -28,7 +28,15 @@
 #include "asterisk/pbx.h"
 #include "asterisk/channel.h"
 #include "asterisk/frame.h"
+#include "asterisk/cli.h"
+#include "asterisk/manager.h"
 #include <libwat.h>
+
+#ifdef LOTS_OF_SPANS
+#define WAT_NUM_SPANS	DAHDI_MAX_SPANS
+#else
+#define WAT_NUM_SPANS 		32
+#endif
 
 enum sig_wat_law {
 	SIG_WAT_DEFLAW = 0,
@@ -170,6 +178,11 @@ struct sig_wat_span {
 	struct sig_wat_sms *smss[WAT_MAX_SMSS_PER_SPAN];
 };
 
+struct dahdi_wat {
+	int sigchannel;	/*!< What channel is the UART channel on */
+	struct sig_wat_span wat;
+};
+
 int sig_wat_start_wat(struct sig_wat_span *wat);
 void sig_wat_stop_wat(struct sig_wat_span *wat);
 void sig_wat_init_wat(struct sig_wat_span *wat);
@@ -194,4 +207,14 @@ int sig_wat_digit_begin(struct sig_wat_chan *pvt, struct ast_channel *ast, char 
 char *sig_wat_show_span(char *dest, struct sig_wat_span *wat);
 char *sig_wat_show_span_verbose(char *dest, struct sig_wat_span *wat);
 
+char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+
+int action_watsendsms(struct mansession *s, const struct message *m);
+int action_watshowspan(struct mansession *s, const struct message *m);
+int action_watshowspans(struct mansession *s, const struct message *m);
 #endif /* _SIG_WAT_H */
