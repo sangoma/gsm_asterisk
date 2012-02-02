@@ -180,6 +180,68 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 			<para>Similar to the CLI command "pri show spans".</para>
 		</description>
 	</application>
+	<application name="WATShowSpans" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+		<para>Similar to the CLI command "wat send sms".</para>
+		</description>
+	</application>
+	<application name="WATShowSpans" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Similar to the CLI command "wat show spans".</para>
+		</description>
+	</application>
+	<application name="WATShowSpan" language="en_US">
+		<synopsis>
+			Show status of WAT spans.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="Span">
+				<para>Specify the specific span to send.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Similar to the CLI command "wat show span".</para>
+		</description>
+	</application>
+	<application name="WATSendSms" language="en_US">
+		<synopsis>
+			Send a SMS using libWAT on a given span
+		</synopsis>
+		<syntax>
+		<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+		<parameter name="Span">
+			<para>Specify the specific span to send.</para>
+		</parameter>
+		<parameter name="To">
+			<para>Phone number to send SMS to.</para>
+		</parameter>
+		<parameter name="Content">
+			<para>SMS message contents.</para>
+		</parameter>
+		</syntax>
+		<description>
+			<para>Equivalent to the CLI command "wat send sms".</para>
+		</description>
+	</application>
  ***/
 
 #define SMDI_MD_WAIT_TIMEOUT 1500 /* 1.5 seconds */
@@ -1396,7 +1458,9 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.progress_poll_interval = 750,
 				.signal_poll_interval = 10*1000,
 				.signal_threshold = 90,
-				.codec_mask = WAT_CODEC_ALL
+				.codec_mask = WAT_CODEC_ALL,
+				.band = WAT_BAND_AUTO,
+				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_BASE64,
 			},
 		},
 #endif
@@ -11481,6 +11545,9 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 		case SIG_MFCR2:
 			tmp->cid_num[0] = '\0';
 			tmp->cid_name[0] = '\0';
+		case SIG_GSM:
+			dahdi_disable_ec(i);
+			res = tone_zone_play_tone(i->subs[SUB_REAL].dfd, -1);
 			break;
 		default:
 			ast_copy_string(tmp->cid_num, conf->chan.cid_num, sizeof(tmp->cid_num));
@@ -17433,13 +17500,131 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 #endif	/* defined(HAVE_SS7) */
 
 #if defined(HAVE_WAT)
-static int wat_action_send_sms(struct mansession *s, const struct message *m)
+static int action_watshowspans(struct mansession *s, const struct message *m)
 {
-	int span;	
-	const char *span_string = astman_get_header(m, "Span");
-	const char *destination = astman_get_header(m, "To");
-	const char *message = astman_get_header(m, "Contents");
+	int span = 0;
+	int num_spans = 0;
+	char action_id[256];
 
+	const char *span_string = astman_get_header(m, "Span");
+	const char *id = astman_get_header(m, "ActionID");
+	
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+	
+	if (!ast_strlen_zero(span_string)) {
+		char dest[30];
+		span = atoi(span_string);
+		if ((span < 1) || (span > NUM_SPANS)) {
+			astman_send_error(s, m, "No such span");
+			goto done;
+		}
+		num_spans = 1;
+		astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
+		goto done;
+	}
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			char dest[30];
+			num_spans++;
+
+			astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
+		}
+	}
+
+	if (!num_spans) {
+		astman_send_error(s, m, "No WAT spans configured\n");
+	}
+	
+done:
+	astman_append(s, "Event: %sComplete\r\n"
+						"Items: %d\r\n"
+						"%s"
+						"\r\n",
+						"WATShowSpans",
+						num_spans,
+						action_id);
+	return 0;	
+}
+
+static int action_watshowspan(struct mansession *s, const struct message *m)
+{
+	int span = 0;
+	int num_spans = 0;
+	char action_id[256];
+
+	const char *span_string = astman_get_header(m, "Span");
+	const char *id = astman_get_header(m, "ActionID");
+
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+	
+	if (!ast_strlen_zero(span_string)) {
+		char dest[200];
+		span = atoi(span_string);
+		if ((span < 1) || (span > NUM_SPANS)) {
+			astman_send_error(s, m, "No such span");
+			goto done;
+		}
+		num_spans = 1;
+		astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
+		goto done;
+	}
+
+	for (span = 0; span < NUM_SPANS; span++) {
+		if (wats[span].wat.wat_span_id) {
+			char dest[200];
+			num_spans++;
+			
+			astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
+		}
+	}
+	if (!num_spans) {
+		astman_send_error(s, m, "No WAT spans configured\n");
+	}
+
+done:
+	astman_append(s, "Event: %sComplete\r\n"
+						"Items: %d\r\n"
+						"%s"
+						"\r\n",
+						"WATShowSpan",
+						num_spans,
+						action_id);
+	return 0;
+}
+
+static int action_watsendsms(struct mansession *s, const struct message *m)
+{
+	int span;
+	wat_sms_event_t event;
+	char action_id[256];
+	const char *id, *span_string;
+	const char *to_number, *to_plan, *to_type;
+	const char *smsc_number, *smsc_plan, *smsc_type;
+	const char *reject_duplicates, *reply_path, *status_report_request, *reference_number, *validity_period_type, *validity_period_value;
+	const char *class, *concatenate_reference_id, *concatenate_total_messages, *concatenate_sequence_num;
+	const char *content, *content_type, *content_transfer_encoding;
+
+	wat_sms_type_t type = WAT_SMS_TXT;
+
+	memset(&event, 0, sizeof(event));
+
+	id = astman_get_header(m, "ActionID");
+	if (!ast_strlen_zero(id)) {
+		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
+	} else {
+		action_id[0] = '\0';
+	}
+
+	span_string = astman_get_header(m, "Span");	
 	if (ast_strlen_zero(span_string)) {
 		astman_send_error(s, m, "No span specified");
 		return 0;
@@ -17451,23 +17636,179 @@ static int wat_action_send_sms(struct mansession *s, const struct message *m)
 		return 0;
 	}
 
-	if (ast_strlen_zero(destination)) {
+	to_number = astman_get_header(m, "To-Number");
+	if (!ast_strlen_zero(to_number)) {
+		memcpy(event.to.digits, to_number, sizeof(event.to.digits));
+	} else {
 		astman_send_error(s, m, "Message destination not specified");
 		return 0;
 	}
 
-	if (sig_wat_send_sms(&wats[span-1].wat, destination, message) != 0) {
+	to_plan = astman_get_header(m, "To-Plan");
+	if (!ast_strlen_zero(to_plan)) {
+		event.to.plan = wat_str2wat_number_plan(to_plan);
+	} else {
+		event.to.plan = WAT_NUMBER_PLAN_ISDN;
+	}
+
+	to_type = astman_get_header(m, "To-Type");
+	if (!ast_strlen_zero(to_plan)) {
+		event.to.type = wat_str2wat_number_type(to_type);
+	} else {
+		event.to.type = WAT_NUMBER_TYPE_NATIONAL;
+	}
+
+	smsc_number = astman_get_header(m, "X-SMS-SMCC-Number");
+	if (!ast_strlen_zero(smsc_number)) {
+		memcpy(event.pdu.smsc.digits, smsc_number, sizeof(event.pdu.smsc.digits));
+
+		smsc_plan = astman_get_header(m, "X-SMS-SMCC-Plan");
+		if (!ast_strlen_zero(smsc_plan)) {
+			event.pdu.smsc.plan = wat_str2wat_number_plan(smsc_plan);
+		} else {
+			event.pdu.smsc.type = WAT_NUMBER_PLAN_ISDN;
+		}
+		
+		smsc_type = astman_get_header(m, "X-SMS-SMCC-Type");
+		if (!ast_strlen_zero(smsc_type)) {
+			event.pdu.smsc.type = wat_str2wat_number_type(smsc_type);
+		} else {
+			event.pdu.smsc.type = WAT_NUMBER_TYPE_NATIONAL;
+		}
+	}
+	
+	reject_duplicates = astman_get_header(m, "X-SMS-Reject-Duplicates");
+	if (!ast_strlen_zero(reject_duplicates)) {
+		event.pdu.sms.submit.tp_rd = ast_true(reject_duplicates);
+	}
+	
+	reply_path = astman_get_header(m, "X-SMS-Reply-Path");
+	if (!ast_strlen_zero(reply_path)) {
+		event.pdu.sms.submit.tp_rp = ast_true(reply_path);
+	}
+	
+	status_report_request = astman_get_header(m, "X-SMS-Status-Report-Request");
+	if (!ast_strlen_zero(status_report_request)) {
+		event.pdu.sms.submit.tp_srr = ast_true(status_report_request);
+	}	
+	
+	reference_number = astman_get_header(m, "X-SMS-Reference-Number");
+	if (!ast_strlen_zero(reference_number)) {
+		event.pdu.tp_message_ref = atoi(reference_number);
+	}
+	
+	validity_period_type = astman_get_header(m, "X-SMS-Validity-Period-Type");
+	if (!ast_strlen_zero(validity_period_type)) {
+		event.pdu.sms.submit.vp.type = wat_str2wat_sms_pdu_vp_type(validity_period_type);
+
+		validity_period_value = astman_get_header(m, "X-SMS-Validity-Period");
+		if (ast_strlen_zero(validity_period_value)) {
+			astman_send_error(s, m, "X-SMS-Validity-Period not specified");
+			return -1;
+		}
+
+		switch(event.pdu.sms.submit.vp.type) {
+			case WAT_SMS_PDU_VP_NOT_PRESENT:
+				break;
+			case WAT_SMS_PDU_VP_ABSOLUTE:
+				astman_send_error(s, m, "Absolute Validity Period not implemented yet");
+				break;
+			case WAT_SMS_PDU_VP_RELATIVE:
+				event.pdu.sms.submit.vp.data.relative = atoi(validity_period_value);
+				break;
+			case WAT_SMS_PDU_VP_ENHANCED:
+				astman_send_error(s, m, "Enhanced Validity Period not implemented yet");
+				break;
+			case WAT_SMS_PDU_VP_INVALID:
+				astman_send_error(s, m, "Invalid Validity Period type");
+				return -1;
+		}
+	} else {
+		event.pdu.sms.submit.vp.type = WAT_SMS_PDU_VP_RELATIVE;
+		event.pdu.sms.submit.vp.data.relative = 0xAB;
+	}
+	
+	class = astman_get_header(m, "X-SMS-Class");
+	if (!ast_strlen_zero(class)) {
+		event.pdu.dcs.msg_class = wat_str2wat_sms_pdu_dcs_msg_cls(class);
+	} else {
+		event.pdu.dcs.msg_class = WAT_SMS_PDU_DCS_MSG_CLASS_ME_SPECIFIC;
+	}
+
+	concatenate_reference_id = astman_get_header(m, "X-SMS-Concat-Reference-ID");
+	if (!ast_strlen_zero(concatenate_reference_id)) {
+		event.pdu.udh.refnr = atoi(concatenate_reference_id);
+	}
+
+	concatenate_total_messages = astman_get_header(m, "X-SMS-Concat-Total-Messages");
+	if (!ast_strlen_zero(concatenate_total_messages)) {
+		event.pdu.udh.total = atoi(concatenate_total_messages);
+	}
+	
+	concatenate_sequence_num = astman_get_header(m, "X-SMS-Concat-Sequence-Number");
+	if (!ast_strlen_zero(concatenate_sequence_num)) {
+		event.pdu.udh.seq = atoi(concatenate_sequence_num);
+	}
+	
+	content = astman_get_header(m, "Content");
+	if (!ast_strlen_zero(content)) {
+
+		event.content.len = strlen(content);
+		strncpy(event.content.data, content, sizeof(event.content.data));
+	} else {
+		astman_send_error(s, m, "No SMS content");
+		return -1;
+	}
+	
+	content_type = astman_get_header(m, "Content-type");
+	if (!ast_strlen_zero(content_type)) {
+		char *p = NULL;
+
+		type = WAT_SMS_PDU;
+		p = strstr(content_type, "charset");
+		if (p == NULL) {
+			p = strstr(content_type, "Charset");
+		}
+		if (p == NULL) {
+			ast_log(LOG_ERROR, "Span %d: Invalid \"Content-Type\" format (%s)\n", span + 1, content_type);
+			return -1;
+		}
+		p+=strlen("charset=");
+
+		event.content.charset = wat_str2wat_sms_content_charset(p);
+	}
+
+	content_transfer_encoding = astman_get_header(m, "Content-Transfer-Encoding");
+	if (!ast_strlen_zero(content_transfer_encoding)) {
+		/* format: base64, hex */
+		
+		event.content.encoding = wat_str2wat_sms_content_encoding(content_transfer_encoding);
+	}
+
+	event.type = type;
+
+	if (sig_wat_send_sms(&wats[span-1].wat, &event) != 0) {
 		astman_send_error(s, m, "Failed to send SMS");
 	} else {
 		astman_send_ack(s, m, "SMS request sent");
 	}
+
+	astman_append(s, "Event: %sComplete\r\n"
+					"Items: %d\r\n"
+					"%s"
+					"\r\n",
+					"WATSendSms",
+					1,
+					action_id);
 	return 0;
 }
 
 static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	int span;
-
+	wat_sms_event_t event;
+	memset(&event, 0, sizeof(event));
+	
 	switch (cmd) {
 		case CLI_INIT:
 			e->command = "wat send sms";
@@ -17493,7 +17834,10 @@ static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cl
 		return CLI_SUCCESS;
 	}
 
-	sig_wat_send_sms(&wats[span-1].wat, a->argv[4], a->argv[5]);
+	strncpy(event.to.digits, a->argv[4], sizeof(event.to.digits));
+	strncpy(event.content.data, a->argv[5], sizeof(event.content.data));
+
+	sig_wat_send_sms(&wats[span-1].wat, &event);
 	return CLI_SUCCESS;
 }
 
@@ -17518,8 +17862,10 @@ static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_
 
 	for (span = 0; span < NUM_SPANS; span++) {
 		if (wats[span].wat.wat_span_id) {
+			char dest[50];
 			num_spans++;
-			sig_wat_cli_show_spans(a->fd, span + 1, &wats[span].wat);
+
+			ast_cli(a->fd, "%s", sig_wat_show_span(dest, &wats[span].wat));
 		}
 	}
 	if (!num_spans) {
@@ -17530,6 +17876,7 @@ static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_
 
 static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
+	char dest[1000];
 	int span;
 
 	switch (cmd) {
@@ -17545,17 +17892,19 @@ static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_c
 
 	if (a->argc < 4)
 		return CLI_SHOWUSAGE;
+	
 	span = atoi(a->argv[3]);
 	if ((span < 1) || (span > NUM_SPANS)) {
 		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
 		return CLI_SUCCESS;
 	}
+	
 	if (!wats[span-1].wat.wat_span_id) {
 		ast_cli(a->fd, "No WAT running on span %d\n", span);
 		return CLI_SUCCESS;
 	}
 
-	sig_wat_cli_show_span(a->fd, &wats[span-1].wat);
+	ast_cli(a->fd, "%s", sig_wat_show_span_verbose(dest, &wats[span-1].wat));
 
 	return CLI_SUCCESS;
 }
@@ -17642,6 +17991,16 @@ static int __unload_module(void)
 #ifdef HAVE_PRI_PROG_W_CAUSE
 	ast_unregister_application(dahdi_send_callrerouting_facility_app);
 #endif
+#endif
+#ifdef HAVE_WAT
+	for (i = 0; i < NUM_SPANS; i++) {
+		if (wats[i].wat.master != AST_PTHREADT_NULL)
+			pthread_cancel(wats[i].wat.master);
+	}
+	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
+	ast_manager_unregister("WATSendSms");
+	ast_manager_unregister("WATShowSpan");
+	ast_manager_unregister("WATShowSpans");
 #endif
 #if defined(HAVE_SS7)
 	for (i = 0; i < NUM_SPANS; i++) {
@@ -18347,6 +18706,36 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				} else {
 					ast_log(LOG_ERROR, "Unknown signalling method '%s' at line %d.\n", v->value, v->lineno);
 				}
+#ifdef HAVE_WAT
+			} else if (!strcasecmp(v->name, "wat_moduletype")) {
+				if (!strcasecmp(v->value, "telit")) {
+					confp->wat.wat.wat_cfg.moduletype = WAT_MODULE_TELIT;
+				} else {
+					ast_log(LOG_WARNING, "Unknown WAT moduletype '%s' at line %d.\n", v->value, v->lineno);
+				 }
+			} else if (!strcasecmp(v->name, "wat_timeout_cid_name")) {
+					if (atoi(v->value) >= 0) {
+						confp->wat.wat.wat_cfg.timeout_cid_num = atoi(v->value);
+					} else {
+						ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+					}
+			} else if (!strcasecmp(v->name, "wat_signal_poll_interval")) {
+				if (atoi(v->value) >= 0) {
+					confp->wat.wat.wat_cfg.signal_poll_interval = atoi(v->value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+				}
+			} else if (!strcasecmp(v->name, "wat_signal_threshold")) {
+				if (atoi(v->value) >= 0) {
+					confp->wat.wat.wat_cfg.signal_threshold = atoi(v->value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+				}				
+			} else if (!strcasecmp(v->name, "wat_codecs")) {
+				confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
+			} else if (!strcasecmp(v->name, "wat_band")) {
+				confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
+#endif
 #ifdef HAVE_PRI
 			} else if (!strcasecmp(v->name, "pridialplan")) {
 				if (!strcasecmp(v->value, "national")) {
@@ -19168,7 +19557,9 @@ static int load_module(void)
 	ast_manager_register("DAHDIRestart", 0, action_dahdirestart, "Fully Restart DAHDI channels (terminates calls)");
 
 #ifdef HAVE_WAT
-	ast_manager_register("WATSendSms", 0, wat_action_send_sms, "Send SMS using LibWAT");
+	ast_manager_register_xml("WATSendSms", 0, action_watsendsms);
+	ast_manager_register_xml("WATShowSpan", 0, action_watshowspan);
+	ast_manager_register_xml("WATShowSpans", 0, action_watshowspans);
 #endif
 
 	ast_cond_init(&ss_thread_complete, NULL);

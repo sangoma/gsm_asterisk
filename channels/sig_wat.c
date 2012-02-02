@@ -56,7 +56,7 @@
 
 #define WAT_NOT_IMPL ast_log(LOG_WARNING, "Function not implemented (%s:%s:%d)\n", __FILE__, __FUNCTION__, __LINE__);
 
-void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm);
+
 void *sig_wat_malloc(size_t size);
 void *sig_wat_calloc(size_t nmemb, size_t size);
 void sig_wat_free(void *ptr);
@@ -64,7 +64,7 @@ void sig_wat_log(unsigned char loglevel, char *fmt, ...);
 void sig_wat_log_span(unsigned char span_id, unsigned char loglevel, char *fmt, ...);
 void sig_wat_assert(char *message);
 int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len);
-void sig_wat_status_change(unsigned char span_id, wat_sigstatus_t status);
+void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status);
 
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event);
 void sig_wat_con_sts(unsigned char span_id, uint8_t call_id, wat_con_status_t *con_status);
@@ -90,15 +90,6 @@ static void sig_wat_open_media(struct sig_wat_chan *p);
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor);
 
 struct sig_wat_span **wat_spans;
-
-void sig_wat_alarm(unsigned char span_id, wat_alarm_t alarm)
-{
-	if (alarm == WAT_ALARM_NONE) {
-		ast_log(LOG_NOTICE, "Span %d:Alarms cleared\n", span_id);
-	} else {
-		ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(alarm));
-	}
-}
 
 void *sig_wat_malloc(size_t size)
 {
@@ -197,20 +188,49 @@ int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
 	return res;
 }
 
-void sig_wat_status_change(unsigned char span_id, wat_sigstatus_t status)
+void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
 	
 	ast_assert(wat != NULL);
-	
-	if (status == WAT_SIGSTATUS_UP) {
-		ast_verb(2, "Span %d:Signalling up\n", wat->span + 1);
-		wat->sigchanavail |= SIGCHAN_UP;
-	} else {
-		ast_verb(2, "Span %d:Signalling down\n", wat->span + 1);
-		wat->sigchanavail &= ~SIGCHAN_UP;
-	}
 
+	switch(status->type) {
+		case WAT_SPAN_STS_READY:			
+			/* Initialization is complete */
+			/* Do nothing for now */
+			ast_verb(2, "Span %d:Initialization complete\n", wat->span + 1);
+			break;		
+		case WAT_SPAN_STS_SIGSTATUS:
+			if (status->sts.sigstatus == WAT_SIGSTATUS_UP) {
+				ast_verb(2, "Span %d:Signalling up\n", wat->span + 1);
+				wat->sigchanavail |= SIGCHAN_UP;
+			} else {
+				ast_verb(2, "Span %d:Signalling down\n", wat->span + 1);
+				wat->sigchanavail &= ~SIGCHAN_UP;
+			}
+
+			if (wat->pvt->calls->set_alarm) {
+				wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, (status->sts.sigstatus == WAT_SIGSTATUS_UP) ? 0 : 1);
+			}
+			break;
+		case WAT_SPAN_STS_ALARM:
+			if (status->sts.alarm == WAT_ALARM_NONE) {
+				ast_log(LOG_NOTICE, "Span %d:Alarms cleared\n", span_id);
+			} else {
+				ast_log(LOG_WARNING, "Span %d:Alarm (%s)\n", span_id, wat_decode_alarm(status->sts.alarm));
+			}
+			break;
+		case WAT_SPAN_STS_SIM_INFO_READY:
+			{
+				ast_debug(1, "Span %d: Subscriber: %14s\n", span_id, status->sts.sim_info.subscriber.digits);
+			}
+			break;
+		default:
+			ast_log(LOG_ERROR, "Unhandled span status %d\n", status->type);
+			break;
+			
+	}
+	return;
 }
 
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event)
@@ -384,62 +404,77 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 {
 	struct sig_wat_span *wat = wat_spans[span_id];
-	ast_assert(wat != NULL);
-	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->calling_num.digits);
-
-	char event [500];
+	char dest [30];
+	char event [800];
 	unsigned event_len = 0;
 
-	memset(event, 0, sizeof(event));
+	ast_assert(wat != NULL);
+	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->from.digits);
 
+	memset(event, 0, sizeof(event));
+	
 	event_len += sprintf(&event[event_len],
 									"Span: %d\r\n"
-									"From: %s (type:%d plan:%d)\r\n"
-									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d (zone:%d)\r\n"
+									"From-Number: %s\r\n"
+									"From-NP: %s\r\n"
+									"From-TON: %s\nr\r"
+									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d %s\r\n"
 									"Type: %s\r\n",
 									(wat->span + 1),
-									sms_event->calling_num.digits, sms_event->calling_num.type, sms_event->calling_num.plan,
+									sms_event->from.digits,
+		 							wat_number_plan2str(sms_event->from.plan), wat_number_type2str(sms_event->from.type),
 									sms_event->scts.year, sms_event->scts.month, sms_event->scts.day,
 									sms_event->scts.hour, sms_event->scts.minute, sms_event->scts.second,
-									sms_event->scts.timezone,
+									wat_decode_timezone(dest, sms_event->scts.timezone),
 									(sms_event->type == WAT_SMS_TXT) ? "Text": "PDU");
 
 
 	if (sms_event->type == WAT_SMS_PDU) {
-		char dest [30];
 		event_len += sprintf(&event[event_len],
-									"Message-Type-Indicator: %s\r\n"
-									"More-Messages-To-Send: %s\r\n"
-									"Reply-Path: %s\r\n"
-									"User-Data-Header-Indicator: %s\r\n"
-									"Status-Report-Indication: %s\r\n"
-									"Data-Coding-Scheme: %s\r\n",
-									wat_decode_sms_pdu_mti(sms_event->pdu.sms_deliver.tp_mti),
-									(sms_event->pdu.sms_deliver.tp_mms) ? "Yes" : "No",
-									(sms_event->pdu.sms_deliver.tp_rp) ? "Yes" : "No",
-									(sms_event->pdu.sms_deliver.tp_udhi) ? "Yes" : "No",
-									(sms_event->pdu.sms_deliver.tp_sri) ? "Yes" : "No",
-									 (wat_decode_sms_pdu_dcs(dest, &sms_event->pdu.dcs)));
+									"X-SMS-Message-Type: %s\r\n"
+									"X-SMS-SMCC-NP: %s\r\n"
+									"X-SMS-SMCC-TON: %s\r\n"
+									"X-SMS-SMCC-Number: %s\r\n"
+									"X-SMS-More-Messages-To-Send: %s\r\n"
+									"X-SMS-Reply-Path: %s\r\n"
+									"X-SMS-User-Data-Header-Indicator: %s\r\n"
+									"X-SMS-Status-Report-Indication: %s\r\n"
+									"X-SMS-Class: %s\r\n",
+									wat_decode_pdu_mti(sms_event->pdu.sms.deliver.tp_mti),
+									wat_number_plan2str(sms_event->pdu.smsc.plan),
+									wat_number_type2str(sms_event->pdu.smsc.type),
+									sms_event->pdu.smsc.digits,
+									(sms_event->pdu.sms.deliver.tp_mms) ? "No" : "Yes",
+									(sms_event->pdu.sms.deliver.tp_rp) ? "Yes" : "No",
+									(sms_event->pdu.sms.deliver.tp_udhi) ? "Yes" : "No",
+									(sms_event->pdu.sms.deliver.tp_sri) ? "Yes" : "No",
+									wat_sms_pdu_dcs_msg_cls2str(sms_event->pdu.dcs.msg_class));
 
-		if (sms_event->pdu.sms_deliver.tp_udhi) {
+		if (sms_event->pdu.sms.deliver.tp_udhi) {
 			event_len += sprintf(&event[event_len],
-									"IE-Identifier: %d\r\n"
-									"Reference-Number: %04x\r\n"
-									"Sequence-Number: %02d/%02d\r\n",
-									sms_event->pdu.iei,
-									sms_event->pdu.refnr,
-									sms_event->pdu.seq,
-									sms_event->pdu.total);
+									"X-SMS-IE-Identifier: %d\r\n"
+									"X-SMS-Reference-Number: %04x\r\n"
+									"X-SMS-Concat-Sequence-Number: %02d\r\n"
+									"X-SMS-Concat-Total-Messages: %02d\r\n",
+									sms_event->pdu.udh.iei,
+									sms_event->pdu.udh.refnr,
+									sms_event->pdu.udh.seq,
+									sms_event->pdu.udh.total);
 		}
 	}
 
 	event_len += sprintf(&event[event_len],
-									"Contents-Length: %u\r\n"
-									"Contents: %s\r\n\r\n",
-									sms_event->len,
-									sms_event->message);
+									"Content-Type: %s; charset=%s\r\n"
+									"Content-Transfer-Encoding: %s\r\n"
+									"Content-Length: %zd\r\n"
+									"Content: %s\r\n\r\n",
+									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
+									wat_sms_content_charset2str(sms_event->content.charset),
+									wat_sms_content_encoding2str(sms_event->content.encoding),
+									sms_event->content.len,
+									sms_event->content.data);
 
-	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", event);
+	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
 }
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
@@ -843,7 +878,7 @@ void sig_wat_load(int maxspans)
 	memset(&wat_intf, 0, sizeof(wat_intf));
 
 	wat_intf.wat_span_write = sig_wat_span_write;
-	wat_intf.wat_sigstatus_change = sig_wat_status_change;
+	wat_intf.wat_span_sts = sig_wat_span_sts;
 	wat_intf.wat_log = (wat_log_func_t)sig_wat_log;
 	wat_intf.wat_log_span = (wat_log_span_func_t)sig_wat_log_span;
 	wat_intf.wat_malloc = sig_wat_malloc;
@@ -851,7 +886,6 @@ void sig_wat_load(int maxspans)
 	wat_intf.wat_free = sig_wat_free;
 	wat_intf.wat_assert = sig_wat_assert;
 
-	wat_intf.wat_alarm = sig_wat_alarm;
 	wat_intf.wat_con_ind = sig_wat_con_ind;
 	wat_intf.wat_con_sts = sig_wat_con_sts;
 	wat_intf.wat_rel_ind = sig_wat_rel_ind;
@@ -902,15 +936,20 @@ struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *c
 void wat_event_alarm(struct sig_wat_span *wat)
 {
 	wat->sigchanavail &= ~(SIGCHAN_NOTINALARM | SIGCHAN_UP);
+	if (wat->pvt->calls->set_alarm) {
+		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, 1);
+	}
 	return;
 }
 
 void wat_event_noalarm(struct sig_wat_span *wat)
 {
 	wat->sigchanavail |= SIGCHAN_NOTINALARM;
+	if (wat->pvt->calls->set_alarm) {
+		wat->pvt->calls->set_alarm(wat->pvt->chan_pvt, 0);
+	}
 	return;
 }
-
 
 static void build_span_status(char *s, size_t len, int sigchanavail)
 {
@@ -922,101 +961,111 @@ static void build_span_status(char *s, size_t len, int sigchanavail)
 			(sigchanavail & SIGCHAN_UP) ? "Up": "Down");
 }
 
-void sig_wat_cli_show_spans(int fd, int span, struct sig_wat_span *wat)
-{	
+char *sig_wat_show_span(char *dest, struct sig_wat_span *wat)
+{
 	char status[30];
 	const wat_sim_info_t *sim_info = NULL;
+	unsigned len = 0;
 
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 	
 	sim_info = wat_span_get_sim_info(wat->wat_span_id);
 	if (sim_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
+		len += sprintf(&dest[len], "Span %d:Failed to get SIM information\n", wat->span +1);
 	}
 
 	if (sim_info && strlen(sim_info->subscriber.digits) > 0) {
-		ast_cli(fd, "WAT span %d: %5s (%14s)\n", span, status, sim_info->subscriber.digits);
+		len += sprintf(&dest[len], "WAT span %d: %5s (%14s)\n", wat->wat_span_id, status, sim_info->subscriber.digits);
 	} else {
-		ast_cli(fd, "WAT span %d: %5s\n", span, status);
+		len += sprintf(&dest[len], "WAT span %d: %5s\n", wat->wat_span_id, status);
 	}
+
+	return dest;
 }
 
-void sig_wat_cli_show_span(int fd, struct sig_wat_span *wat)
-{
+char *sig_wat_show_span_verbose(char *dest, struct sig_wat_span *wat)
+{	
 	char status[256];
 	const wat_chip_info_t *chip_info = NULL;
 	const wat_sim_info_t *sim_info = NULL;
 	const wat_sig_info_t *sig_info = NULL;
 	const wat_net_info_t *net_info = NULL;
-	const wat_pin_stat_t *pin_status = NULL;	
+	const wat_pin_stat_t *pin_status = NULL;
 	const char *last_error = NULL;
 	wat_alarm_t alarm = WAT_ALARM_NONE;
+
+	unsigned len = 0;
 	
 	build_span_status(status, sizeof(status), wat->sigchanavail);
 
-	ast_cli(fd, "WAT span %d\n", wat->span + 1);
-	ast_cli(fd, "   Signalling:%s\n", status);
+	len += sprintf(&dest[len], "WAT span %d\n", wat->span + 1);
+	len += sprintf(&dest[len], "   Signalling:%s\n", status);
 
 	last_error = wat_span_get_last_error(wat->wat_span_id);
 	if (last_error != NULL) {
-		ast_cli(fd, "   Last Error:%s\n\n", last_error);
+		len += sprintf(&dest[len], "   Last Error:%s\n\n", last_error);
 	}
 
 	alarm = wat_span_get_alarms(wat->wat_span_id);
 	if (alarm != WAT_ALARM_NONE) {
-		ast_cli(fd, "   Alarm:%s\n\n", wat_decode_alarm(alarm));
+		len += sprintf(&dest[len], "   Alarm:%s\n\n", wat_decode_alarm(alarm));
 	}
 
 	pin_status = wat_span_get_pin_info(wat->wat_span_id);
 	if (pin_status == NULL) {
-		ast_cli(fd, "Span %d:Failed to get PIN status\n", wat->span + 1);
+		len += sprintf(&dest[len], "Span %d:Failed to get PIN status\n", wat->span + 1);
 	} else if (*pin_status != WAT_PIN_READY) {
-		ast_cli(fd, "   PIN Error:%s\n\n", wat_decode_pin_status(*pin_status));
+		len += sprintf(&dest[len], "   PIN Error:%s\n\n", wat_decode_pin_status(*pin_status));
 	}
 
 	net_info = wat_span_get_net_info(wat->wat_span_id);
 	if (net_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get Network information\n", wat->span +1);
+		len += sprintf(&dest[len], "Span %d:Failed to get Network information\n", wat->span +1);
 	} else {
-		ast_cli(fd, "   Status: %s\n", wat_net_stat2str(net_info->stat));
-		ast_cli(fd, "   Operator: %s\n\n", net_info->operator_name);
+		len += sprintf(&dest[len], "   Status: %s\n", wat_net_stat2str(net_info->stat));
+		len += sprintf(&dest[len], "   Operator: %s\n\n", net_info->operator_name);
 	}
 
 	sig_info = wat_span_get_sig_info(wat->wat_span_id);
 	if (sig_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get Signal information\n", wat->span +1);
+		len += sprintf(&dest[len], "Span %d:Failed to get Signal information\n", wat->span +1);
 	} else {
-		char dest[30];
-		ast_cli(fd, "   Signal strength: %s\n", wat_decode_rssi(dest, sig_info->rssi));
-		ast_cli(fd, "   Signal BER: %s\n\n", wat_decode_ber(sig_info->ber));
+		char tmp[30];
+		len += sprintf(&dest[len], "   Signal strength: %s\n", wat_decode_rssi(tmp, sig_info->rssi));
+		len += sprintf(&dest[len], "   Signal BER: %s\n\n", wat_decode_ber(sig_info->ber));
 	}
 
 	if (alarm != WAT_ALARM_NO_SIGNAL) {
 		sim_info = wat_span_get_sim_info(wat->wat_span_id);
 		if (sim_info == NULL) {
-			ast_cli(fd, "Span %d:Failed to get SIM information\n", wat->span +1);
+			len += sprintf(&dest[len], "Span %d:Failed to get SIM information\n", wat->span +1);
 		} else {
-			ast_cli(fd, "   Subscriber: %s type:%d plan:%d <%s> \n",
-					sim_info->subscriber.digits,
-	 				sim_info->subscriber.type,
-					sim_info->subscriber.plan,
-					sim_info->subscriber_type);
+			len += sprintf(&dest[len], "   Subscriber: %s type:%d plan:%d <%s> \n",
+											sim_info->subscriber.digits,
+											sim_info->subscriber.type,
+											sim_info->subscriber.plan,
+											sim_info->subscriber_type);
 
-			ast_cli(fd, "   IMSI: %s\n\n", sim_info->imsi);
+			len += sprintf(&dest[len], "   SMSC: %s type:%d plan:%d \n",
+											sim_info->smsc.digits,
+											sim_info->smsc.type,
+											sim_info->smsc.plan);
+
+			len += sprintf(&dest[len], "   IMSI: %s\n\n", sim_info->imsi);
 		}
 	}
 
 	chip_info = wat_span_get_chip_info(wat->wat_span_id);
 	if (chip_info == NULL) {
-		ast_cli(fd, "Span %d:Failed to get Chip information\n", wat->span +1);
+		len += sprintf(&dest[len], "Span %d:Failed to get Chip information\n", wat->span +1);
 	} else {
-		ast_cli(fd, "   Manufacturer Name: %s\n", chip_info->manufacturer_name);
-		ast_cli(fd, "   Manufacturer ID: %s\n", chip_info->manufacturer_id);
-		ast_cli(fd, "   Revision ID: %s\n", chip_info->revision);
-		ast_cli(fd, "   Serial Number: %s\n", chip_info->serial);
+		len += sprintf(&dest[len], "   Model: %s\n", chip_info->model);
+		len += sprintf(&dest[len], "   Manufacturer: %s\n", chip_info->manufacturer);
+		len += sprintf(&dest[len], "   Revision: %s\n", chip_info->revision);
+		len += sprintf(&dest[len], "   Serial: %s\n", chip_info->serial);
 	}
 
-	return;
+	return dest;
 }
 
 WAT_AT_CMD_RESPONSE_FUNC(sig_wat_at_response)
@@ -1079,16 +1128,11 @@ void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd)
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
-int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms)
+int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event)
 {
 	int i;
 	struct sig_wat_sms *wat_sms;
 
-	if (strlen(sms) > WAT_MAX_SMS_SZ) {
-		ast_log(LOG_ERROR, "Span %d: SMS exceeds maximum length (len:%zd max:%d)\n", wat->span + 1, strlen(sms), WAT_MAX_SMS_SZ);
-		return -1;
-	}
-	
 	sig_wat_lock_private(wat->pvt);
 	
 	/* Find a free SMS Id */
@@ -1115,15 +1159,9 @@ int sig_wat_send_sms(struct sig_wat_span *wat, const char *dest, const char *sms
 
 	memset(wat_sms, 0, sizeof(*wat_sms));
 
+	memcpy(&wat_sms->sms_event, event, sizeof(*event));
+
 	wat_sms->wat_sms_id = i;
-
-	wat_sms->sms_event.type = WAT_SMS_TXT;
-	wat_sms->sms_event.len = strlen(sms);
-	strncpy(wat_sms->sms_event.called_num.digits, dest, sizeof(wat_sms->sms_event.called_num.digits));
-	strncpy(wat_sms->sms_event.message, sms, sizeof(wat_sms->sms_event.message));
-
-	ast_verb(3, "Span %d: Sending sms len:%d (id:%d)\n", wat->span + 1, wat_sms->sms_event.len, wat_sms->wat_sms_id);
-	ast_verb(5, "<begin>\n%s\n<end>\n\n", wat_sms->sms_event.message);
 
 	if (wat_sms_req(wat->wat_span_id, wat_sms->wat_sms_id, &wat_sms->sms_event)) {
 		ast_verb(1, "Span %d: Failed to send sms\n", wat->span + 1);
