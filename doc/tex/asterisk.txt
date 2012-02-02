@@ -1,9 +1,9 @@
 Asterisk Reference Information
-        Version 1.6.2.21
+        Version 1.6.2.22
 
      Asterisk Development Team
              Asterisk.org
-          December 8, 2011
+         December 19, 2011
 
 
 

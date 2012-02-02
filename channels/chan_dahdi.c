@@ -44,7 +44,6 @@
 	<use>pri</use>
 	<use>ss7</use>
 	<use>openr2</use>
-	<use>wat</use>
  ***/
 
 #include "asterisk.h"
@@ -74,11 +73,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 
 #ifdef HAVE_OPENR2
 #include <openr2.h>
-#endif
-
-#ifdef HAVE_WAT
-#include <libwat.h>
-#include "sig_wat.h"
 #endif
 
 #include "asterisk/lock.h"
@@ -161,87 +155,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 			<para>This application will Accept the R2 call either with charge or no charge.</para>
 		</description>
 	</application>
-	<application name="WATSendSms" language="en_US">
-		<synopsis>
-			Send a SMS using libWAT on a given span
-		</synopsis>
-		<syntax>			
-			<parameter name="Span">
-				<para>Specify the specific span to send.</para>
-			</parameter>
-			<parameter name="To">
-				<para>Phone number to send SMS to.</para>
-			</parameter>
-			<parameter name="Contents">
-				<para>SMS message contents.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Similar to the CLI command "pri show spans".</para>
-		</description>
-	</application>
-	<application name="WATShowSpans" language="en_US">
-		<synopsis>
-			Show status of WAT spans.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Span">
-				<para>Specify the specific span to send.</para>
-			</parameter>
-		</syntax>
-		<description>
-		<para>Similar to the CLI command "wat send sms".</para>
-		</description>
-	</application>
-	<application name="WATShowSpans" language="en_US">
-		<synopsis>
-			Show status of WAT spans.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Span">
-				<para>Specify the specific span to send.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Similar to the CLI command "wat show spans".</para>
-		</description>
-	</application>
-	<application name="WATShowSpan" language="en_US">
-		<synopsis>
-			Show status of WAT spans.
-		</synopsis>
-		<syntax>
-			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-			<parameter name="Span">
-				<para>Specify the specific span to send.</para>
-			</parameter>
-		</syntax>
-		<description>
-			<para>Similar to the CLI command "wat show span".</para>
-		</description>
-	</application>
-	<application name="WATSendSms" language="en_US">
-		<synopsis>
-			Send a SMS using libWAT on a given span
-		</synopsis>
-		<syntax>
-		<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
-		<parameter name="Span">
-			<para>Specify the specific span to send.</para>
-		</parameter>
-		<parameter name="To">
-			<para>Phone number to send SMS to.</para>
-		</parameter>
-		<parameter name="Content">
-			<para>SMS message contents.</para>
-		</parameter>
-		</syntax>
-		<description>
-			<para>Equivalent to the CLI command "wat send sms".</para>
-		</description>
-	</application>
  ***/
 
 #define SMDI_MD_WAIT_TIMEOUT 1500 /* 1.5 seconds */
@@ -256,9 +169,6 @@ static const char *lbostr[] = {
 "-15db (CSU)",
 "-22.5db (CSU)"
 };
-
-
-static int dahdi_setlaw(int dfd, int law);
 
 /*! Global jitterbuffer configuration - by default, jb is disabled */
 static struct ast_jb_conf default_jbconf =
@@ -317,7 +227,7 @@ static struct ast_jb_conf global_jbconf;
 #define NEED_MFDETECT(p) (((p)->sig == SIG_FEATDMF) || ((p)->sig == SIG_FEATDMF_TA) || ((p)->sig == SIG_E911) || ((p)->sig == SIG_FGC_CAMA) || ((p)->sig == SIG_FGC_CAMAMF) || ((p)->sig == SIG_FEATB))
 
 static const char tdesc[] = "DAHDI Telephony Driver"
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_OPENR2) || defined(HAVE_WAT)
+#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_OPENR2)
 	" w/"
 #endif
 #ifdef HAVE_PRI
@@ -337,12 +247,6 @@ static const char tdesc[] = "DAHDI Telephony Driver"
 	"MFC/R2"
 	#endif
 #endif
-#ifdef HAVE_WAT
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined (HAVE_WAT)
-		" & "
-#endif	/* defined(HAVE_PRI) || defined(HAVE_SS7) || defined (HAVE_WAT) */
-		"WAT"
-#endif /* HAVE_WAT */
 ;
 
 static const char config[] = "chan_dahdi.conf";
@@ -366,7 +270,6 @@ static const char config[] = "chan_dahdi.conf";
 #define SIG_BRI		(0x2000000 | DAHDI_SIG_CLEAR)
 #define SIG_BRI_PTMP	(0X4000000 | DAHDI_SIG_CLEAR)
 #define SIG_SS7		(0x1000000 | DAHDI_SIG_CLEAR)
-#define SIG_GSM		(0x8000000 | DAHDI_SIG_CLEAR)
 #define SIG_MFCR2 	DAHDI_SIG_CAS
 #define	SIG_SF		DAHDI_SIG_SF
 #define SIG_SFWINK 	(0x0100000 | DAHDI_SIG_SF)
@@ -613,10 +516,6 @@ static struct dahdi_mfcr2 **r2links;
 static int r2links_count = 0;
 
 #endif /* HAVE_OPENR2 */
-
-#ifdef HAVE_WAT
-static struct dahdi_wat wats[NUM_SPANS];
-#endif /* HAVE_WAT */
 
 #ifdef HAVE_PRI
 
@@ -1130,7 +1029,7 @@ static struct dahdi_pvt {
 	 */
 	char mohsuggest[MAX_MUSICCLASS];
 	char parkinglot[AST_MAX_EXTENSION]; /*!< Parking lot for this channel */
-#if defined(PRI_ANI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+#if defined(PRI_ANI) || defined(HAVE_SS7)
 	/*! \brief Automatic Number Identification number (Alternate PRI caller ID number) */
 	char cid_ani[AST_MAX_EXTENSION];
 #endif
@@ -1308,11 +1207,6 @@ static struct dahdi_pvt {
 	 * \note Set from the "sendcalleridafter" value read in from chan_dahdi.conf
 	 */
 	int sendcalleridafter;
-
-#if defined (HAVE_WAT)
-	struct dahdi_wat *wat;
-#endif /* defined (HAVE_WAT) */
-
 #ifdef HAVE_PRI
 	/*! \brief DAHDI PRI control parameters */
 	struct dahdi_pri *pri;
@@ -1404,10 +1298,6 @@ struct dahdi_chan_conf {
 	struct dahdi_ss7 ss7;
 #endif
 
-#ifdef HAVE_WAT
-	struct dahdi_wat wat;
-#endif
-
 #ifdef HAVE_OPENR2
 	struct dahdi_mfcr2_conf mfcr2;
 #endif
@@ -1448,24 +1338,8 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 			.resetinterval = -1,
 		},
 #endif
-#ifdef HAVE_WAT
-		.wat.wat = {
-			.wat_cfg = {
-				.moduletype = WAT_MODULE_TELIT,
-				.timeout_cid_num = 500,
-				.timeout_command = 20000,
-				.cmd_interval = 20,	
-				.progress_poll_interval = 750,
-				.signal_poll_interval = 10*1000,
-				.signal_threshold = 90,
-				.codec_mask = WAT_CODEC_ALL,
-				.band = WAT_BAND_AUTO,
-				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_BASE64,
-			},
-		},
-#endif
-#if defined(HAVE_SS7)
-		.ss7.ss7 = {
+#ifdef HAVE_SS7
+		.ss7 = {
 			.called_nai = SS7_NAI_NATIONAL,
 			.calling_nai = SS7_NAI_NATIONAL,
 			.internationalprefix = "",
@@ -1603,24 +1477,6 @@ static const struct ast_channel_tech dahdi_tech = {
 #endif
 
 struct dahdi_pvt *round_robin[32];
-
-#if defined(HAVE_WAT)
-static inline int wat_grab(struct dahdi_pvt *pvt, struct dahdi_wat *wat)
-{
-	int res;
-	/* Grab the lock first */
-	do {
-		res = ast_mutex_trylock(&wat->wat.lock);
-		if (res) {
-			DEADLOCK_AVOIDANCE(&pvt->lock);
-		}
-	} while (res);
-	/* Then break the poll */
-	if (wat->wat.master != AST_PTHREADT_NULL)
-		pthread_kill(wat->wat.master, SIGURG);
-	return 0;
-}
-#endif /* defined (HAVE_WAT) */
 
 #if defined(HAVE_PRI)
 static inline int pri_grab(struct dahdi_pvt *pvt, struct dahdi_pri *pri)
@@ -1771,11 +1627,8 @@ static void dahdi_queue_frame(struct dahdi_pvt *p, struct ast_frame *f, void *da
 #ifdef HAVE_SS7
 	struct dahdi_ss7 *ss7 = (struct dahdi_ss7*) data;
 #endif
-#ifdef HAVE_WAT
-	struct dahdi_wat *wat = (struct dahdi_wat*) data;
-#endif
 	/* We must unlock the PRI to avoid the possibility of a deadlock */
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+#if defined(HAVE_PRI) || defined(HAVE_SS7)
 	if (data) {
 		switch (p->sig) {
 #ifdef HAVE_PRI
@@ -1788,11 +1641,6 @@ static void dahdi_queue_frame(struct dahdi_pvt *p, struct ast_frame *f, void *da
 #ifdef HAVE_SS7
 		case SIG_SS7:
 			ast_mutex_unlock(&ss7->lock);
-			break;
-#endif
-#ifdef HAVE_WAT
-		case SIG_GSM:
-			ast_mutex_unlock(&wat->wat.lock);
 			break;
 #endif
 		default:
@@ -1812,7 +1660,7 @@ static void dahdi_queue_frame(struct dahdi_pvt *p, struct ast_frame *f, void *da
 		} else
 			break;
 	}
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+#if defined(HAVE_PRI) || defined(HAVE_SS7)
 	if (data) {
 		switch (p->sig) {
 #ifdef HAVE_PRI
@@ -1827,11 +1675,6 @@ static void dahdi_queue_frame(struct dahdi_pvt *p, struct ast_frame *f, void *da
 			ast_mutex_lock(&ss7->lock);
 			break;
 #endif
-#ifdef HAVE_WAT
-		case SIG_GSM:
-			ast_mutex_lock(&wat->wat.lock);
-			break;
-#endif		
 		default:
 			break;
 		}
@@ -2381,15 +2224,6 @@ static void dahdi_close_sub(struct dahdi_pvt *chan_pvt, int sub_num)
 	chan_pvt->subs[sub_num].dfd = -1;
 }
 
-#if defined(HAVE_WAT)
-void dahdi_close_wat_fd(struct dahdi_wat *wat);
-void dahdi_close_wat_fd(struct dahdi_wat *wat)
-{
-	dahdi_close(wat->wat.fd);
-	wat->wat.fd = -1;
-}
-#endif	/* defined(HAVE_WAT) */
-
 #if defined(HAVE_PRI)
 static void dahdi_close_pri_fd(struct dahdi_pri *pri, int fd_num)
 {
@@ -2536,13 +2370,6 @@ static int dahdi_digit_begin(struct ast_channel *chan, char digit)
 		}
 	}
 #endif
-#ifdef HAVE_WAT
-	if (pvt->sig == SIG_GSM) {
-		if (!sig_wat_digit_begin(pvt->wat->wat.pvt, chan, digit))
-			goto out;
-	}
-#endif
-
 	if ((dtmf = digit_to_dtmfindex(digit)) == -1)
 		goto out;
 
@@ -2592,12 +2419,6 @@ static int dahdi_digit_end(struct ast_channel *chan, char digit, unsigned int du
 	if (((pvt->sig == SIG_PRI) || (pvt->sig == SIG_BRI) || (pvt->sig == SIG_BRI_PTMP))
 			&& !pvt->begindigit)
 		goto out;
-#endif
-#ifdef HAVE_WAT
-	/* This means that the digit was already sent via GSM signalling */
-	if (pvt->sig == SIG_GSM && !pvt->begindigit) {
-		goto out;
-	}
 #endif
 
 	if (pvt->begindigit) {
@@ -2738,8 +2559,6 @@ static char *dahdi_sig2str(int sig)
 		return "GR-303 with FXOKS";
 	case SIG_GR303FXSKS:
 		return "GR-303 with FXSKS";
-	case SIG_GSM:
-		return "GSM";
 	case 0:
 		return "Pseudo";
 	default:
@@ -3148,7 +2967,7 @@ static inline int dahdi_set_hook(int fd, int hs)
 		ast_log(LOG_WARNING, "DAHDI hook failed returned %d (trying %d): %s\n", res, hs, strerror(errno));
 		/* will expectedly fail if phone is off hook during operation, such as during a restart */
 	}
-	abort();
+
 	return res;
 }
 
@@ -3676,7 +3495,6 @@ static int dahdi_call(struct ast_channel *ast, char *rdest, int timeout)
 	case SIG_BRI_PTMP:
 	case SIG_SS7:
 	case SIG_MFCR2:
-	case SIG_GSM:
 		/* We'll get it in a moment -- but use dialdest to store pre-setup_ack digits */
 		p->dialdest[0] = '\0';
 		p->dialing = 1;
@@ -3686,15 +3504,6 @@ static int dahdi_call(struct ast_channel *ast, char *rdest, int timeout)
 		ast_mutex_unlock(&p->lock);
 		return -1;
 	}
-#ifdef HAVE_WAT
-	if (p->wat) {
-		int res;
-		res = sig_wat_call(p->wat->wat.pvt, ast, rdest);
-		ast_mutex_unlock(&p->lock);
-		return res;
-	}
-#endif /* HAVE_WAT */
-
 #ifdef HAVE_SS7
 	if (p->ss7) {
 		char ss7_called_nai;
@@ -4877,15 +4686,6 @@ static int dahdi_hangup(struct ast_channel *ast)
 			}
 		}
 #endif
-#ifdef HAVE_WAT
-		if (p->wat) {
-			if (!wat_grab(p, p->wat)) {
-				sig_wat_hangup(p->wat->wat.pvt, ast);
-			} else {
-				ast_log(LOG_WARNING, "Unable to grab WAT on channel %d\n", p->channel);
-			}
-		}
-#endif
 #ifdef HAVE_OPENR2
 		if (p->mfcr2 && p->mfcr2call && openr2_chan_get_direction(p->r2chan) != OR2_DIR_STOPPED) {
 			ast_log(LOG_DEBUG, "disconnecting MFC/R2 call on chan %d\n", p->channel);
@@ -4963,8 +4763,7 @@ static int dahdi_hangup(struct ast_channel *ast)
 		if (p->sig && ((p->sig != SIG_PRI) && (p->sig != SIG_SS7)
 			&& (p->sig != SIG_BRI)
 			&& (p->sig != SIG_BRI_PTMP))
-			&& (p->sig != SIG_MFCR2)
-		    && (p->sig != SIG_GSM))
+			&& (p->sig != SIG_MFCR2))
 			res = dahdi_set_hook(p->subs[SUB_REAL].dfd, DAHDI_ONHOOK);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to hangup line %s\n", ast->name);
@@ -5161,15 +4960,6 @@ static int dahdi_answer(struct ast_channel *ast)
 		} else {
 			ast_log(LOG_WARNING, "Unable to grab SS7 on span %d\n", p->span);
 			res = -1;
-		}
-		break;
-#endif
-#ifdef HAVE_WAT
-	case SIG_GSM:
-		if (!wat_grab(p, p->wat)) {
-			res = sig_wat_answer(p->wat->wat.pvt, ast);
-		} else {
-			ast_log(LOG_WARNING, "Unable to grab WAT on span %d\n", p->span);
 		}
 		break;
 #endif
@@ -10692,279 +10482,6 @@ static int sigtype_to_signalling(int sigtype)
 	return sigtype;
 }
 
-#ifdef HAVE_WAT
-/*!
- * \internal
- * \brief Open the WAT channel media path.
- * \since 1.8
- *
- * \param p Channel private control structure.
- *
- * \return Nothing
- */
-static void my_wat_open_media(void *p)
-{
-	struct dahdi_pvt *pvt = p;
-	int res;
-	int dfd;
-	int set_val;
-
-	dfd = pvt->subs[SUB_REAL].dfd;
-
-	/* Open the media path. */
-	set_val = 1;
-	res = ioctl(dfd, DAHDI_AUDIOMODE, &set_val);
-	if (res < 0) {
-		ast_log(LOG_WARNING, "Unable to enable audio mode on channel %d (%s)\n",
-				pvt->channel, strerror(errno));
-	}
-
-#if 0 /* TODO: find equivalent */
-	/* Set correct companding law for this call. */
-	res = dahdi_setlaw(dfd, pvt->law);
-	if (res < 0) {
-		ast_log(LOG_WARNING, "Unable to set law on channel %d\n", pvt->channel);
-	}
-
-	/* Set correct gain for this call. */
-	if (pvt->digital) {
-		res = set_actual_gain(dfd, 0, 0, pvt->rxdrc, pvt->txdrc, pvt->law);
-	} else {
-		res = set_actual_gain(dfd, pvt->rxgain, pvt->txgain, pvt->rxdrc, pvt->txdrc,
-							  pvt->law);
-	}
-	if (res < 0) {
-		ast_log(LOG_WARNING, "Unable to set gains on channel %d\n", pvt->channel);
-	}
-
-	if (pvt->dsp_features && pvt->dsp) {
-		ast_dsp_set_features(pvt->dsp, pvt->dsp_features);
-		pvt->dsp_features = 0;
-	}
-#endif
-}
-
-/*!
- * \internal
- * \brief Reference this module.
- * \since 1.8
- *
- * \return Nothing
- */
-static void my_module_ref(void)
-{
-	ast_module_ref(ast_module_info->self);
-}
-
-/*!
- * \internal
- * \brief Unreference this module.
- * \since 1.8
- *
- * \return Nothing
- */
-static void my_module_unref(void)
-{
-	ast_module_unref(ast_module_info->self);
-}
-
-static void my_set_new_owner(void *pvt, struct ast_channel *new_owner)
-{
-	struct dahdi_pvt *p = pvt;
-
-	p->owner = new_owner;
-}
-
-static void my_lock_private(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-	ast_mutex_lock(&p->lock);
-}
-
-static void my_unlock_private(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-	ast_mutex_unlock(&p->lock);
-}
-
-static void my_deadlock_avoidance_private(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-
-	DEADLOCK_AVOIDANCE(&p->lock);
-}
-
-static int my_set_echocanceller(void *pvt, int enable)
-{
-	struct dahdi_pvt *p = pvt;
-
-	if (enable)
-		dahdi_enable_ec(p);
-	else
-		dahdi_disable_ec(p);
-
-	return 0;
-}
-
-static void my_set_alarm(void *pvt, int in_alarm)
-{
-	struct dahdi_pvt *p = pvt;
-
-	p->inalarm = in_alarm;
-}
-
-static void my_set_dialing(void *pvt, int is_dialing)
-{
-	struct dahdi_pvt *p = pvt;
-
-	p->dialing = is_dialing;
-}
-
-static int my_get_use_callerid(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-	return p->use_callerid;
-}
-
-static char* my_get_cid_num(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-	return p->cid_num;
-}
-
-static char* my_get_context(void *pvt)
-{
-	struct dahdi_pvt *p = pvt;
-	return p->context;
-}
-
-static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int startpbx, int sub, const struct ast_channel *requestor)
-{
-	int dahdi_sub;
-	int audio = 1;
-	int law = DAHDI_LAW_ALAW;
-	struct dahdi_pvt *p = pvt;
-
-	switch (sub) {
-		case WAT_CALL_SUB_REAL:
-			dahdi_sub = SUB_REAL;
-			break;
-		case WAT_CALL_SUB_CALLWAIT:
-			dahdi_sub = SUB_CALLWAIT;
-			break;
-		case WAT_CALL_SUB_THREEWAY:
-			dahdi_sub = SUB_THREEWAY;
-			break;
-		default:
-			ast_log(LOG_ERROR, "Invalid sub!\n");
-			dahdi_sub = SUB_REAL;
-	}
-
-	if (ioctl(p->subs[SUB_REAL].dfd, DAHDI_AUDIOMODE, &audio) == -1) {
-		ast_log(LOG_WARNING, "Unable to set audio mode on channel %d to %d: %s\n",
-				p->channel, audio, strerror(errno));
-	}
-
-	dahdi_setlaw(p->subs[SUB_REAL].dfd, law);
-	return dahdi_new(p, state, startpbx, dahdi_sub, law, 0);
-}
-
-static void wat_handle_sig_exception(struct sig_wat_span *wat)
-{
-	int x;
-	ioctl(wat->fd, DAHDI_GETEVENT, &x);
-	if (x) {
-		ast_log(LOG_NOTICE, "WAT got event: %s (%d) on signalling channel of span %d\n", event2str(x), x, wat->span);
-	}
-	/* Keep track of alarm state */
-	switch (x) {
-		case DAHDI_EVENT_ALARM:
-			wat_event_alarm(wat);
-			break;
-		case DAHDI_EVENT_NOALARM:
-			wat_event_noalarm(wat);
-			break;
-		default:
-			break;
-	}
-}
-
-static struct sig_wat_callback dahdi_wat_callbacks =
-{
-	.lock_private = my_lock_private,
-	.unlock_private = my_unlock_private,
-	.deadlock_avoidance_private = my_deadlock_avoidance_private,
-
-	.set_echocanceller = my_set_echocanceller,
-	.new_ast_channel = my_new_wat_ast_channel,
-	//.play_tone = my_wat_play_tone,
-
-	.handle_sig_exception = wat_handle_sig_exception,
-	.set_alarm = my_set_alarm,
-	.set_dialing = my_set_dialing,
- 
-	.module_ref = my_module_ref,
-	.module_unref = my_module_unref,
-	.open_media = my_wat_open_media,
-	.set_new_owner = my_set_new_owner,
-
-#if ASTERISK_VERSION_NUM < 10800
-	.get_use_callerid = my_get_use_callerid,
-	.get_cid_num = my_get_cid_num,
-	.get_context = my_get_context
-#endif
-};
-
-static int prepare_wat(struct dahdi_wat *wat)
-{
-	int res, x;
-	struct dahdi_params p;
-	struct dahdi_bufferinfo bi;
-	struct dahdi_spaninfo si;
-
-	wat->wat.fd = open("/dev/dahdi/channel", O_RDWR);
-	x = wat->sigchannel;
-	if ((wat->wat.fd < 0) || (ioctl(wat->wat.fd,DAHDI_SPECIFY,&x) == -1)) {
-		ast_log(LOG_ERROR, "Unable to open D-channel %d (%s)\n", x, strerror(errno));
-		return -1;
-	}
-	memset(&p, 0, sizeof(p));
-	res = ioctl(wat->wat.fd, DAHDI_GET_PARAMS, &p);
-	if (res) {
-		dahdi_close_wat_fd(wat);
-		ast_log(LOG_ERROR, "Unable to get parameters for Sig-channel %d (%s)\n", x, strerror(errno));
-		return -1;
-	}
-	if ((p.sigtype != DAHDI_SIG_HDLCFCS) && (p.sigtype != DAHDI_SIG_HARDHDLC)) {
-		dahdi_close_wat_fd(wat);
-		ast_log(LOG_ERROR, "Sig-channel %d is not in HDLC/FCS mode.\n", x);
-		return -1;
-	}
-	memset(&si, 0, sizeof(si));
-	res = ioctl(wat->wat.fd, DAHDI_SPANSTAT, &si);
-	if (res) {
-		dahdi_close_wat_fd(wat);
-		ast_log(LOG_ERROR, "Unable to get span state for Sig-channel %d (%s)\n", x, strerror(errno));
-	}
-	if (!si.alarms) {
-		wat_event_noalarm(&wat->wat);
-	} else {
-		wat_event_alarm(&wat->wat);
-	}
-	memset(&bi, 0, sizeof(bi));
-	bi.txbufpolicy = DAHDI_POLICY_IMMEDIATE;
-	bi.rxbufpolicy = DAHDI_POLICY_IMMEDIATE;
-	bi.numbufs = 32;
-	bi.bufsize = 1024;
-	if (ioctl(wat->wat.fd, DAHDI_SET_BUFINFO, &bi)) {
-		ast_log(LOG_ERROR, "Unable to set appropriate buffering on channel %d: %s\n", x, strerror(errno));
-		dahdi_close_wat_fd(wat);
-		return -1;
-	}
-	return 0;
-}
-#endif /* HAVE_WAT */
-
 static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf, struct dahdi_pri *pri, int reloading)
 {
 	/* Make a dahdi_pvt structure for this interface (or CRV if "pri" is specified) */
@@ -11074,53 +10591,6 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 				}
 			}
 			tmp->outsigmod = conf->chan.outsigmod;
-
-#ifdef HAVE_WAT
-			if (chan_sig == SIG_GSM) {
-				int offset;
-				int matchessigchan;
-				int x;
-
-				offset = (channel - p.chanpos) + 2;
-				
-				if (ioctl(tmp->subs[SUB_REAL].dfd, DAHDI_AUDIOMODE, &offset)) {
-					ast_log(LOG_ERROR, "Unable to set clear mode on clear channel %d of span %d: %s\n", channel, p.spanno, strerror(errno));
-					destroy_dahdi_pvt(&tmp);
-					return NULL;
-				}
-				if (span >= NUM_SPANS) {
-					ast_log(LOG_ERROR, "Channel %d does not lie on a span I know of (%d)\n", channel, span);
-					destroy_dahdi_pvt(&tmp);
-					return NULL;
-				} else {
-					wats[span].sigchannel = offset;
-					wats[span].wat.span = span;
-					wats[span].wat.wat_span_id = span + 1;
-
-					/* Make sure this isn't a sig-channel */
-					matchessigchan=0;
-					for (x = 0; x < NUM_SPANS; x++) {
-						if (wats[x].sigchannel == tmp->channel) {
-							matchessigchan = 1;
-							break;
-						}
-					}
-
-					if (!matchessigchan) {
-						struct sig_wat_chan *wat_chan = sig_wat_chan_new(tmp, &dahdi_wat_callbacks, &wats[span].wat, p.chanpos);
-						tmp->wat = &wats[span];
-
-						memcpy(&wats[span].wat.wat_cfg, &conf->wat.wat.wat_cfg, sizeof(wats[span].wat.wat_cfg));
-
-						wats[span].wat.pvt = wat_chan;
-					} else {
-// 						ast_log(LOG_ERROR, "Channel %d is reserved for Sig-channel.\n", p.chanpos);
-						destroy_dahdi_pvt(&tmp);
-						return NULL;
-					}
-				}
-			}
-#endif
 
 #ifdef HAVE_SS7
 			if (chan_sig == SIG_SS7) {
@@ -11545,9 +11015,6 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 		case SIG_MFCR2:
 			tmp->cid_num[0] = '\0';
 			tmp->cid_name[0] = '\0';
-		case SIG_GSM:
-			dahdi_disable_ec(i);
-			res = tone_zone_play_tone(i->subs[SUB_REAL].dfd, -1);
 			break;
 		default:
 			ast_copy_string(tmp->cid_num, conf->chan.cid_num, sizeof(tmp->cid_num));
@@ -11607,7 +11074,7 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 			update_conf(tmp);
 			if (!here) {
 				if ((chan_sig != SIG_BRI) && (chan_sig != SIG_BRI_PTMP) && (chan_sig != SIG_PRI)
-					&& (chan_sig != SIG_SS7) && (chan_sig != SIG_MFCR2) && (chan_sig != SIG_GSM))
+				    && (chan_sig != SIG_SS7) && (chan_sig != SIG_MFCR2))
 					/* Hang it up to be sure it's good */
 					dahdi_set_hook(tmp->subs[SUB_REAL].dfd, DAHDI_ONHOOK);
 			}
@@ -12263,7 +11730,7 @@ next:
 	return tmp;
 }
 
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
+#if defined(HAVE_PRI) || defined(HAVE_SS7)
 static int dahdi_setlaw(int dfd, int law)
 {
 	return ioctl(dfd, DAHDI_SETLAW, &law);
@@ -15258,7 +14725,7 @@ static int start_pri(struct dahdi_pri *pri)
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI) || defined(HAVE_WAT)
+#if defined(HAVE_PRI)
 static char *complete_span_helper(const char *line, const char *word, int pos, int state, int rpos)
 {
 	int which, span;
@@ -15268,28 +14735,18 @@ static char *complete_span_helper(const char *line, const char *word, int pos, i
 		return ret;
 
 	for (which = span = 0; span < NUM_SPANS; span++) {
-#if defined(HAVE_PRI)
 		if (pris[span].pri && ++which > state) {
 			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
 				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
 			}
 			break;
 		}
-#endif
-#if defined(HAVE_WAT)		
-		if (wats[span].sigchannel && ++which > state) {
-			if (asprintf(&ret, "%d", span + 1) < 0) {	/* user indexes start from 1 */
-				ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
-			}
-			break;
-		}
-#endif
 	}
 	return ret;
 }
 #endif	/* defined(HAVE_PRI) */
 
-#if defined(HAVE_PRI) || defined(HAVE_WAT)
+#if defined(HAVE_PRI)
 static char *complete_span_4(const char *line, const char *word, int pos, int state)
 {
 	return complete_span_helper(line,word,pos,state,3);
@@ -15970,11 +15427,8 @@ retry:
 static int setup_dahdi(int reload);
 static int dahdi_restart(void)
 {
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
-	int i;
-#endif
 #if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int j;
+	int i, j;
 #endif
 	int cancel_code;
 	struct dahdi_pvt *p;
@@ -16010,20 +15464,7 @@ static int dahdi_restart(void)
 		}
 	}
 #endif
-	
-#if defined(HAVE_WAT)
-	for (i = 0; i < NUM_SPANS; i++) {
-		if (wats[i].wat.master && (wats[i].wat.master != AST_PTHREADT_NULL)) {
-			cancel_code = pthread_cancel(wats[i].wat.master);
-			pthread_kill(wats[i].wat.master, SIGURG);
-			ast_debug(4, "Waiting to join thread of span %d with pid=%p, cancel_code=%d\n", i, (void *) wats[i].wat.master, cancel_code);
-			pthread_join(wats[i].wat.master, NULL);
-			ast_debug(4, "Joined thread of span %d\n", i);
-		}
-	}
-#endif
 
-	
 	ast_mutex_lock(&monlock);
 	if (monitor_thread && (monitor_thread != AST_PTHREADT_STOP) && (monitor_thread != AST_PTHREADT_NULL)) {
 		cancel_code = pthread_cancel(monitor_thread);
@@ -17499,481 +16940,6 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 };
 #endif	/* defined(HAVE_SS7) */
 
-#if defined(HAVE_WAT)
-static int action_watshowspans(struct mansession *s, const struct message *m)
-{
-	int span = 0;
-	int num_spans = 0;
-	char action_id[256];
-
-	const char *span_string = astman_get_header(m, "Span");
-	const char *id = astman_get_header(m, "ActionID");
-	
-	if (!ast_strlen_zero(id)) {
-		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
-	} else {
-		action_id[0] = '\0';
-	}
-	
-	if (!ast_strlen_zero(span_string)) {
-		char dest[30];
-		span = atoi(span_string);
-		if ((span < 1) || (span > NUM_SPANS)) {
-			astman_send_error(s, m, "No such span");
-			goto done;
-		}
-		num_spans = 1;
-		astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
-		goto done;
-	}
-
-	for (span = 0; span < NUM_SPANS; span++) {
-		if (wats[span].wat.wat_span_id) {
-			char dest[30];
-			num_spans++;
-
-			astman_send_ack(s, m, sig_wat_show_span(dest, &wats[span].wat));
-		}
-	}
-
-	if (!num_spans) {
-		astman_send_error(s, m, "No WAT spans configured\n");
-	}
-	
-done:
-	astman_append(s, "Event: %sComplete\r\n"
-						"Items: %d\r\n"
-						"%s"
-						"\r\n",
-						"WATShowSpans",
-						num_spans,
-						action_id);
-	return 0;	
-}
-
-static int action_watshowspan(struct mansession *s, const struct message *m)
-{
-	int span = 0;
-	int num_spans = 0;
-	char action_id[256];
-
-	const char *span_string = astman_get_header(m, "Span");
-	const char *id = astman_get_header(m, "ActionID");
-
-	if (!ast_strlen_zero(id)) {
-		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
-	} else {
-		action_id[0] = '\0';
-	}
-	
-	if (!ast_strlen_zero(span_string)) {
-		char dest[200];
-		span = atoi(span_string);
-		if ((span < 1) || (span > NUM_SPANS)) {
-			astman_send_error(s, m, "No such span");
-			goto done;
-		}
-		num_spans = 1;
-		astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
-		goto done;
-	}
-
-	for (span = 0; span < NUM_SPANS; span++) {
-		if (wats[span].wat.wat_span_id) {
-			char dest[200];
-			num_spans++;
-			
-			astman_send_ack(s, m, sig_wat_show_span_verbose(dest, &wats[span].wat));
-		}
-	}
-	if (!num_spans) {
-		astman_send_error(s, m, "No WAT spans configured\n");
-	}
-
-done:
-	astman_append(s, "Event: %sComplete\r\n"
-						"Items: %d\r\n"
-						"%s"
-						"\r\n",
-						"WATShowSpan",
-						num_spans,
-						action_id);
-	return 0;
-}
-
-static int action_watsendsms(struct mansession *s, const struct message *m)
-{
-	int span;
-	wat_sms_event_t event;
-	char action_id[256];
-	const char *id, *span_string;
-	const char *to_number, *to_plan, *to_type;
-	const char *smsc_number, *smsc_plan, *smsc_type;
-	const char *reject_duplicates, *reply_path, *status_report_request, *reference_number, *validity_period_type, *validity_period_value;
-	const char *class, *concatenate_reference_id, *concatenate_total_messages, *concatenate_sequence_num;
-	const char *content, *content_type, *content_transfer_encoding;
-
-	wat_sms_type_t type = WAT_SMS_TXT;
-
-	memset(&event, 0, sizeof(event));
-
-	id = astman_get_header(m, "ActionID");
-	if (!ast_strlen_zero(id)) {
-		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
-	} else {
-		action_id[0] = '\0';
-	}
-
-	span_string = astman_get_header(m, "Span");	
-	if (ast_strlen_zero(span_string)) {
-		astman_send_error(s, m, "No span specified");
-		return 0;
-	}
-	
-	span = atoi(span_string);
-	if ((span < 1) || (span > NUM_SPANS)) {
-		astman_send_error(s, m, "No such span");
-		return 0;
-	}
-
-	to_number = astman_get_header(m, "To-Number");
-	if (!ast_strlen_zero(to_number)) {
-		memcpy(event.to.digits, to_number, sizeof(event.to.digits));
-	} else {
-		astman_send_error(s, m, "Message destination not specified");
-		return 0;
-	}
-
-	to_plan = astman_get_header(m, "To-Plan");
-	if (!ast_strlen_zero(to_plan)) {
-		event.to.plan = wat_str2wat_number_plan(to_plan);
-	} else {
-		event.to.plan = WAT_NUMBER_PLAN_ISDN;
-	}
-
-	to_type = astman_get_header(m, "To-Type");
-	if (!ast_strlen_zero(to_plan)) {
-		event.to.type = wat_str2wat_number_type(to_type);
-	} else {
-		event.to.type = WAT_NUMBER_TYPE_NATIONAL;
-	}
-
-	smsc_number = astman_get_header(m, "X-SMS-SMCC-Number");
-	if (!ast_strlen_zero(smsc_number)) {
-		memcpy(event.pdu.smsc.digits, smsc_number, sizeof(event.pdu.smsc.digits));
-
-		smsc_plan = astman_get_header(m, "X-SMS-SMCC-Plan");
-		if (!ast_strlen_zero(smsc_plan)) {
-			event.pdu.smsc.plan = wat_str2wat_number_plan(smsc_plan);
-		} else {
-			event.pdu.smsc.type = WAT_NUMBER_PLAN_ISDN;
-		}
-		
-		smsc_type = astman_get_header(m, "X-SMS-SMCC-Type");
-		if (!ast_strlen_zero(smsc_type)) {
-			event.pdu.smsc.type = wat_str2wat_number_type(smsc_type);
-		} else {
-			event.pdu.smsc.type = WAT_NUMBER_TYPE_NATIONAL;
-		}
-	}
-	
-	reject_duplicates = astman_get_header(m, "X-SMS-Reject-Duplicates");
-	if (!ast_strlen_zero(reject_duplicates)) {
-		event.pdu.sms.submit.tp_rd = ast_true(reject_duplicates);
-	}
-	
-	reply_path = astman_get_header(m, "X-SMS-Reply-Path");
-	if (!ast_strlen_zero(reply_path)) {
-		event.pdu.sms.submit.tp_rp = ast_true(reply_path);
-	}
-	
-	status_report_request = astman_get_header(m, "X-SMS-Status-Report-Request");
-	if (!ast_strlen_zero(status_report_request)) {
-		event.pdu.sms.submit.tp_srr = ast_true(status_report_request);
-	}	
-	
-	reference_number = astman_get_header(m, "X-SMS-Reference-Number");
-	if (!ast_strlen_zero(reference_number)) {
-		event.pdu.tp_message_ref = atoi(reference_number);
-	}
-	
-	validity_period_type = astman_get_header(m, "X-SMS-Validity-Period-Type");
-	if (!ast_strlen_zero(validity_period_type)) {
-		event.pdu.sms.submit.vp.type = wat_str2wat_sms_pdu_vp_type(validity_period_type);
-
-		validity_period_value = astman_get_header(m, "X-SMS-Validity-Period");
-		if (ast_strlen_zero(validity_period_value)) {
-			astman_send_error(s, m, "X-SMS-Validity-Period not specified");
-			return -1;
-		}
-
-		switch(event.pdu.sms.submit.vp.type) {
-			case WAT_SMS_PDU_VP_NOT_PRESENT:
-				break;
-			case WAT_SMS_PDU_VP_ABSOLUTE:
-				astman_send_error(s, m, "Absolute Validity Period not implemented yet");
-				break;
-			case WAT_SMS_PDU_VP_RELATIVE:
-				event.pdu.sms.submit.vp.data.relative = atoi(validity_period_value);
-				break;
-			case WAT_SMS_PDU_VP_ENHANCED:
-				astman_send_error(s, m, "Enhanced Validity Period not implemented yet");
-				break;
-			case WAT_SMS_PDU_VP_INVALID:
-				astman_send_error(s, m, "Invalid Validity Period type");
-				return -1;
-		}
-	} else {
-		event.pdu.sms.submit.vp.type = WAT_SMS_PDU_VP_RELATIVE;
-		event.pdu.sms.submit.vp.data.relative = 0xAB;
-	}
-	
-	class = astman_get_header(m, "X-SMS-Class");
-	if (!ast_strlen_zero(class)) {
-		event.pdu.dcs.msg_class = wat_str2wat_sms_pdu_dcs_msg_cls(class);
-	} else {
-		event.pdu.dcs.msg_class = WAT_SMS_PDU_DCS_MSG_CLASS_ME_SPECIFIC;
-	}
-
-	concatenate_reference_id = astman_get_header(m, "X-SMS-Concat-Reference-ID");
-	if (!ast_strlen_zero(concatenate_reference_id)) {
-		event.pdu.udh.refnr = atoi(concatenate_reference_id);
-	}
-
-	concatenate_total_messages = astman_get_header(m, "X-SMS-Concat-Total-Messages");
-	if (!ast_strlen_zero(concatenate_total_messages)) {
-		event.pdu.udh.total = atoi(concatenate_total_messages);
-	}
-	
-	concatenate_sequence_num = astman_get_header(m, "X-SMS-Concat-Sequence-Number");
-	if (!ast_strlen_zero(concatenate_sequence_num)) {
-		event.pdu.udh.seq = atoi(concatenate_sequence_num);
-	}
-	
-	content = astman_get_header(m, "Content");
-	if (!ast_strlen_zero(content)) {
-
-		event.content.len = strlen(content);
-		strncpy(event.content.data, content, sizeof(event.content.data));
-	} else {
-		astman_send_error(s, m, "No SMS content");
-		return -1;
-	}
-	
-	content_type = astman_get_header(m, "Content-type");
-	if (!ast_strlen_zero(content_type)) {
-		char *p = NULL;
-
-		type = WAT_SMS_PDU;
-		p = strstr(content_type, "charset");
-		if (p == NULL) {
-			p = strstr(content_type, "Charset");
-		}
-		if (p == NULL) {
-			ast_log(LOG_ERROR, "Span %d: Invalid \"Content-Type\" format (%s)\n", span + 1, content_type);
-			return -1;
-		}
-		p+=strlen("charset=");
-
-		event.content.charset = wat_str2wat_sms_content_charset(p);
-	}
-
-	content_transfer_encoding = astman_get_header(m, "Content-Transfer-Encoding");
-	if (!ast_strlen_zero(content_transfer_encoding)) {
-		/* format: base64, hex */
-		
-		event.content.encoding = wat_str2wat_sms_content_encoding(content_transfer_encoding);
-	}
-
-	event.type = type;
-
-	if (sig_wat_send_sms(&wats[span-1].wat, &event) != 0) {
-		astman_send_error(s, m, "Failed to send SMS");
-	} else {
-		astman_send_ack(s, m, "SMS request sent");
-	}
-
-	astman_append(s, "Event: %sComplete\r\n"
-					"Items: %d\r\n"
-					"%s"
-					"\r\n",
-					"WATSendSms",
-					1,
-					action_id);
-	return 0;
-}
-
-static char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	int span;
-	wat_sms_event_t event;
-	memset(&event, 0, sizeof(event));
-	
-	switch (cmd) {
-		case CLI_INIT:
-			e->command = "wat send sms";
-			e->usage =
-					"Usage: wat send sms <span> <number> <sms>\n"
-					"       Send a sms on <span> <number> <sms>\n";
-			return NULL;
-		case CLI_GENERATE:
-			return NULL;
-	}
-
-	if (a->argc < 6)
-		return CLI_SHOWUSAGE;
-
-	span = atoi(a->argv[3]);
-	if ((span < 1) || (span > NUM_SPANS)) {
-		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
-		return CLI_SUCCESS;
-	}
-
-	if (!wats[span-1].wat.wat_span_id) {
-		ast_cli(a->fd, "No WAT running on span %d\n", span);
-		return CLI_SUCCESS;
-	}
-
-	strncpy(event.to.digits, a->argv[4], sizeof(event.to.digits));
-	strncpy(event.content.data, a->argv[5], sizeof(event.content.data));
-
-	sig_wat_send_sms(&wats[span-1].wat, &event);
-	return CLI_SUCCESS;
-}
-
-static char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	int span;
-	int num_spans = 0;
-
-	switch (cmd) {
-		case CLI_INIT:
-			e->command = "wat show spans";
-			e->usage =
-					"Usage: wat show spans\n"
-					"       Displays WAT span information\n";
-			return NULL;
-		case CLI_GENERATE:
-			return NULL;
-	}
-
-	if (a->argc != 3)
-		return CLI_SHOWUSAGE;
-
-	for (span = 0; span < NUM_SPANS; span++) {
-		if (wats[span].wat.wat_span_id) {
-			char dest[50];
-			num_spans++;
-
-			ast_cli(a->fd, "%s", sig_wat_show_span(dest, &wats[span].wat));
-		}
-	}
-	if (!num_spans) {
-		ast_cli(a->fd, "No WAT spans configured\n");
-	}
-	return CLI_SUCCESS;
-}
-
-static char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	char dest[1000];
-	int span;
-
-	switch (cmd) {
-		case CLI_INIT:
-			e->command = "wat show span";
-			e->usage =
-					"Usage: wat show span <span>\n"
-					"       Displays GSM Information on a given WAT span\n";
-			return NULL;
-		case CLI_GENERATE:
-			return complete_span_4(a->line, a->word, a->pos, a->n);
-	}
-
-	if (a->argc < 4)
-		return CLI_SHOWUSAGE;
-	
-	span = atoi(a->argv[3]);
-	if ((span < 1) || (span > NUM_SPANS)) {
-		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[3], 1, NUM_SPANS);
-		return CLI_SUCCESS;
-	}
-	
-	if (!wats[span-1].wat.wat_span_id) {
-		ast_cli(a->fd, "No WAT running on span %d\n", span);
-		return CLI_SUCCESS;
-	}
-
-	ast_cli(a->fd, "%s", sig_wat_show_span_verbose(dest, &wats[span-1].wat));
-
-	return CLI_SUCCESS;
-}
-
-static char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	unsigned char current = 0;
-	unsigned char revision = 0;
-	unsigned char age = 0;
-
-	switch (cmd) {
-		case CLI_INIT:
-			e->command = "wat show version";
-			e->usage =
-					"Usage: wat show version\n"
-					"	Show the libwat version\n";
-			return NULL;
-		case CLI_GENERATE:
-			return NULL;
-	}
-
-	wat_version(&current, &revision, &age);
-	ast_cli(a->fd, "libwat version: %d.%d.%d\n", current, revision, age);
-
-	return CLI_SUCCESS;
-}
-
-static char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	int span = 0;
-
-	switch (cmd) {
-		case CLI_INIT:
-			e->command = "wat exec";
-			e->usage =
-					"Usage: wat exec <span> <AT command>\n"
-					"       Executes an arbitrary AT command in the given WAT span\n";
-			return NULL;
-		case CLI_GENERATE:
-			return complete_span_4(a->line, a->word, a->pos, a->n);
-	}
-
-	if (a->argc < 4)
-		return CLI_SHOWUSAGE;
-	span = atoi(a->argv[2]);
-	if ((span < 1) || (span > NUM_SPANS)) {
-		ast_cli(a->fd, "Invalid span '%s'.  Should be a number from %d to %d\n", a->argv[2], 1, NUM_SPANS);
-		return CLI_SUCCESS;
-	}
-	if (!wats[span-1].wat.wat_span_id) {
-		ast_cli(a->fd, "No WAT running on span %d\n", span);
-		return CLI_SUCCESS;
-	}
-
-	sig_wat_exec_at(&wats[span-1].wat, a->argv[3]);
-
-	return CLI_SUCCESS;
-}
-
-static struct ast_cli_entry dahdi_wat_cli[] = {
-	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
-	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
-	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
-	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
-	AST_CLI_DEFINE(handle_wat_exec_at, "Executes an arbitrary AT command"),
-	AST_CLI_DEFINE(handle_wat_version, "Displays libwat version"),
-};
-#endif	/* defined(HAVE_WAT) */
-
 static int __unload_module(void)
 {
 	struct dahdi_pvt *p;
@@ -17991,16 +16957,6 @@ static int __unload_module(void)
 #ifdef HAVE_PRI_PROG_W_CAUSE
 	ast_unregister_application(dahdi_send_callrerouting_facility_app);
 #endif
-#endif
-#ifdef HAVE_WAT
-	for (i = 0; i < NUM_SPANS; i++) {
-		if (wats[i].wat.master != AST_PTHREADT_NULL)
-			pthread_cancel(wats[i].wat.master);
-	}
-	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
-	ast_manager_unregister("WATSendSms");
-	ast_manager_unregister("WATShowSpan");
-	ast_manager_unregister("WATShowSpans");
 #endif
 #if defined(HAVE_SS7)
 	for (i = 0; i < NUM_SPANS; i++) {
@@ -18658,10 +17614,6 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				} else if (!strcasecmp(v->value, "mfcr2")) {
 					confp->chan.sig = SIG_MFCR2;
 #endif
-#ifdef HAVE_WAT
-				} else if (!strcasecmp(v->value, "gsm")) {
-					confp->chan.sig = SIG_GSM;
-#endif
 				} else if (!strcasecmp(v->value, "auto")) {
 					confp->is_sig_auto = 1;
 				} else {
@@ -18706,36 +17658,6 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				} else {
 					ast_log(LOG_ERROR, "Unknown signalling method '%s' at line %d.\n", v->value, v->lineno);
 				}
-#ifdef HAVE_WAT
-			} else if (!strcasecmp(v->name, "wat_moduletype")) {
-				if (!strcasecmp(v->value, "telit")) {
-					confp->wat.wat.wat_cfg.moduletype = WAT_MODULE_TELIT;
-				} else {
-					ast_log(LOG_WARNING, "Unknown WAT moduletype '%s' at line %d.\n", v->value, v->lineno);
-				 }
-			} else if (!strcasecmp(v->name, "wat_timeout_cid_name")) {
-					if (atoi(v->value) >= 0) {
-						confp->wat.wat.wat_cfg.timeout_cid_num = atoi(v->value);
-					} else {
-						ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-					}
-			} else if (!strcasecmp(v->name, "wat_signal_poll_interval")) {
-				if (atoi(v->value) >= 0) {
-					confp->wat.wat.wat_cfg.signal_poll_interval = atoi(v->value);
-				} else {
-					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-				}
-			} else if (!strcasecmp(v->name, "wat_signal_threshold")) {
-				if (atoi(v->value) >= 0) {
-					confp->wat.wat.wat_cfg.signal_threshold = atoi(v->value);
-				} else {
-					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-				}				
-			} else if (!strcasecmp(v->name, "wat_codecs")) {
-				confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
-			} else if (!strcasecmp(v->name, "wat_band")) {
-				confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
-#endif
 #ifdef HAVE_PRI
 			} else if (!strcasecmp(v->name, "pridialplan")) {
 				if (!strcasecmp(v->value, "national")) {
@@ -19456,21 +18378,6 @@ static int setup_dahdi(int reload)
 		}
 	}
 #endif
-#ifdef HAVE_WAT
-	if (reload != 1) {		
-		int x;		
-		for (x = 0; x < NUM_SPANS; x++) {
-			if (wats[x].wat.pvt) {
-				prepare_wat(wats + x);				
-				if (sig_wat_start_wat(&wats[x].wat)) {
-					ast_log(LOG_ERROR, "Unable to start sig-channel on span %d\n", x + 1);
-					return -1;
-				} else
-					ast_verb(2, "Starting signalling monitor on span %d\n", x + 1);
-			}
-		}
-	}
-#endif
 	/* And start the monitor for the first time */
 	restart_monitor();
 	return 0;
@@ -19479,13 +18386,9 @@ static int setup_dahdi(int reload)
 static int load_module(void)
 {
 	int res;
-#if defined(HAVE_PRI) || defined(HAVE_SS7) || defined(HAVE_WAT)
-	int y;
-#endif
 #if defined(HAVE_PRI) || defined(HAVE_SS7)
-	int i;
+	int y, i;
 #endif
-
 
 #ifdef HAVE_PRI
 	memset(pris, 0, sizeof(pris));
@@ -19514,13 +18417,6 @@ static int load_module(void)
 	ss7_set_error(dahdi_ss7_error);
 	ss7_set_message(dahdi_ss7_message);
 #endif /* HAVE_SS7 */
-#ifdef HAVE_WAT
-	sig_wat_load(NUM_SPANS);
-	memset(wats, 0, sizeof(wats));
-	for (y = 0; y < NUM_SPANS; y++) {
-		sig_wat_init_wat(&wats[y].wat);
-	}
-#endif
 	res = setup_dahdi(0);
 	/* Make sure we can register our DAHDI channel type */
 	if (res)
@@ -19542,9 +18438,7 @@ static int load_module(void)
 	ast_cli_register_multiple(dahdi_mfcr2_cli, sizeof(dahdi_mfcr2_cli)/sizeof(dahdi_mfcr2_cli[0]));
 	ast_register_application_xml(dahdi_accept_r2_call_app, dahdi_accept_r2_call_exec);
 #endif
-#ifdef HAVE_WAT
-	ast_cli_register_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
-#endif
+
 	ast_cli_register_multiple(dahdi_cli, ARRAY_LEN(dahdi_cli));
 
 	memset(round_robin, 0, sizeof(round_robin));
@@ -19555,12 +18449,6 @@ static int load_module(void)
 	ast_manager_register( "DAHDIDNDoff", 0, action_dahdidndoff, "Toggle DAHDI channel Do Not Disturb status OFF" );
 	ast_manager_register("DAHDIShowChannels", 0, action_dahdishowchannels, "Show status DAHDI channels");
 	ast_manager_register("DAHDIRestart", 0, action_dahdirestart, "Fully Restart DAHDI channels (terminates calls)");
-
-#ifdef HAVE_WAT
-	ast_manager_register_xml("WATSendSms", 0, action_watsendsms);
-	ast_manager_register_xml("WATShowSpan", 0, action_watshowspan);
-	ast_manager_register_xml("WATShowSpans", 0, action_watshowspans);
-#endif
 
 	ast_cond_init(&ss_thread_complete, NULL);
 

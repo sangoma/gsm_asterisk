@@ -1,3 +1,19 @@
+2011-12-19  Asterisk Development Team <asteriskteam@digium.com>
+
+	* Asterisk 1.6.2.22 Released
+
+2011-12-18 18:25 +0000 [r348515]  Kevin P. Fleming <kpfleming@digium.com>
+
+	* configs/sip.conf.sample: Correct two flaws in sip.conf.sample
+	  related to AST-2011-013. 
+	  
+	  * The sample file listed *two* values
+	  for the 'nat' option as being the default. Only 'yes' is the
+	  default. 
+	  
+	  * The warning about having differing 'nat' settings
+	  confusingly referred to both peers and users.
+
 2011-12-08  Asterisk Development Team <asteriskteam@digium.com>
 
 	* Asterisk 1.6.2.21 Released.
