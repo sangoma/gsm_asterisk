@@ -412,8 +412,8 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	event_len += sprintf(&event[event_len],
 									"Span: %d\r\n"
 									"From-Number: %s\r\n"
-									"From-NP: %s\r\n"
-									"From-TON: %s\nr\r"
+									"From-Plan: %s\r\n"
+									"From-Type: %s\nr\r"
 									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d %s\r\n"
 									"Type: %s\r\n",
 									(wat->span + 1),
@@ -428,9 +428,9 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	if (sms_event->type == WAT_SMS_PDU) {
 		event_len += sprintf(&event[event_len],
 									"X-SMS-Message-Type: %s\r\n"
-									"X-SMS-SMCC-NP: %s\r\n"
-									"X-SMS-SMCC-TON: %s\r\n"
-									"X-SMS-SMCC-Number: %s\r\n"
+									"X-SMS-SMSC-Plan: %s\r\n"
+									"X-SMS-SMSC-Type: %s\r\n"
+									"X-SMS-SMSC-Number: %s\r\n"
 									"X-SMS-More-Messages-To-Send: %s\r\n"
 									"X-SMS-Reply-Path: %s\r\n"
 									"X-SMS-User-Data-Header-Indicator: %s\r\n"
@@ -462,12 +462,10 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	event_len += sprintf(&event[event_len],
 									"Content-Type: %s; charset=%s\r\n"
 									"Content-Transfer-Encoding: %s\r\n"
-									"Content-Length: %zd\r\n"
 									"Content: %s\r\n\r\n",
 									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
 									wat_sms_content_charset2str(sms_event->content.charset),
 									wat_sms_content_encoding2str(sms_event->content.encoding),
-									sms_event->content.len,
 									sms_event->content.data);
 
 	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
@@ -1349,18 +1347,18 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 		event.to.type = WAT_NUMBER_TYPE_NATIONAL;
 	}
 
-	smsc_number = astman_get_header(m, "X-SMS-SMCC-Number");
+	smsc_number = astman_get_header(m, "X-SMS-SMSC-Number");
 	if (!ast_strlen_zero(smsc_number)) {
 		memcpy(event.pdu.smsc.digits, smsc_number, sizeof(event.pdu.smsc.digits));
 
-		smsc_plan = astman_get_header(m, "X-SMS-SMCC-Plan");
+		smsc_plan = astman_get_header(m, "X-SMS-SMSC-Plan");
 		if (!ast_strlen_zero(smsc_plan)) {
 			event.pdu.smsc.plan = wat_str2wat_number_plan(smsc_plan);
 		} else {
 			event.pdu.smsc.type = WAT_NUMBER_PLAN_ISDN;
 		}
 		
-		smsc_type = astman_get_header(m, "X-SMS-SMCC-Type");
+		smsc_type = astman_get_header(m, "X-SMS-SMSC-Type");
 		if (!ast_strlen_zero(smsc_type)) {
 			event.pdu.smsc.type = wat_str2wat_number_type(smsc_type);
 		} else {
@@ -1443,7 +1441,6 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 	
 	content = astman_get_header(m, "Content");
 	if (!ast_strlen_zero(content)) {
-
 		event.content.len = strlen(content);
 		strncpy(event.content.data, content, sizeof(event.content.data));
 	} else {
