@@ -205,15 +205,15 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313435 $")
 			Send a SMS using libWAT on a given span
 		</synopsis>
 		<syntax>
-			<parameter name="Span">
-				<para>Specify the specific span to send.</para>
-			</parameter>
-			<parameter name="To-Number">
-				<para>Phone number to send SMS to.</para>
-			</parameter>
-			<parameter name="Content">
-				<para>SMS message contents.</para>
-			</parameter>
+		<parameter name="Span">
+			<para>Specify the specific span to send.</para>
+		</parameter>
+		<parameter name="To-Number">
+			<para>Phone number to send SMS to.</para>
+		</parameter>
+		<parameter name="Content">
+			<para>SMS message contents.</para>
+		</parameter>
 		</syntax>
 		<description>
 			<para>Equivalent to the CLI command "wat send sms".</para>
@@ -17486,6 +17486,20 @@ static int __unload_module(void)
 	ast_manager_unregister( "DAHDIDNDon" );
 	ast_manager_unregister("DAHDIShowChannels");
 	ast_manager_unregister("DAHDIRestart");
+#if defined(HAVE_PRI)
+	ast_manager_unregister("PRIShowSpans");
+#endif	/* defined(HAVE_PRI) */
+#ifdef HAVE_WAT
+	for (i = 0; i < NUM_SPANS; i++) {
+		if (wats[i].wat.master != AST_PTHREADT_NULL)
+			pthread_cancel(wats[i].wat.master);
+	}
+	ast_cli_unregister_multiple(dahdi_wat_cli, ARRAY_LEN(dahdi_wat_cli));
+	ast_manager_unregister("WATSendSms");
+	ast_manager_unregister("WATShowSpan");
+	ast_manager_unregister("WATShowSpans");
+#endif
+	ast_data_unregister(NULL);
 	ast_channel_unregister(&dahdi_tech);
 	ast_mutex_lock(&iflock);
 	/* Hangup all interfaces if they have an owner */
@@ -18124,7 +18138,7 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 #ifdef HAVE_WAT
 				} else if (!strcasecmp(v->value, "gsm")) {
 					confp->chan.sig = SIG_GSM;
-#endif
+#endif	/* defined (HAVE_WAT) */
 				} else if (!strcasecmp(v->value, "auto")) {
 					confp->is_sig_auto = 1;
 				} else {
