@@ -17499,7 +17499,6 @@ static int __unload_module(void)
 	ast_manager_unregister("WATShowSpan");
 	ast_manager_unregister("WATShowSpans");
 #endif
-	ast_data_unregister(NULL);
 	ast_channel_unregister(&dahdi_tech);
 	ast_mutex_lock(&iflock);
 	/* Hangup all interfaces if they have an owner */
