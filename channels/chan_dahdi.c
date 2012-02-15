@@ -4867,8 +4867,6 @@ static char *dahdi_sig2str(int sig)
 		return "ISDN PRI";
 	case SIG_BRI:
 		return "ISDN BRI Point to Point";
-	case SIG_GSM:
-		return "GSM";
 	case SIG_BRI_PTMP:
 		return "ISDN BRI Point to MultiPoint";
 	case SIG_SS7:
