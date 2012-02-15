@@ -12560,9 +12560,10 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 	struct dahdi_bufferinfo bi;
 
 	int res;
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 	int span = 0;
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
+
 	int here = 0;/*!< TRUE if the channel interface already exists. */
 	int x;
 	struct analog_pvt *analog_p = NULL;
@@ -12657,9 +12658,9 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 				tmp->law_default = p.curlaw;
 				tmp->law = p.curlaw;
 				tmp->span = p.spanno;
-#if defined(HAVE_PRI)
+#if defined(HAVE_PRI) || defined(HAVE_WAT)
 				span = p.spanno - 1;
-#endif	/* defined(HAVE_PRI) */
+#endif	/* defined(HAVE_PRI) || defined(HAVE_WAT) */
 			} else {
 				chan_sig = 0;
 			}
@@ -12715,6 +12716,9 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 						memcpy(&wats[span].wat.wat_cfg, &conf->wat.wat.wat_cfg, sizeof(wats[span].wat.wat_cfg));
 
 						wats[span].wat.pvt = tmp->sig_pvt;
+						wats[span].wat.pvt->use_callerid = conf->chan.use_callerid;
+						ast_copy_string(wats[span].wat.pvt->context, conf->chan.context, sizeof(wats[span].wat.pvt->context));
+						ast_copy_string(wats[span].wat.pvt->mohinterpret, conf->chan.mohinterpret, sizeof(wats[span].wat.pvt->context));
 
 					} else {
 // 						ast_log(LOG_ERROR, "Channel %d is reserved for Sig-channel.\n", p.chanpos);
