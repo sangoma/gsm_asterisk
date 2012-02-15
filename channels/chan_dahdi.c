@@ -4867,6 +4867,8 @@ static char *dahdi_sig2str(int sig)
 		return "ISDN PRI";
 	case SIG_BRI:
 		return "ISDN BRI Point to Point";
+	case SIG_GSM:
+		return "GSM";
 	case SIG_BRI_PTMP:
 		return "ISDN BRI Point to MultiPoint";
 	case SIG_SS7:
@@ -12544,6 +12546,7 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 
 	int res;
 	int span = 0;
+	
 	int here = 0;/*!< TRUE if the channel interface already exists. */
 	int x;
 	struct analog_pvt *analog_p = NULL;
@@ -12638,6 +12641,7 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 				tmp->law_default = p.curlaw;
 				tmp->law = p.curlaw;
 				tmp->span = p.spanno;
+				
 				span = p.spanno - 1;
 			} else {
 				chan_sig = 0;
@@ -12694,6 +12698,9 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 						memcpy(&wats[span].wat.wat_cfg, &conf->wat.wat.wat_cfg, sizeof(wats[span].wat.wat_cfg));
 
 						wats[span].wat.pvt = tmp->sig_pvt;
+						wats[span].wat.pvt->use_callerid = conf->chan.use_callerid;
+						ast_copy_string(wats[span].wat.pvt->context, conf->chan.context, sizeof(wats[span].wat.pvt->context));
+						ast_copy_string(wats[span].wat.pvt->mohinterpret, conf->chan.mohinterpret, sizeof(wats[span].wat.pvt->context));
 
 					} else {
 // 						ast_log(LOG_ERROR, "Channel %d is reserved for Sig-channel.\n", p.chanpos);
