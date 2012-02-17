@@ -1315,7 +1315,7 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 
 	span_string = astman_get_header(m, "Span");
 	if (ast_strlen_zero(span_string)) {
-		astman_send_error(s, m, "No span specified");
+		astman_send_error(s, m, "Missing Span header");
 		return 0;
 	}
 	
@@ -1329,7 +1329,7 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 	if (!ast_strlen_zero(to_number)) {
 		memcpy(event.to.digits, to_number, sizeof(event.to.digits));
 	} else {
-		astman_send_error(s, m, "Message destination not specified");
+		astman_send_error(s, m, "Missing To-Number header");
 		return 0;
 	}
 
@@ -1444,7 +1444,7 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 		event.content.len = strlen(content);
 		strncpy(event.content.data, content, sizeof(event.content.data));
 	} else {
-		astman_send_error(s, m, "No SMS content");
+		astman_send_error(s, m, "Missing Content header");
 		return -1;
 	}
 	
