@@ -1547,8 +1547,10 @@ char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 		return CLI_SUCCESS;
 	}
 
+	event.type = WAT_SMS_TXT;
 	strncpy(event.to.digits, a->argv[4], sizeof(event.to.digits));
 	strncpy(event.content.data, a->argv[5], sizeof(event.content.data));
+	event.content.len = strlen(event.content.data);
 
 	sig_wat_send_sms(&wats[span-1].wat, &event);
 	return CLI_SUCCESS;
