@@ -385,6 +385,8 @@ void sig_wat_rel_cfm(unsigned char span_id, uint8_t call_id)
 	ast_verb(3, "Span %d: Call Release\n", wat->span + 1);
 	sig_wat_lock_private(wat->pvt);
 
+	wat->pvt->owner = NULL;
+
 	if (!wat->pvt->subs[WAT_CALL_SUB_REAL].allocd) {
 		ast_log(LOG_ERROR, "Span %d: Got Release, but there was no call.\n", wat->span + 1);
 		sig_wat_unlock_private(wat->pvt);
@@ -473,7 +475,13 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 
 void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sms_status)
 {
+	char event [800];
+	unsigned event_len = 0;
+	struct sig_wat_sms *wat_sms = NULL;
 	struct sig_wat_span *wat = wat_spans[span_id];	
+
+	memset(event, 0, sizeof(event));
+
 	ast_assert(wat != NULL);
 	
 	if (sms_status->success) {
@@ -499,12 +507,71 @@ void sig_wat_sms_sts(unsigned char span_id, uint8_t sms_id, wat_sms_status_t *sm
 		ast_log(LOG_ERROR, "Span %d: Could not find record for transmitted SMS (id:%d)\n", wat->span + 1, sms_id);
 		sig_wat_unlock_private(wat->pvt);
 		return;
-	}	
-	ast_free(wat->smss[sms_id]);
+	}
+
+	wat_sms = wat->smss[sms_id];
+
 	wat->smss[sms_id] = NULL;
 	sig_wat_unlock_private(wat->pvt);
+
+	event_len += sprintf(&event[event_len],
+									"Span: %d\r\n"
+									"To-Number: %s\r\n",
+									wat->span + 1,
+									wat_sms->sms_event.to.digits);
+									
+
+	if (!ast_strlen_zero(wat_sms->action_id)) {
+		event_len += sprintf(&event[event_len], "ActionID: %s \r\n", wat_sms->action_id);
+		ast_free(wat_sms->action_id);
+	}
+
+	event_len += sprintf(&event[event_len], "Status: %s\n", sms_status->success ? "Success": "Failed");
+
+	if (!sms_status->success) {
+		event_len += sprintf(&event[event_len], "Cause: %s\r\n", wat_decode_sms_cause(sms_status->cause));
+		if (sms_status->error) {
+			event_len += sprintf(&event[event_len], "Error: %s\r\n", sms_status->error);
+		}
+	}
+
+	manager_event(EVENT_FLAG_CALL, "WATSendSmsComplete", "%s", event);
+
+	ast_free(wat_sms);
+
 	return;
 }
+
+/*!
+ * \brief Determine if the specified channel is available for an outgoing call.
+ *
+ * \param p Signaling private structure pointer.
+ *
+ * \retval TRUE if the channel is available.
+ */
+int sig_wat_available(struct sig_wat_chan *p)
+{
+	struct sig_wat_span *wat;
+	int available = 0;
+
+	if (!p->wat) {
+		/* Something is wrong here.  A WAT channel without the wat pointer? */
+		return 0;
+	}
+
+	wat = p->wat;
+
+	sig_wat_lock_private(wat->pvt);
+	if (wat->pvt->owner) {
+		available = 0;
+	} else {
+		available = 1;
+	}
+	
+	sig_wat_unlock_private(wat->pvt);
+	return available;
+}
+
 
 int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
 {
@@ -530,13 +597,13 @@ int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
 	}
 
 	if (i >= WAT_MAX_CALLS_PER_SPAN) {
-		ast_log(LOG_ERROR, "Span :%d Failed to find a free call ID\n", p->wat->span+1);
+		ast_log(LOG_ERROR, "Span :%d Failed to find a free call ID\n", p->wat->span + 1);
 		sig_wat_unlock_private(wat->pvt);
 		return -1;
 	}
 
 	if (wat->pvt->subs[WAT_CALL_SUB_REAL].allocd) {
-		ast_log(LOG_ERROR, "Span %d: Got an outgoing call but we already had a call. Ignoring Call.\n", wat->span);
+		ast_log(LOG_ERROR, "Span %d: Got an outgoing call but we already had a call. Ignoring Call.\n", wat->span + 1);
 		sig_wat_unlock_private(wat->pvt);
 		return -1;
 	}
@@ -1120,7 +1187,7 @@ void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd)
 	wat_cmd_req(wat->wat_span_id, at_cmd, sig_wat_at_response, wat);
 }
 
-int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event)
+int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event, const char *action_id)
 {
 	int i;
 	struct sig_wat_sms *wat_sms;
@@ -1154,6 +1221,10 @@ int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event)
 	memcpy(&wat_sms->sms_event, event, sizeof(*event));
 
 	wat_sms->wat_sms_id = i;
+
+	if (!ast_strlen_zero(action_id)) {
+		wat_sms->action_id = ast_strdup(action_id);
+	}
 
 	if (wat_sms_req(wat->wat_span_id, wat_sms->wat_sms_id, &wat_sms->sms_event)) {
 		ast_verb(1, "Span %d: Failed to send sms\n", wat->span + 1);
@@ -1230,13 +1301,13 @@ int action_watshowspans(struct mansession *s, const struct message *m)
 	}
 	
 done:
-			astman_append(s, "Event: %sComplete\r\n"
-			"Items: %d\r\n"
-					"%s"
-					"\r\n",
-	 "WATShowSpans",
-  num_spans,
-  action_id);
+	astman_append(s, "Event: %sComplete\r\n"
+	"Items: %d\r\n"
+			"%s"
+			"\r\n",
+			"WATShowSpans",
+			num_spans,
+			action_id);
 	return 0;	
 }
 
@@ -1280,13 +1351,13 @@ int action_watshowspan(struct mansession *s, const struct message *m)
 	}
 
 done:
-			astman_append(s, "Event: %sComplete\r\n"
-			"Items: %d\r\n"
-					"%s"
-					"\r\n",
-	 "WATShowSpan",
-  num_spans,
-  action_id);
+	astman_append(s, "Event: %sComplete\r\n"
+						"Items: %d\r\n"
+						"%s"
+						"\r\n",
+						"WATShowSpan",
+						num_spans,
+						action_id);
 	return 0;
 }
 
@@ -1294,7 +1365,6 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 {
 	int span;
 	wat_sms_event_t event;
-	char action_id[256];
 	const char *id, *span_string;
 	const char *to_number, *to_plan, *to_type;
 	const char *smsc_number, *smsc_plan, *smsc_type;
@@ -1307,10 +1377,8 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 	memset(&event, 0, sizeof(event));
 
 	id = astman_get_header(m, "ActionID");
-	if (!ast_strlen_zero(id)) {
-		snprintf(action_id, sizeof(action_id), "ActionID: %s\r\n", id);
-	} else {
-		action_id[0] = '\0';
+	if (ast_strlen_zero(id)) {
+		id = NULL;
 	}
 
 	span_string = astman_get_header(m, "Span");
@@ -1475,19 +1543,10 @@ int action_watsendsms(struct mansession *s, const struct message *m)
 
 	event.type = type;
 
-	if (sig_wat_send_sms(&wats[span-1].wat, &event) != 0) {
-		astman_send_error(s, m, "Failed to send SMS");
-	} else {
-		astman_send_ack(s, m, "SMS request sent");
+	if (sig_wat_send_sms(&wats[span-1].wat, &event, id) != 0) {
+		astman_send_error(s, m, "Failed to send SMS");	
 	}
 
-	astman_append(s, "Event: %sComplete\r\n"
-			"Items: %d\r\n"
-					"%s"
-					"\r\n",
-	 "WATSendSms",
-  1,
-  action_id);
 	return 0;
 }
 
@@ -1552,7 +1611,7 @@ char *handle_wat_send_sms(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 	strncpy(event.content.data, a->argv[5], sizeof(event.content.data));
 	event.content.len = strlen(event.content.data);
 
-	sig_wat_send_sms(&wats[span-1].wat, &event);
+	sig_wat_send_sms(&wats[span-1].wat, &event, NULL);
 	return CLI_SUCCESS;
 }
 

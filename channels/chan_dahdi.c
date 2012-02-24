@@ -13474,6 +13474,10 @@ static int available(struct dahdi_pvt **pvt, int is_specific_channel)
 	case SIG_SS7:
 		return sig_ss7_available(p->sig_pvt);
 #endif	/* defined(HAVE_SS7) */
+#if defined(HAVE_WAT)
+	case SIG_GSM:
+		return sig_wat_available(p->sig_pvt);
+#endif
 	default:
 		break;
 	}
