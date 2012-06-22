@@ -1683,6 +1683,32 @@ char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args
 	return CLI_SUCCESS;
 }
 
+char *handle_wat_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	uint32_t debug_mask = 0;
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat debug";
+			e->usage =
+				"Usage: wat debug <debug-str>\n"
+				"	Valid debug strings: all, uart_raw, uart_dump, call_state, span_state, at_parse, at_handle, sms_encode, sms_decode\n"
+				"	The debug string can be a comma separated list of any of those values\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc < 3) {
+		return CLI_SHOWUSAGE;
+	}
+
+	debug_mask = wat_str2debug(a->argv[2]);
+	wat_set_debug(debug_mask);
+	ast_cli(a->fd, "WAT debug set to: %s (0x%X)\n", a->argv[1], debug_mask);
+
+	return CLI_SUCCESS;
+}
+
 char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	unsigned char current = 0;

@@ -17011,7 +17011,7 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 
 #if defined(HAVE_WAT)
 static struct ast_cli_entry dahdi_wat_cli[] = {
-	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
+	AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging"),
 	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
 	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
 	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),

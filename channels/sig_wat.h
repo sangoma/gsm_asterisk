@@ -214,6 +214,7 @@ char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 
 int action_watsendsms(struct mansession *s, const struct message *m);
