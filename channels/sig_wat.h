@@ -117,6 +117,7 @@ struct sig_wat_chan;
 
 struct sig_wat_sms {
 	unsigned char wat_sms_id;
+	char *action_id; /* Used when sending SMS via AMI */
 	wat_sms_event_t sms_event;
 };
 
@@ -193,13 +194,14 @@ void wat_event_noalarm(struct sig_wat_span *wat);
 int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest);
 int sig_wat_answer(struct sig_wat_chan *p, struct ast_channel *ast);
 int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast);
+int sig_wat_available(struct sig_wat_chan *p);
 
 void sig_wat_load(int maxspans);
 void sig_wat_unload(void);
 
 struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *callback, struct sig_wat_span *wat, int channo);
 
-int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event);
+int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event, const char *action_id);
 
 void sig_wat_exec_at(struct sig_wat_span *wat, const char *at_cmd);
 int sig_wat_digit_begin(struct sig_wat_chan *pvt, struct ast_channel *ast, char digit);
@@ -212,6 +214,7 @@ char *handle_wat_show_spans(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_version(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
+char *handle_wat_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 char *handle_wat_exec_at(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 
 int action_watsendsms(struct mansession *s, const struct message *m);
