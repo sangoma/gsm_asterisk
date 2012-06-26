@@ -433,6 +433,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	char dest [30];
 	char event [800];
 	unsigned event_len = 0;
+	int i = 0;
 
 	ast_assert(wat != NULL);
 	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->from.digits);
@@ -492,11 +493,18 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	event_len += sprintf(&event[event_len],
 									"Content-Type: %s; charset=%s\r\n"
 									"Content-Transfer-Encoding: %s\r\n"
-									"Content: %s\r\n\r\n",
+									"Content: ",
 									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
 									wat_sms_content_charset2str(sms_event->content.charset),
-									wat_sms_content_encoding2str(sms_event->content.encoding),
-									sms_event->content.data);
+									wat_sms_content_encoding2str(sms_event->content.encoding));
+
+	for (i = 0; i < strlen(sms_event->content.data); i++) {
+		if (sms_event->content.data[i] == '\n') {
+			event_len += sprintf(&event[event_len], "\r");
+		}
+		event_len += sprintf(&event[event_len], "%c", sms_event->content.data[i]);
+	}
+	event_len += sprintf(&event[event_len], "\r\n\r\n");
 
 	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
 }
