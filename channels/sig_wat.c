@@ -33,6 +33,7 @@
 
 #include "asterisk/cli.h"
 #include "asterisk/stringfields.h"
+#include "asterisk/callerid.h"
 #include "asterisk/manager.h"
 #include "asterisk/version.h"
 
@@ -228,12 +229,31 @@ void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status)
 	return;
 }
 
+static void sig_wat_set_caller_id(struct sig_wat_chan *p)
+{
+	if (p->calls->set_callerid) {
+		struct ast_party_caller caller;
+		ast_party_caller_init(&caller);
+		caller.id.name.str = p->cid_name;
+		caller.id.name.valid = 1;
+
+		caller.id.number.str = p->cid_num;
+		caller.id.number.valid = 1;
+
+		caller.ani.number.str = p->cid_num;
+		caller.ani.number.valid = 1;
+
+		p->calls->set_callerid(p->chan_pvt, &caller);
+	}
+}
+
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event)
 {
 	struct sig_wat_span *wat;
 	struct ast_channel *chan;
 
 	char *cid_num = NULL;
+	char *cid_name = NULL;
 	char *context = NULL;
 
 	wat = wat_spans[span_id];
@@ -243,9 +263,11 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 #if ASTERISK_VERSION_NUM >= 10800
 	cid_num = wat->pvt->cid_num;
+	cid_name = wat->pvt->cid_num;
 	context = wat->pvt->context;
 #else
 	cid_num = wat->pvt->calls->get_cid_num(wat->pvt->chan_pvt);
+	cid_name = wat->pvt->calls->get_cid_name(wat->pvt->chan_pvt);
 	context = wat->pvt->calls->get_context(wat->pvt->chan_pvt);
 #endif /* ASTERISK_VERSION_NUM >= 10800 */
 
@@ -278,7 +300,13 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	if (wat->pvt->calls->get_use_callerid(wat->pvt->chan_pvt)) {
 #endif
 		/* TODO: Set plan etc.. properly */
-		strcpy(cid_num, con_event->calling_num.digits);
+		ast_copy_string(cid_num, con_event->calling_num.digits, AST_MAX_EXTENSION);
+		ast_copy_string(cid_name, con_event->calling_name, AST_MAX_EXTENSION);
+		if (ast_strlen_zero(cid_name)) {
+			ast_copy_string(cid_name, con_event->calling_num.digits, AST_MAX_EXTENSION);
+		}
+		ast_shrink_phone_number(cid_num);
+		sig_wat_set_caller_id(wat->pvt);
 	}
 
 	if (ast_exists_extension(NULL, context, "s", 1, cid_num)) {
@@ -405,6 +433,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	char dest [30];
 	char event [800];
 	unsigned event_len = 0;
+	int i = 0;
 
 	ast_assert(wat != NULL);
 	ast_verb(3, "Span %d: SMS received from %s\n", wat->span + 1, sms_event->from.digits);
@@ -464,11 +493,18 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 	event_len += sprintf(&event[event_len],
 									"Content-Type: %s; charset=%s\r\n"
 									"Content-Transfer-Encoding: %s\r\n"
-									"Content: %s\r\n\r\n",
+									"Content: ",
 									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
 									wat_sms_content_charset2str(sms_event->content.charset),
-									wat_sms_content_encoding2str(sms_event->content.encoding),
-									sms_event->content.data);
+									wat_sms_content_encoding2str(sms_event->content.encoding));
+
+	for (i = 0; i < strlen(sms_event->content.data); i++) {
+		if (sms_event->content.data[i] == '\n') {
+			event_len += sprintf(&event[event_len], "\r");
+		}
+		event_len += sprintf(&event[event_len], "%c", sms_event->content.data[i]);
+	}
+	event_len += sprintf(&event[event_len], "\r\n\r\n");
 
 	manager_event(EVENT_FLAG_CALL, "WATIncomingSms", "%s", event);
 }
@@ -1679,6 +1715,32 @@ char *handle_wat_show_span(struct ast_cli_entry *e, int cmd, struct ast_cli_args
 	}
 
 	ast_cli(a->fd, "%s", sig_wat_show_span_verbose(dest, &wats[span-1].wat));
+
+	return CLI_SUCCESS;
+}
+
+char *handle_wat_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	uint32_t debug_mask = 0;
+	switch (cmd) {
+		case CLI_INIT:
+			e->command = "wat debug";
+			e->usage =
+				"Usage: wat debug <debug-str>\n"
+				"	Valid debug strings: all, uart_raw, uart_dump, call_state, span_state, at_parse, at_handle, sms_encode, sms_decode\n"
+				"	The debug string can be a comma separated list of any of those values\n";
+			return NULL;
+		case CLI_GENERATE:
+			return NULL;
+	}
+
+	if (a->argc < 3) {
+		return CLI_SHOWUSAGE;
+	}
+
+	debug_mask = wat_str2debug(a->argv[2]);
+	wat_set_debug(debug_mask);
+	ast_cli(a->fd, "WAT debug set to: %s (0x%X)\n", a->argv[1], debug_mask);
 
 	return CLI_SUCCESS;
 }

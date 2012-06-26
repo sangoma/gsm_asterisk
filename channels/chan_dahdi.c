@@ -3342,6 +3342,32 @@ static int dahdi_callwait(struct ast_channel *ast)
 	return 0;
 }
 
+#if defined(HAVE_WAT)
+static struct sig_wat_callback dahdi_wat_callbacks =
+{
+	.lock_private = my_lock_private,
+	.unlock_private = my_unlock_private,
+	.deadlock_avoidance_private = my_deadlock_avoidance_private,
+
+	.set_echocanceller = my_set_echocanceller,
+	.deadlock_avoidance_private = my_deadlock_avoidance_private,
+	.new_ast_channel = my_new_wat_ast_channel,
+	/*.play_tone = my_wat_play_tone,*/
+
+	.handle_sig_exception = wat_handle_sig_exception,
+	.set_alarm = my_set_alarm,
+	.set_dialing = my_set_dialing,
+	/*.set_digital = my_set_digital,*/
+	/*.set_inservice = my_set_inservice,*/
+	.set_callerid = my_set_callerid,
+	.set_dnid = my_set_dnid, /* un-used, but keeps the compiler happy */
+	.module_ref = my_module_ref,
+	.module_unref = my_module_unref,
+	.open_media = my_wat_open_media,
+	.set_new_owner = my_set_new_owner,
+};
+#endif /* defined (HAVE_WAT) */
+
 #if defined(HAVE_SS7)
 static unsigned char cid_pres2ss7pres(int cid_pres)
 {
@@ -17438,7 +17464,7 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 
 #if defined(HAVE_WAT)
 static struct ast_cli_entry dahdi_wat_cli[] = {
-	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
+	AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging"),
 	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
 	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
 	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
