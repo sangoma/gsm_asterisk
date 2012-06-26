@@ -3626,13 +3626,9 @@ static struct sig_wat_callback dahdi_wat_callbacks =
 	.set_echocanceller = my_set_echocanceller,
 	.deadlock_avoidance_private = my_deadlock_avoidance_private,
 	.new_ast_channel = my_new_wat_ast_channel,
-		//.play_tone = my_wat_play_tone,
-
 	.handle_sig_exception = wat_handle_sig_exception,
 	.set_alarm = my_set_alarm,
 	.set_dialing = my_set_dialing,
-		//.set_digital = my_set_digital,
-		//.set_inservice = my_set_inservice,
 	.set_callerid = my_set_callerid, /* We do not need this for now, but eventually will*/
 	.set_dnid = my_set_dnid,		/* We do not need this for now, but eventually will*/
 	.module_ref = my_module_ref,
@@ -12715,6 +12711,9 @@ static struct dahdi_pvt *mkintf(int channel, const struct dahdi_chan_conf *conf,
 						memcpy(&wats[span].wat.wat_cfg, &conf->wat.wat.wat_cfg, sizeof(wats[span].wat.wat_cfg));
 
 						wats[span].wat.pvt = tmp->sig_pvt;
+						wats[span].wat.pvt->use_callerid = conf->chan.use_callerid;
+						ast_copy_string(wats[span].wat.pvt->context, conf->chan.context, sizeof(wats[span].wat.pvt->context));
+						ast_copy_string(wats[span].wat.pvt->mohinterpret, conf->chan.mohinterpret, sizeof(wats[span].wat.pvt->context));
 
 					} else {
 // 						ast_log(LOG_ERROR, "Channel %d is reserved for Sig-channel.\n", p.chanpos);
@@ -13577,6 +13576,10 @@ static int available(struct dahdi_pvt **pvt, int is_specific_channel)
 	case SIG_SS7:
 		return sig_ss7_available(p->sig_pvt);
 #endif	/* defined(HAVE_SS7) */
+#if defined(HAVE_WAT)
+	case SIG_GSM:
+		return sig_wat_available(p->sig_pvt);
+#endif
 	default:
 		break;
 	}
@@ -17047,7 +17050,7 @@ static struct ast_cli_entry dahdi_ss7_cli[] = {
 
 #if defined(HAVE_WAT)
 static struct ast_cli_entry dahdi_wat_cli[] = {
-	/* AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging on a span"), */
+	AST_CLI_DEFINE(handle_wat_debug, "Enables WAT debugging"),
 	AST_CLI_DEFINE(handle_wat_send_sms, "Sends a SMS"),
 	AST_CLI_DEFINE(handle_wat_show_spans, "Displays WAT span information"),
 	AST_CLI_DEFINE(handle_wat_show_span, "Displays WAT span information"),
