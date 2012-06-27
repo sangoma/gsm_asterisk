@@ -1476,7 +1476,7 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.signal_threshold = 90,
 				.codec_mask = WAT_CODEC_ALL,
 				.band = WAT_BAND_AUTO,
-				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_BASE64,
+				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_NONE,
 			},
 		},
 #endif
@@ -17768,28 +17768,30 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				 } else {
 					 ast_log(LOG_WARNING, "Unknown WAT moduletype '%s' at line %d.\n", v->value, v->lineno);
 				 }
-			 } else if (!strcasecmp(v->name, "wat_timeout_cid_name")) {
-				 if (atoi(v->value) >= 0) {
-					 confp->wat.wat.wat_cfg.timeout_cid_num = atoi(v->value);
-				 } else {
-					 ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-				 }
-			 } else if (!strcasecmp(v->name, "wat_signal_poll_interval")) {
-				 if (atoi(v->value) >= 0) {
-					 confp->wat.wat.wat_cfg.signal_poll_interval = atoi(v->value);
-				 } else {
-					 ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-				 }
-			 } else if (!strcasecmp(v->name, "wat_signal_threshold")) {
-				 if (atoi(v->value) >= 0) {
-					 confp->wat.wat.wat_cfg.signal_threshold = atoi(v->value);
-				 } else {
-					 ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
-				 }
-			 } else if (!strcasecmp(v->name, "wat_codecs")) {
-				 confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
-			 } else if (!strcasecmp(v->name, "wat_band")) {
-				 confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
+			} else if (!strcasecmp(v->name, "wat_timeout_cid_name")) {
+					if (atoi(v->value) >= 0) {
+						confp->wat.wat.wat_cfg.timeout_cid_num = atoi(v->value);
+					} else {
+						ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+					}
+			} else if (!strcasecmp(v->name, "wat_signal_poll_interval")) {
+				if (atoi(v->value) >= 0) {
+					confp->wat.wat.wat_cfg.signal_poll_interval = atoi(v->value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+				}
+			} else if (!strcasecmp(v->name, "wat_signal_threshold")) {
+				if (atoi(v->value) >= 0) {
+					confp->wat.wat.wat_cfg.signal_threshold = atoi(v->value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid value for '%s' at line %d.\n", v->value, v->lineno);
+				}				
+			} else if (!strcasecmp(v->name, "wat_codecs")) {
+				confp->wat.wat.wat_cfg.codec_mask = wat_encode_codec(v->value);
+			} else if (!strcasecmp(v->name, "wat_band")) {
+				confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
+			} else if (!strcasecmp(v->name, "wat_incoming_sms_encoding")) {
+				confp->wat.wat.wat_cfg.incoming_sms_encoding = wat_encode_sms_content_encoding(v->value);
 #endif
 #ifdef HAVE_PRI
 			} else if (!strcasecmp(v->name, "pridialplan")) {
