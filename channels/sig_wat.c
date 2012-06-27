@@ -444,7 +444,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 									"Span: %d\r\n"
 									"From-Number: %s\r\n"
 									"From-Plan: %s\r\n"
-									"From-Type: %s\nr\r"
+									"From-Type: %s\r\n"
 									"Timestamp: %02d/%02d/%02d %02d:%02d:%02d %s\r\n"
 									"Type: %s\r\n",
 									(wat->span + 1),
@@ -496,7 +496,7 @@ void sig_wat_sms_ind(unsigned char span_id, wat_sms_event_t *sms_event)
 									"Content: ",
 									(sms_event->pdu.dcs.compressed) ? "Compressed" : "text/plain",
 									wat_sms_content_charset2str(sms_event->content.charset),
-									wat_sms_content_encoding2str(sms_event->content.encoding));
+									wat_decode_sms_content_encoding(sms_event->content.encoding));
 
 	for (i = 0; i < strlen(sms_event->content.data); i++) {
 		if (sms_event->content.data[i] == '\n') {
