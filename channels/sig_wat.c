@@ -83,7 +83,7 @@ static int sig_wat_set_echocanceller(struct sig_wat_chan *p, int enable);
 static void sig_wat_open_media(struct sig_wat_chan *p);
 static struct ast_channel *sig_wat_new_ast_channel(struct sig_wat_chan *p, int state, int startpbx, int sub, const struct ast_channel *requestor);
 
-struct sig_wat_span **wat_spans;
+struct sig_wat_span **wat_spans = NULL;
 
 extern struct dahdi_wat wats[WAT_NUM_SPANS];
 
@@ -955,20 +955,22 @@ int sig_wat_start_wat(struct sig_wat_span *wat)
 		ast_log(LOG_ERROR, "Span %d:Unable to spawn D-channnel:%s\n", wat->span + 1, strerror(errno));
 		return -1;
 	}
+	ast_log(LOG_DEBUG, "Started wat span %d\n", wat->wat_span_id);
 	return 0;
 }
 
 void sig_wat_stop_wat(struct sig_wat_span *wat)
 {
 	wat_span_stop(wat->wat_span_id);
+	wat_span_unconfig(wat->wat_span_id);
+	ast_log(LOG_DEBUG, "Stopped wat span %d\n", wat->wat_span_id);
 }
 
 void sig_wat_load(int maxspans)
 {
 	wat_interface_t wat_intf;
 
-	wat_spans = malloc(maxspans * sizeof(void*));
-	memset(wat_spans, 0, maxspans * sizeof(void*));
+	wat_spans = ast_calloc(maxspans, sizeof(void *));
 
 	memset(&wat_intf, 0, sizeof(wat_intf));
 
@@ -998,7 +1000,7 @@ void sig_wat_load(int maxspans)
 
 void sig_wat_unload(void)
 {
-	if (wat_spans) free(wat_spans);
+	if (wat_spans) ast_free(wat_spans);
 }
 
 void sig_wat_init_wat(struct sig_wat_span *wat)
@@ -1009,6 +1011,11 @@ void sig_wat_init_wat(struct sig_wat_span *wat)
 	wat->master = AST_PTHREADT_NULL;
 	wat->fd = -1;
 	return;
+}
+
+void sig_wat_chan_delete(void *pvt_data)
+{
+	ast_free(pvt_data);
 }
 
 struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *callback, struct sig_wat_span *wat, int channo)
