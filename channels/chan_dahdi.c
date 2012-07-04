@@ -5994,6 +5994,11 @@ static void destroy_dahdi_pvt(struct dahdi_pvt *pvt)
 			sig_ss7_chan_delete(p->sig_pvt);
 			break;
 #endif	/* defined(HAVE_SS7) */
+#if defined(HAVE_WAT)
+		case SIG_GSM:
+			sig_wat_chan_delete(p->sig_pvt);
+			break;
+#endif	/* defined(HAVE_WAT) */
 		default:
 			break;
 		}
@@ -17097,6 +17102,7 @@ static int __unload_module(void)
 			sig_wat_stop_wat(&wats[i].wat);
 		}
 	}
+	sig_wat_unload();
 #endif
 
 #if defined(HAVE_SS7)
