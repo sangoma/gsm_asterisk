@@ -206,6 +206,7 @@ int sig_wat_available(struct sig_wat_chan *p);
 void sig_wat_load(int maxspans);
 void sig_wat_unload(void);
 
+void sig_wat_chan_delete(void *pvt_data);
 struct sig_wat_chan *sig_wat_chan_new(void *pvt_data, struct sig_wat_callback *callback, struct sig_wat_span *wat, int channo);
 
 int sig_wat_send_sms(struct sig_wat_span *wat, wat_sms_event_t *event, const char *action_id);

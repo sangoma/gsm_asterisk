@@ -17554,6 +17554,7 @@ static int __unload_module(void)
 			dahdi_close_pri_fd(&(pris[i]), j);
 		}
 	}
+	sig_wat_unload();
 #endif
 
 #if defined(HAVE_SS7)
