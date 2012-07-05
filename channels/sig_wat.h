@@ -116,6 +116,7 @@ struct sig_wat_callback {
 #if ASTERISK_VERSION_NUM < 10800
 	int (*get_use_callerid)(void *pvt);
 	char* (*get_cid_num)(void *pvt);
+	char* (*get_cid_name)(void *pvt);
 	char* (*get_context)(void *pvt);
 #endif
 };

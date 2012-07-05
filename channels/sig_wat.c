@@ -231,6 +231,7 @@ void sig_wat_span_sts(unsigned char span_id, wat_span_status_t *status)
 
 static void sig_wat_set_caller_id(struct sig_wat_chan *p)
 {
+#if ASTERISK_VERSION_NUM >= 10800
 	if (p->calls->set_callerid) {
 		struct ast_party_caller caller;
 		ast_party_caller_init(&caller);
@@ -245,6 +246,9 @@ static void sig_wat_set_caller_id(struct sig_wat_chan *p)
 
 		p->calls->set_callerid(p->chan_pvt, &caller);
 	}
+#else
+	/* nothing to do */
+#endif
 }
 
 void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *con_event)
