@@ -17512,9 +17512,6 @@ static int __unload_module(void)
 	ast_manager_unregister( "DAHDIDNDon" );
 	ast_manager_unregister("DAHDIShowChannels");
 	ast_manager_unregister("DAHDIRestart");
-#if defined(HAVE_PRI)
-	ast_manager_unregister("PRIShowSpans");
-#endif	/* defined(HAVE_PRI) */
 #ifdef HAVE_WAT
 	for (i = 0; i < NUM_SPANS; i++) {
 		if (wats[i].wat.master != AST_PTHREADT_NULL)
