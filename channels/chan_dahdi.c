@@ -3623,7 +3623,6 @@ static struct sig_wat_callback dahdi_wat_callbacks =
 	.deadlock_avoidance_private = my_deadlock_avoidance_private,
 
 	.set_echocanceller = my_set_echocanceller,
-	.deadlock_avoidance_private = my_deadlock_avoidance_private,
 	.new_ast_channel = my_new_wat_ast_channel,
 	/*.play_tone = my_wat_play_tone,*/
 
