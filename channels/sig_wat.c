@@ -171,6 +171,7 @@ int sig_wat_span_write(unsigned char span_id, void *buffer, unsigned len)
 	ast_assert(wat != NULL);
 
 	memcpy(at_buf, buffer, len);
+	memset(&at_buf[len], 0, 2); /* set CRC to 0 to keep valgrind happy */
 	len += 2;
 	res = write(wat->fd, at_buf, len);
 	if (res < 0) {
