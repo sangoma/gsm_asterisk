@@ -268,7 +268,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 #if ASTERISK_VERSION_NUM >= 10800
 	cid_num = wat->pvt->cid_num;
-	cid_name = wat->pvt->cid_num;
+	cid_name = wat->pvt->cid_name;
 	context = wat->pvt->context;
 #else
 	cid_num = wat->pvt->calls->get_cid_num(wat->pvt->chan_pvt);
@@ -276,11 +276,13 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	context = wat->pvt->calls->get_context(wat->pvt->chan_pvt);
 #endif /* ASTERISK_VERSION_NUM >= 10800 */
 
-	ast_verb(3, "Span %d: Call Incoming (%s)\n",
-									wat->span + 1,
-									(con_event->sub == WAT_CALL_SUB_REAL) ? "Real":
-									(con_event->sub == WAT_CALL_SUB_CALLWAIT) ? "Call Waiting":
-									(con_event->sub == WAT_CALL_SUB_THREEWAY) ? "3-way":"Invalid");
+	ast_verb(3, "Span %d: Incoming Call, Type = %s, CallingNum = '%s', CallingName = '%s'\n",
+			wat->span + 1,
+			(con_event->sub == WAT_CALL_SUB_REAL) ? "Real" :
+			(con_event->sub == WAT_CALL_SUB_CALLWAIT) ? "Call Waiting" :
+			(con_event->sub == WAT_CALL_SUB_THREEWAY) ? "3-way" : "Invalid",
+			con_event->calling_num.digits,
+			con_event->calling_name);
 
 	sig_wat_lock_private(wat->pvt);
 
@@ -305,13 +307,32 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	if (wat->pvt->calls->get_use_callerid(wat->pvt->chan_pvt)) {
 #endif
 		/* TODO: Set plan etc.. properly */
-		ast_copy_string(cid_num, con_event->calling_num.digits, AST_MAX_EXTENSION);
-		ast_copy_string(cid_name, con_event->calling_name, AST_MAX_EXTENSION);
-		if (ast_strlen_zero(cid_name)) {
-			ast_copy_string(cid_name, con_event->calling_num.digits, AST_MAX_EXTENSION);
+		char *calling_num = NULL;
+		char *calling_name = NULL;
+		char *num = ast_strdup(con_event->calling_num.digits);
+		char *name = ast_strdup(con_event->calling_name);
+
+		calling_num = ast_strip_quoted(num, "\"", "\"");
+		calling_name = ast_strip_quoted(name, "\"", "\"");
+		if (calling_num[0] == '+') {
+			calling_num++;
 		}
+		if (calling_name[0] == '+') {
+			calling_name++;
+		}
+
+		ast_copy_string(cid_num, calling_num, AST_MAX_EXTENSION);
 		ast_shrink_phone_number(cid_num);
+
+		ast_copy_string(cid_name, calling_name, AST_MAX_EXTENSION);
+		if (ast_strlen_zero(cid_name)) {
+			ast_copy_string(cid_name, cid_num, AST_MAX_EXTENSION);
+		}
+
 		sig_wat_set_caller_id(wat->pvt);
+
+		ast_free(num);
+		ast_free(name);
 	}
 
 	if (ast_exists_extension(NULL, context, "s", 1, cid_num)) {
