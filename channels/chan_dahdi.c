@@ -1452,6 +1452,7 @@ static struct dahdi_chan_conf dahdi_chan_conf_default(void)
 				.codec_mask = WAT_CODEC_ALL,
 				.band = WAT_BAND_AUTO,
 				.incoming_sms_encoding = WAT_SMS_CONTENT_ENCODING_NONE,
+				.debug_mask = 0, /* Should be set via wat_str2debug */
 			},
   		},
 #endif
@@ -18220,6 +18221,8 @@ static int process_dahdi(struct dahdi_chan_conf *confp, const char *cat, struct 
 				confp->wat.wat.wat_cfg.band = wat_encode_band(v->value);
 			} else if (!strcasecmp(v->name, "wat_incoming_sms_encoding")) {
 				confp->wat.wat.wat_cfg.incoming_sms_encoding = wat_encode_sms_content_encoding(v->value);
+			} else if (!strcasecmp(v->name, "wat_debug")) {
+				confp->wat.wat.wat_cfg.debug_mask = wat_str2debug(v->value);
 #endif
 #ifdef HAVE_PRI
 			} else if (!strcasecmp(v->name, "pridialplan")) {
