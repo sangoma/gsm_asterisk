@@ -1772,11 +1772,11 @@ char *handle_wat_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 		/* User specified span */
 		int span = span = atoi(a->argv[2]);
 		if ((span < 1) || (span > WAT_NUM_SPANS)) {
-			ast_cli(a->fd "Invalid span number: %s\n", a->argv[2]);
+			ast_cli(a->fd, "Invalid span number: %s\n", a->argv[2]);
 			return CLI_SUCCESS;
 		}
 		debug_mask = wat_str2debug(a->argv[3]);
-		wat_set_debug(span, debug_mask);
+		wat_span_set_debug(span, debug_mask);
 	} else {
 		debug_mask = wat_str2debug(a->argv[2]);
 		wat_set_debug(debug_mask);
