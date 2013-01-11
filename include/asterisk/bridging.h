@@ -156,6 +156,8 @@ struct ast_bridge_channel {
 	int fds[4];
 	/*! Bit to indicate whether the channel is suspended from the bridge or not */
 	unsigned int suspended:1;
+	/*! Bit to indicate if a imparted channel is allowed to get hungup after leaving the bridge by the bridging core. */
+	unsigned int allow_impart_hangup:1;
 	/*! Features structure for features that are specific to this channel */
 	struct ast_bridge_features *features;
 	/*! Technology optimization parameters used by bridging technologies capable of
@@ -163,6 +165,8 @@ struct ast_bridge_channel {
 	struct ast_bridge_tech_optimizations tech_args;
 	/*! Queue of DTMF digits used for DTMF streaming */
 	char dtmf_stream_q[8];
+	/*! Call ID associated with bridge channel */
+	struct ast_callid *callid;
 	/*! Linked list information */
 	AST_LIST_ENTRY(ast_bridge_channel) entry;
 };
@@ -241,9 +245,11 @@ struct ast_bridge {
 	size_t array_num;
 	/*! Number of channels the array can handle */
 	size_t array_size;
+	/*! Call ID associated with the bridge */
+	struct ast_callid *callid;
 	/*! Linked list of channels participating in the bridge */
 	AST_LIST_HEAD_NOLOCK(, ast_bridge_channel) channels;
-};
+	};
 
 /*! \brief Create a new bridge
  *
@@ -339,6 +345,7 @@ enum ast_bridge_channel_state ast_bridge_join(struct ast_bridge *bridge,
  * \param chan Channel to impart
  * \param swap Channel to swap out if swapping
  * \param features Bridge features structure
+ * \param allow_hangup  Indicates if the bridge thread should manage hanging up of the channel or not.
  *
  * \retval 0 on success
  * \retval -1 on failure
@@ -346,7 +353,7 @@ enum ast_bridge_channel_state ast_bridge_join(struct ast_bridge *bridge,
  * Example usage:
  *
  * \code
- * ast_bridge_impart(bridge, chan, NULL, NULL);
+ * ast_bridge_impart(bridge, chan, NULL, NULL, 0);
  * \endcode
  *
  * This adds a channel pointed to by the chan pointer to the bridge pointed to by
@@ -360,7 +367,7 @@ enum ast_bridge_channel_state ast_bridge_join(struct ast_bridge *bridge,
  * If channel specific features are enabled a pointer to the features structure
  * can be specified in the features parameter.
  */
-int ast_bridge_impart(struct ast_bridge *bridge, struct ast_channel *chan, struct ast_channel *swap, struct ast_bridge_features *features);
+int ast_bridge_impart(struct ast_bridge *bridge, struct ast_channel *chan, struct ast_channel *swap, struct ast_bridge_features *features, int allow_hangup);
 
 /*! \brief Depart a channel from a bridge
  *

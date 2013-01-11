@@ -20,12 +20,61 @@
 ===
 ===========================================================
 
-From 10 to 12:
+From 11.0 to 11.1:
+
+Queues:
+ - Queue strategy rrmemory now has a predictable order similar to strategy
+   rrordered. Members will be called in the order that they are added to the
+   queue.
+
+From 10 to 11:
+
+Voicemail:
+ - All voicemails now have a "msg_id" which uniquely identifies a message. For
+   users of filesystem and IMAP storage of voicemail, this should be transparent.
+   For users of ODBC, you will need to add a "msg_id" column to your voice mail
+   messages table. This should be a string capable of holding at least 32 characters.
+   All messages created in old Asterisk installations will have a msg_id added to
+   them when required. This operation should be transparent as well.
+
+Parking:
+ - The comebacktoorigin setting must now be set per parking lot. The setting in
+   the general section will not be applied automatically to each parking lot.
+ - The BLINDTRANSFER channel variable is deleted from a channel when it is
+   bridged to prevent subtle bugs in the parking feature.  The channel
+   variable is used by Asterisk internally for the Park application to work
+   properly.  If you were using it for your own purposes, copy it to your
+   own channel variable before the channel is bridged.
+
+res_ais:
+ - Users of res_ais in versions of Asterisk prior to Asterisk 11 must change
+   to use the res_corosync module, instead.  OpenAIS is deprecated, but
+   Corosync is still actively developed and maintained.  Corosync came out of
+   the OpenAIS project.
+
+Dialplan Functions:
+ - MAILBOX_EXISTS has been deprecated. Use VM_INFO with the 'exists' parameter
+   instead.
+ - Macro has been deprecated in favor of GoSub.  For redirecting and connected
+   line purposes use the following variables instead of their macro equivalents:
+   REDIRECTING_SEND_SUB, REDIRECTING_SEND_SUB_ARGS,
+   CONNECTED_LINE_SEND_SUB, CONNECTED_LINE_SEND_SUB_ARGS.
+ - The REDIRECTING function now supports the redirecting original party id
+   and reason.
+ - The HANGUPCAUSE and HANGUPCAUSE_KEYS functions have been introduced to
+   provide a replacement for the SIP_CAUSE hash. The HangupCauseClear
+   application has also been introduced to remove this data from the channel
+   when necessary.
+
 
 func_enum:
  - ENUM query functions now return a count of -1 on lookup error to
    differentiate between a failed query and a successful query with 0 results
    matching the specified type.
+
+CDR:
+ - cdr_adaptive_odbc now supports specifying a schema so that Asterisk can
+   connect to databases that use schemas.
 
 Configuration Files:
  - Files listed below have been updated to be more consistent with how Asterisk
@@ -36,14 +85,73 @@ Configuration Files:
    - dnsmgr.conf
    - dsp.conf
 
+ - The 'verbose' setting in logger.conf now takes an optional argument,
+   specifying the verbosity level for each logging destination.  The default,
+   if not otherwise specified, is a verbosity of 3.
+
 AMI:
   - DBDelTree now correctly returns an error when 0 rows are deleted just as
     the DBDel action does.
+  - The IAX2 PeerStatus event now sends a 'Port' header.  In Asterisk 10, this was
+    erroneously being sent as a 'Post' header.
+
+CCSS:
+ - Macro is deprecated. Use cc_callback_sub instead of cc_callback_macro
+   in channel configurations.
+
+app_meetme:
+  - The 'c' option (announce user count) will now work even if the 'q' (quiet)
+    option is enabled.
+
+app_followme:
+ - Answered outgoing calls no longer get cut off when the next step is started.
+   You now have until the last step times out to decide if you want to accept
+   the call or not before being disconnected.
+
+chan_gtalk:
+ - chan_gtalk has been deprecated in favor of the chan_motif channel driver. It is recommended
+   that users switch to using it as it is a core supported module.
+
+chan_jingle:
+ - chan_jingle has been deprecated in favor of the chan_motif channel driver. It is recommended
+   that users switch to using it as it is a core supported module.
 
 SIP
 ===
  - A new option "tonezone" for setting default tonezone for the channel driver
    or individual devices
+ - A new manager event, "SessionTimeout" has been added and is triggered when
+   a call is terminated due to RTP stream inactivity or SIP session timer
+   expiration.
+ - SIP_CAUSE is now deprecated.  It has been modified to use the same
+   mechanism as the HANGUPCAUSE function.  Behavior should not change, but
+   performance should be vastly improved.  The HANGUPCAUSE function should now
+   be used instead of SIP_CAUSE. Because of this, the storesipcause option in
+   sip.conf is also deprecated.
+ - The sip paramater for Originating Line Information (oli, isup-oli, and
+   ss7-oli) is now parsed out of the From header and copied into the channel's
+   ANI2 information field.  This is readable from the CALLERID(ani2) dialplan
+   function.
+ - ICE support has been added and is enabled by default. Some endpoints may have
+   problems with the ICE candidates within the SDP. If this is the case ICE support
+   can be disabled globally or on a per-endpoint basis using the icesupport
+   configuration option. Symptoms of this include one way media or no media flow.
+
+chan_unistim
+ - Due to massive update in chan_unistim phone keys functions and on-screen 
+   information changed.
+
+users.conf:
+ - A defined user with hasvoicemail=yes now finally uses a Gosub to stdexten
+   as documented in extensions.conf.sample since v1.6.0 instead of a Macro as
+   documented in v1.4.  Set the asterisk.conf stdexten=macro parameter to
+   invoke the stdexten the old way.
+
+res_jabber
+ - This module has been deprecated in favor of the res_xmpp module. The res_xmpp
+   module is backwards compatible with the res_jabber configuration file, dialplan
+   functions, and AMI actions. The old CLI commands can also be made available using
+   the res_clialiases template for Asterisk 11.
 
 From 1.8 to 10:
 
@@ -115,6 +223,20 @@ chan_sip:
  - Setting of HASH(SIP_CAUSE,<slave-channel-name>) on channels is now disabled
    by default. It can be enabled using the 'storesipcause' option. This feature
    has a significant performance penalty.
+ - In order to improve compliance with RFC 3261, SIP usernames are now properly
+   escaped when encoding reserved characters. Prior to this change, the use of
+   these characters in certain SIP settings affecting usernames could cause
+   injections of these characters in their raw form into SIP headers which could
+   in turn cause all sorts of nasty behaviors. All characters that are not
+   alphanumeric or are not contained in the the following lists specified by
+   RFC 3261 section 25.1 will be escaped as %XX when encoding a SIP username:
+    * mark: "-" / "_" / "." / "!" / "~" / "*" / "'" / "(" / ")"
+    * user-unreserved: "&" / "=" / "+" / "$" / "," / ";" / "?" / "/"
+
+UDPTL:
+ - The default UDPTL port range in udptl.conf.sample differed from the defaults
+   in the source. If you didn't have a config file, you got 4500 to 4599. Now the
+   default is 4000 to 4999.
 
 ===========================================================
 ===========================================================

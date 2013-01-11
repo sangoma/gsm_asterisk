@@ -56,7 +56,7 @@ int ooH323EpInitialize
       strcpy(gH323ep.traceFile, DEFAULT_TRACEFILE);      
    }
 
-   gH323ep.fptraceFile = fopen(gH323ep.traceFile, "w");
+   gH323ep.fptraceFile = fopen(gH323ep.traceFile, "a");
    if(gH323ep.fptraceFile == NULL)
    {
       printf("Error:Failed to open trace file %s for write.\n", 
@@ -346,6 +346,7 @@ int ooH323EpSetH323Callbacks(OOH323CALLBACKS h323Callbacks)
    gH323ep.h323Callbacks.openLogicalChannels = h323Callbacks.openLogicalChannels;
    gH323ep.h323Callbacks.onReceivedDTMF = h323Callbacks.onReceivedDTMF;
    gH323ep.h323Callbacks.onModeChanged = h323Callbacks.onModeChanged;
+   gH323ep.h323Callbacks.onMediaChanged = h323Callbacks.onMediaChanged;
    return OO_OK;
 }
 

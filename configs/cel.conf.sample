@@ -56,13 +56,17 @@ apps=dial,park
 ;  PARK_END         -- Unpark event
 ;  BRIDGE_START     -- The time a bridge is started
 ;  BRIDGE_END       -- The time a bridge is ended
-;  3WAY_START       -- When a 3-way conference starts (usually via attended xfer)
+;  BRIDGE_UPDATE    -- This is a replacement channel (Masquerade)
+;  3WAY_START       -- When a 3-way conference starts (usually via attended transfer)
 ;  3WAY_END         -- When one or all exit a 3-way conference
 ;  BLINDTRANSFER    -- When a blind transfer is initiated
 ;  ATTENDEDTRANSFER -- When an attended transfer is initiated
 ;  TRANSFER         -- Generic transfer initiated; not used yet...?
+;  PICKUP           -- This channel picked up the peer channel
+;  FORWARD          -- This channel is being forwarded somewhere else
 ;  HOOKFLASH        -- So far, when a hookflash event occurs on a DAHDI
 ;                      interface
+;  LINKEDID_END     -- The last channel with the given linkedid is retired
 ;  USER_DEFINED     -- Triggered from the dialplan, and has a name given by the
 ;                      user
 ;
@@ -100,6 +104,13 @@ events=APP_START,CHAN_START,CHAN_END,ANSWER,HANGUP,BRIDGE_START,BRIDGE_END
 ; Accepted values: yes and no
 ; Default value:   no
 ;enabled=yes
+
+; Use 'show_user_defined' to put "USER_DEFINED" in the EventName header,
+; instead of (by default) just putting the user defined event name there.
+; When enabled the UserDefType header is added for user defined events to
+; provide the user defined event name.
+;
+;show_user_defined=yes
 
 ;
 ; RADIUS CEL Backend 

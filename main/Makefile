@@ -1,6 +1,6 @@
 #
 # Asterisk -- A telephony toolkit for Linux.
-# 
+#
 # Makefile to build main Asterisk binary
 #
 # Copyright (C) 1999-2006, Digium, Inc.
@@ -18,7 +18,10 @@ all: asterisk
 include $(ASTTOPDIR)/Makefile.moddir_rules
 
 # Must include the extra ast_expr2.c, ast_expr2f.c, in case they need to be regenerated (because to force regeneration, we delete them)
-SRC=$(wildcard *.c) ast_expr2.c ast_expr2f.c
+SRC:=$(wildcard *.c) ast_expr2.c ast_expr2f.c
+ifeq ($(AST_ASTERISKSSL),yes)
+SRC:=$(filter-out libasteriskssl.c,$(SRC))
+endif
 OBJSFILTER=fskmodem_int.o fskmodem_float.o cygload.o buildinfo.o
 OBJS=$(filter-out $(OBJSFILTER),$(SRC:.c=.o))
 
@@ -26,14 +29,12 @@ OBJS=$(filter-out $(OBJSFILTER),$(SRC:.c=.o))
 # otherwise modules will not have them available if none of the static
 # objects use it.
 OBJS+=stdtime/localtime.o
-ifneq ($(firstword $(subst :, ,$(WEAKREF))),1)
-OBJS+=../res/res_adsi.o
-endif
 
-AST_LIBS += $(OPENSSL_LIB)
-AST_LIBS += $(BKTR_LIB)
-AST_LIBS += $(LIBXML2_LIB) 
-AST_LIBS += $(SQLITE3_LIB)
+ASTSSL_LIBS:=$(OPENSSL_LIB)
+AST_LIBS+=$(BKTR_LIB)
+AST_LIBS+=$(LIBXML2_LIB)
+AST_LIBS+=$(SQLITE3_LIB)
+AST_LIBS+=$(ASTSSL_LIBS)
 
 ifneq ($(findstring $(OSARCH), linux-gnu uclinux linux-uclibc linux-gnueabi kfreebsd-gnu linux-gnueabihf),)
   ifneq ($(findstring LOADABLE_MODULES,$(MENUSELECT_CFLAGS)),)
@@ -78,7 +79,7 @@ endif
 
 ifneq ($(findstring $(OSARCH), mingw32 cygwin ),)
   AST_LIBS+=-lminires -ldl
-  ASTLINK+= -shared -Wl,--out-implib,libasterisk.a
+  ASTLINK+=-shared -Wl,--out-implib,libasterisk.a
 endif
 ifeq ($(OSARCH),NetBSD)
   AST_LIBS+=-lpthread -lcrypto -lm -L/usr/pkg/lib $(EDITLINE_LIB)
@@ -89,7 +90,8 @@ ifeq ($(OSARCH),OpenBSD)
 endif
 
 ifeq ($(OSARCH),SunOS)
-  AST_LIBS+=-lpthread -ldl -lrt -lnsl -lsocket -lresolv -L/opt/ssl/lib -L/usr/local/ssl/lib
+  AST_LIBS+=-lpthread -ldl -lrt -lnsl -lsocket -lresolv
+  ASTSSL_LIBS+=-L/opt/ssl/lib -L/usr/local/ssl/lib
   ASTLINK=
 endif
 
@@ -140,9 +142,16 @@ testexpr2: ast_expr2f.c ast_expr2.c ast_expr2.h
 	$(CC) -g -c -Iinclude -DSTANDALONE ast_expr2f.c
 	$(CC) -g -c -Iinclude -DSTANDALONE ast_expr2.c
 	$(CC) -g -o testexpr2 ast_expr2f.o ast_expr2.o -lm
-	rm ast_expr2.o ast_expr2f.o 
+	rm ast_expr2.o ast_expr2f.o
+
+ifneq ($(LIBEDIT_INTERNAL),no)
+LIBEDIT_OBJ=editline/libedit.a
+LIBEDIT_INCLUDE=-I. -Ieditline
+endif
 
 db.o: _ASTCFLAGS+=$(SQLITE3_INCLUDE)
+asterisk.o: _ASTCFLAGS+=$(LIBEDIT_INCLUDE)
+cli.o: _ASTCFLAGS+=$(LIBEDIT_INCLUDE)
 
 ifneq ($(findstring ENABLE_UPLOADS,$(MENUSELECT_CFLAGS)),)
 http.o: _ASTCFLAGS+=$(GMIME_INCLUDE)
@@ -178,13 +187,65 @@ endif
 
 $(OBJS): _ASTCFLAGS+=-DAST_MODULE=\"core\"
 
-$(MAIN_TGT): $(OBJS) editline/libedit.a $(AST_EMBED_LDSCRIPTS)
+libasteriskssl.o: _ASTCFLAGS+=$(OPENSSL_INCLUDE)
+
+ifeq ($(AST_ASTERISKSSL),yes)
+# The ABI *version* of the asteriskssl library; don't change this unless there truly is a
+# non-backwards-compatible ABI change in the library
+ASTSSL_SO_VERSION=1
+
+ASTSSL_LDLIBS=-L. -lasteriskssl
+
+ifeq ($(findstring darwin,$(OSARCH)),) # not Darwin
+ASTSSL_LIB:=libasteriskssl.so
+
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): _ASTLDFLAGS+=-Wl,-soname=$(ASTSSL_LIB).$(ASTSSL_SO_VERSION)
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): _ASTCFLAGS+=-fPIC -DAST_MODULE=\"asteriskssl\"
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): LIBS+=$(ASTSSL_LIBS)
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): SO_SUPPRESS_SYMBOLS=-Wl,--version-script,libasteriskssl.exports,--warn-common
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): SOLINK=$(DYLINK)
+
+# These rules are duplicated from $(ASTTOPDIR)/Makefile.rules because the library name
+# being built does not match the "%.so" pattern; there are also additional steps
+# required to build a proper shared library (as opposed to the 'loadable module'
+# type that are built by the standard rules)
+$(ASTSSL_LIB).$(ASTSSL_SO_VERSION): libasteriskssl.o
+ifeq ($(GNU_LD),1)
+	$(CMD_PREFIX) $(ASTTOPDIR)/build_tools/make_linker_version_script libasteriskssl "$(LINKER_SYMBOL_PREFIX)" "$(ASTTOPDIR)"
+endif
+	$(ECHO_PREFIX) echo "   [LD] $^ -> $@"
+	$(CMD_PREFIX) $(CC) $(STATIC_BUILD) -o $@ $(CC_LDFLAGS_SO) $^ $(CC_LIBS)
+ifneq ($(LDCONFIG),)
+	$(LDCONFIG) $(LDCONFIG_FLAGS) .
+endif
+
+$(ASTSSL_LIB): $(ASTSSL_LIB).$(ASTSSL_SO_VERSION)
+	$(LN) -sf $< $@
+
+else # Darwin
+ASTSSL_LIB:=libasteriskssl.dylib
+
+$(ASTSSL_LIB): _ASTCFLAGS+=-fPIC -DAST_MODULE=\"asteriskssl\"
+$(ASTSSL_LIB): LIBS+=$(ASTSSL_LIBS)
+$(ASTSSL_LIB): SOLINK=$(DYLINK)
+
+# Special rules for building a shared library (not a dynamically loadable module)
+$(ASTSSL_LIB): libasteriskssl.o
+	$(ECHO_PREFIX) echo "   [LD] $^ -> $@"
+	$(CMD_PREFIX) $(CC) $(STATIC_BUILD) -o $@ $(CC_LDFLAGS_SO) $^ $(CC_LIBS)
+endif
+
+endif
+
+tcptls.o: _ASTCFLAGS+=$(OPENSSL_INCLUDE)
+
+$(MAIN_TGT): $(OBJS) $(ASTSSL_LIB) $(LIBEDIT_OBJ) $(AST_EMBED_LDSCRIPTS)
 	@$(CC) -c -o buildinfo.o $(_ASTCFLAGS) buildinfo.c $(ASTCFLAGS)
-	$(ECHO_PREFIX) echo "   [LD] $(OBJS) editline/libedit.a $(AST_EMBED_LDSCRIPTS) -> $@"
+	$(ECHO_PREFIX) echo "   [LD] $(OBJS) $(LIBEDIT_OBJ) $(AST_EMBED_LDSCRIPTS) -> $@"
 ifneq ($(findstring chan_h323,$(MENUSELECT_CHANNELS)),)
-	$(CMD_PREFIX) $(CC) $(STATIC_BUILD) -o $@ $(ASTLINK) $(AST_EMBED_LDFLAGS) $(_ASTLDFLAGS) $(ASTLDFLAGS) $(OBJS) editline/libedit.a $(AST_EMBED_LDSCRIPTS) buildinfo.o $(AST_LIBS) $(AST_EMBED_LIBS) $(GMIMELDFLAGS)
+	$(CMD_PREFIX) $(CC) $(STATIC_BUILD) -o $@ $(ASTLINK) $(AST_EMBED_LDFLAGS) $(_ASTLDFLAGS) $(ASTLDFLAGS) $(OBJS) $(ASTSSL_LDLIBS) $(LIBEDIT_OBJ) $(AST_EMBED_LDSCRIPTS) buildinfo.o $(AST_LIBS) $(AST_EMBED_LIBS) $(GMIMELDFLAGS) $(LIBEDIT_LIB)
 else
-	$(CMD_PREFIX) $(CXX) $(STATIC_BUILD) -o $@ $(ASTLINK) $(AST_EMBED_LDFLAGS) $(_ASTLDFLAGS) $(ASTLDFLAGS) $(H323LDFLAGS) $(OBJS) editline/libedit.a $(AST_EMBED_LDSCRIPTS) buildinfo.o $(AST_LIBS) $(AST_EMBED_LIBS) $(H323LDLIBS) $(GMIMELDFLAGS)
+	$(CMD_PREFIX) $(CXX) $(STATIC_BUILD) -o $@ $(ASTLINK) $(AST_EMBED_LDFLAGS) $(_ASTLDFLAGS) $(ASTLDFLAGS) $(H323LDFLAGS) $(OBJS) $(ASTSSL_LDLIBS) $(LIBEDIT_OBJ) $(AST_EMBED_LDSCRIPTS) buildinfo.o $(AST_LIBS) $(AST_EMBED_LIBS) $(H323LDLIBS) $(GMIMELDFLAGS) $(LIBEDIT_LIB)
 endif
 
 ifeq ($(GNU_LD),1)
@@ -193,9 +254,35 @@ asterisk.exports: asterisk.exports.in
 	$(CMD_PREFIX) $(ASTTOPDIR)/build_tools/make_linker_version_script asterisk $(LINKER_SYMBOL_PREFIX)
 endif
 
+bininstall:
+	$(INSTALL) -m 755 $(MAIN_TGT) "$(DESTDIR)$(ASTSBINDIR)/"
+ifeq ($(AST_ASTERISKSSL),yes)
+ifeq ($(findstring darwin,$(OSARCH)),) # not Darwin
+	$(INSTALL) -m 755 $(ASTSSL_LIB).$(ASTSSL_SO_VERSION) "$(DESTDIR)$(ASTLIBDIR)/"
+	$(LN) -sf "$(DESTDIR)$(ASTLIBDIR)/$(ASTSSL_LIB).$(ASTSSL_SO_VERSION)" "$(DESTDIR)$(ASTLIBDIR)/$(ASTSSL_LIB)"
+else # Darwin
+	$(INSTALL) -m 755 $(ASTSSL_LIB) "$(DESTDIR)$(ASTLIBDIR)/"
+endif
+ifneq ($(LDCONFIG),)
+	$(LDCONFIG) $(LDCONFIG_FLAGS) "$(DESTDIR)$(ASTLIBDIR)/"
+endif
+endif
+	$(LN) -sf asterisk "$(DESTDIR)$(ASTSBINDIR)/rasterisk"
+
+binuninstall:
+	rm -f "$(DESTDIR)$(ASTSBINDIR)/$(MAIN_TGT)"
+	rm -f "$(DESTDIR)$(ASTSBINDIR)/rasterisk"
+	rm -f "$(DESTDIR)$(ASTLIBDIR)/$(ASTSSL_LIB).$(ASTSSL_SO_VERSION)"
+ifneq ($(LDCONFIG),)
+	$(LDCONFIG) $(LDCONFIG_FLAGS) "$(DESTDIR)$(ASTLIBDIR)/"
+endif
+
 clean::
-	rm -f asterisk
-	rm -f asterisk.exports
+	rm -f asterisk libasteriskssl.o
+ifeq ($(AST_ASTERISKSSL),yes)
+	rm -f $(ASTSSL_LIB) $(ASTSSL_LIB).*
+endif
+	rm -f asterisk.exports libasteriskssl.exports
 	@if [ -f editline/Makefile ]; then $(MAKE) -C editline distclean ; fi
 	@$(MAKE) -C stdtime clean
 	rm -f libresample/src/*.o

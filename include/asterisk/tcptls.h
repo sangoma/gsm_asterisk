@@ -25,8 +25,10 @@
  * in or out the DO_SSL macro.
  *
  * TLS/SSL support is basically implemented by reading from a config file
- * (currently http.conf and sip.conf) the names of the certificate and cipher to use,
- * and then run ssl_setup() to create an appropriate SSL_CTX (ssl_ctx)
+ * (currently manager.conf, http.conf and sip.conf) the names of the certificate
+ * files and cipher to use, and then run ssl_setup() to create an appropriate 
+ * data structure named ssl_ctx.
+ *
  * If we support multiple domains, presumably we need to read multiple
  * certificates.
  *
@@ -42,6 +44,11 @@
  * and their setup should be moved to a more central place, e.g. asterisk.conf
  * and the source files that processes it. Similarly, ssl_setup() should
  * be run earlier in the startup process so modules have it available.
+ * 
+ * \ref AstTlsOverview
+ *
+ * \todo For SIP, the SubjectAltNames should be checked on verification
+ *       of the certificate. (Check RFC 5922)
  *
  */
 
@@ -93,7 +100,8 @@ struct ast_tls_config {
 	SSL_CTX *ssl_ctx;
 };
 
-/*!
+/*! \page AstTlsOverview TLS Implementation Overview
+ *
  * The following code implements a generic mechanism for starting
  * services on a TCP or TLS socket.
  * The service is configured in the struct session_args, and
@@ -128,6 +136,7 @@ struct ast_tcptls_session_args {
 	struct ast_tls_config *tls_cfg; /*!< points to the SSL configuration if any */
 	int accept_fd;
 	int poll_timeout;
+	/*! Server accept_fn thread ID used for external shutdown requests. */
 	pthread_t master;
 	void *(*accept_fn)(void *); /*!< the function in charge of doing the accept */
 	void (*periodic_fn)(void *);/*!< something we may want to run before after select on the accept socket */
@@ -135,18 +144,23 @@ struct ast_tcptls_session_args {
 	const char *name;
 };
 
-/*
+/*! \brief 
  * describes a server instance
  */
 struct ast_tcptls_session_instance {
-	FILE *f;    /* fopen/funopen result */
-	int fd;     /* the socket returned by accept() */
-	SSL *ssl;   /* ssl state */
+	FILE *f;    /*!< fopen/funopen result */
+	int fd;     /*!< the socket returned by accept() */
+	SSL *ssl;   /*!< ssl state */
 /*	iint (*ssl_setup)(SSL *); */
 	int client;
 	struct ast_sockaddr remote_address;
 	struct ast_tcptls_session_args *parent;
-	ast_mutex_t lock;
+	/* Sometimes, when an entity reads TCP data, multiple
+	 * logical messages might be read at the same time. In such
+	 * a circumstance, there needs to be a place to stash the
+	 * extra data.
+	 */
+	struct ast_str *overflow_buf;
 };
 
 #if defined(HAVE_FUNOPEN)
@@ -169,6 +183,13 @@ struct ast_tcptls_session_instance *ast_tcptls_client_create(struct ast_tcptls_s
 void *ast_tcptls_server_root(void *);
 
 /*!
+ * \brief Closes a tcptls session instance's file and/or file descriptor.
+ * The tcptls_session will be set to NULL and it's file descriptor will be set to -1
+ * by this function.
+ */
+void ast_tcptls_close_session_file(struct ast_tcptls_session_instance *tcptls_session);
+
+/*!
  * \brief This is a generic (re)start routine for a TCP server,
  * which does the socket/bind/listen and starts a thread for handling
  * accept().
@@ -181,7 +202,24 @@ void ast_tcptls_server_start(struct ast_tcptls_session_args *desc);
  * \version 1.6.1 changed desc parameter to be of ast_tcptls_session_args type
  */
 void ast_tcptls_server_stop(struct ast_tcptls_session_args *desc);
+
+/*!
+ * \brief Set up an SSL server
+ *
+ * \param cfg Configuration for the SSL server
+ * \retval 1 Success
+ * \retval 0 Failure
+ */
 int ast_ssl_setup(struct ast_tls_config *cfg);
+
+/*!
+ * \brief free resources used by an SSL server
+ *
+ * \note This only needs to be called if ast_ssl_setup() was
+ * directly called first.
+ * \param cfg Configuration for the SSL server
+ */
+void ast_ssl_teardown(struct ast_tls_config *cfg);
 
 /*!
  * \brief Used to parse conf files containing tls/ssl options.

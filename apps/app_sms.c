@@ -40,7 +40,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <dirent.h>
 #include <ctype.h>
@@ -1269,8 +1269,8 @@ static int sms_handleincoming_proto2(sms_t *h)
 		switch (msg) {
 		case 0x13:                          /* Body */
 			ast_verb(3, "SMS-P2 Body#%02X=[%.*s]\n", msg, msgsz, &h->imsg[f]);
-			if (msgsz >= sizeof(h->imsg)) {
-				msgsz = sizeof(h->imsg) - 1;
+			if (msgsz >= sizeof(h->ud)) {
+				msgsz = sizeof(h->ud) - 1;
 			}
 			for (i = 0; i < msgsz; i++) {
 				h->ud[i] = h->imsg[f + i];
@@ -1373,7 +1373,7 @@ static void sms_messagerx2(sms_t * h)
 			h->hangup = 1;                  /* hangup */
 		} else {
 			/* XXX depending on what we are.. */
-			ast_log(LOG_NOTICE, "SMS_SUBMIT or SMS_DELIVERY");
+			ast_log(LOG_NOTICE, "SMS_SUBMIT or SMS_DELIVERY\n");
 			sms_nextoutgoing (h);
 		}
 		break;
@@ -1604,7 +1604,7 @@ static int sms_generate(struct ast_channel *chan, void *data, int len, int sampl
 		samples = MAXSAMPLES;
 	}
 	len = samples * sizeof(*buf) + AST_FRIENDLY_OFFSET;
-	buf = alloca(len);
+	buf = ast_alloca(len);
 
 	f.frametype = AST_FRAME_VOICE;
 	ast_format_set(&f.subclass.format, __OUT_FMT, 0);
@@ -1658,7 +1658,7 @@ static int sms_generate(struct ast_channel *chan, void *data, int len, int sampl
 		}
 	}
 	if (ast_write(chan, &f) < 0) {
-		ast_log(LOG_WARNING, "Failed to write frame to '%s': %s\n", chan->name, strerror(errno));
+		ast_log(LOG_WARNING, "Failed to write frame to '%s': %s\n", ast_channel_name(chan), strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -1801,7 +1801,7 @@ static void sms_process(sms_t * h, int samples, signed short *data)
 				h->iphasep -= 80;
 				if (h->ibitn++ == 9) {      /* end of byte */
 					if (!bit) {             /* bad stop bit */
-						ast_log(LOG_NOTICE, "bad stop bit");
+						ast_log(LOG_NOTICE, "bad stop bit\n");
 						h->ierr = 0xFF;     /* unknown error */
 					} else {
 						if (h->ibytep < sizeof(h->imsg)) {
@@ -1809,14 +1809,14 @@ static void sms_process(sms_t * h, int samples, signed short *data)
 							h->ibytec += h->ibytev;
 							h->ibytep++;
 						} else if (h->ibytep == sizeof(h->imsg)) {
-							ast_log(LOG_NOTICE, "msg too large");
+							ast_log(LOG_NOTICE, "msg too large\n");
 							h->ierr = 2;    /* bad message length */
 						}
 						if (h->ibytep > 1 && h->ibytep == 3 + h->imsg[1] && !h->ierr) {
 							if (!h->ibytec) {
 								sms_messagerx(h);
 							} else {
-								ast_log(LOG_NOTICE, "bad checksum");
+								ast_log(LOG_NOTICE, "bad checksum\n");
 								h->ierr = 1; /* bad checksum */
 							}
 						}
@@ -1895,7 +1895,7 @@ static int sms_exec(struct ast_channel *chan, const char *data)
 	h.dcs = 0xF1;                           /* default */
 
 	ast_copy_string(h.cli,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, ""),
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
 		sizeof(h.cli));
 
 	if (ast_strlen_zero(sms_args.queue)) {
@@ -1988,7 +1988,7 @@ static int sms_exec(struct ast_channel *chan, const char *data)
 		goto done;
 	}
 	
-	if (chan->_state != AST_STATE_UP) {		/* make sure channel is answered before any TX */
+	if (ast_channel_state(chan) != AST_STATE_UP) {		/* make sure channel is answered before any TX */
 		ast_answer(chan);
 	}
 
@@ -2015,7 +2015,7 @@ static int sms_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if ( (res = ast_activate_generator(chan, &smsgen, &h)) < 0) {
-		ast_log(LOG_ERROR, "Failed to activate generator on '%s'\n", chan->name);
+		ast_log(LOG_ERROR, "Failed to activate generator on '%s'\n", ast_channel_name(chan));
 		goto done;
 	}
 

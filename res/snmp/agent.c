@@ -14,9 +14,13 @@
  * \author Thorsten Lockert <tholo@voop.as>
  */
 
+/*** MODULEINFO
+	<support_level>extended</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 276393 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 /*
  * There is some collision collision between netsmp and asterisk names,
@@ -268,230 +272,208 @@ static u_char *ast_var_channels_table(struct variable *vp, oid *name, size_t *le
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANNAME:
-		if (!ast_strlen_zero(chan->name)) {
-			strncpy(string_ret, chan->name, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (!ast_strlen_zero(ast_channel_name(chan))) {
+			ast_copy_string(string_ret, ast_channel_name(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANLANGUAGE:
-		if (!ast_strlen_zero(chan->language)) {
-			strncpy(string_ret, chan->language, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (!ast_strlen_zero(ast_channel_language(chan))) {
+			ast_copy_string(string_ret, ast_channel_language(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANTYPE:
-		strncpy(string_ret, chan->tech->type, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_tech(chan)->type, sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANMUSICCLASS:
-		if (!ast_strlen_zero(chan->musicclass)) {
-			strncpy(string_ret, chan->musicclass, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (!ast_strlen_zero(ast_channel_musicclass(chan))) {
+			ast_copy_string(string_ret, ast_channel_musicclass(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANBRIDGE:
 		if ((bridge = ast_bridged_channel(chan)) != NULL) {
-			strncpy(string_ret, bridge->name, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+			ast_copy_string(string_ret, ast_channel_name(bridge), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANMASQ:
-		if (chan->masq && !ast_strlen_zero(chan->masq->name)) {
-			strncpy(string_ret, chan->masq->name, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_masq(chan) && !ast_strlen_zero(ast_channel_name(ast_channel_masq(chan)))) {
+			ast_copy_string(string_ret, ast_channel_name(ast_channel_masq(chan)), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANMASQR:
-		if (chan->masqr && !ast_strlen_zero(chan->masqr->name)) {
-			strncpy(string_ret, chan->masqr->name, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_masqr(chan) && !ast_strlen_zero(ast_channel_name(ast_channel_masqr(chan)))) {
+			ast_copy_string(string_ret, ast_channel_name(ast_channel_masqr(chan)), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANWHENHANGUP:
-		if (!ast_tvzero(chan->whentohangup)) {
+		if (!ast_tvzero(*ast_channel_whentohangup(chan))) {
 			gettimeofday(&tval, NULL);
-			long_ret = difftime(chan->whentohangup.tv_sec, tval.tv_sec) * 100 - tval.tv_usec / 10000;
+			long_ret = difftime(ast_channel_whentohangup(chan)->tv_sec, tval.tv_sec) * 100 - tval.tv_usec / 10000;
 			ret= (u_char *)&long_ret;
 		}
 		break;
 	case ASTCHANAPP:
-		if (chan->appl) {
-			strncpy(string_ret, chan->appl, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_appl(chan)) {
+			ast_copy_string(string_ret, ast_channel_appl(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANDATA:
-		if (chan->data) {
-			strncpy(string_ret, chan->data, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_data(chan)) {
+			ast_copy_string(string_ret, ast_channel_data(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCONTEXT:
-		strncpy(string_ret, chan->context, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_context(chan), sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANMACROCONTEXT:
-		strncpy(string_ret, chan->macrocontext, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_macrocontext(chan), sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANMACROEXTEN:
-		strncpy(string_ret, chan->macroexten, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_macroexten(chan), sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANMACROPRI:
-		long_ret = chan->macropriority;
+		long_ret = ast_channel_macropriority(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANEXTEN:
-		strncpy(string_ret, chan->exten, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_exten(chan), sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANPRI:
-		long_ret = chan->priority;
+		long_ret = ast_channel_priority(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANACCOUNTCODE:
-		if (!ast_strlen_zero(chan->accountcode)) {
-			strncpy(string_ret, chan->accountcode, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (!ast_strlen_zero(ast_channel_accountcode(chan))) {
+			ast_copy_string(string_ret, ast_channel_accountcode(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANFORWARDTO:
-		if (!ast_strlen_zero(chan->call_forward)) {
-			strncpy(string_ret, chan->call_forward, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (!ast_strlen_zero(ast_channel_call_forward(chan))) {
+			ast_copy_string(string_ret, ast_channel_call_forward(chan), sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANUNIQUEID:
-		strncpy(string_ret, chan->uniqueid, sizeof(string_ret));
-		string_ret[sizeof(string_ret) - 1] = '\0';
+		ast_copy_string(string_ret, ast_channel_uniqueid(chan), sizeof(string_ret));
 		*var_len = strlen(string_ret);
 		ret = (u_char *)string_ret;
 		break;
 	case ASTCHANCALLGROUP:
-		long_ret = chan->callgroup;
+		long_ret = ast_channel_callgroup(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANPICKUPGROUP:
-		long_ret = chan->pickupgroup;
+		long_ret = ast_channel_pickupgroup(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANSTATE:
-		long_ret = chan->_state & 0xffff;
+		long_ret = ast_channel_state(chan) & 0xffff;
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANMUTED:
-		long_ret = chan->_state & AST_STATE_MUTE ? 1 : 2;
+		long_ret = ast_channel_state(chan) & AST_STATE_MUTE ? 1 : 2;
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANRINGS:
-		long_ret = chan->rings;
+		long_ret = ast_channel_rings(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANCIDDNID:
-		if (chan->dialed.number.str) {
-			strncpy(string_ret, chan->dialed.number.str, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_dialed(chan)->number.str) {
+			ast_copy_string(string_ret, ast_channel_dialed(chan)->number.str, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCIDNUM:
-		if (chan->caller.id.number.valid && chan->caller.id.number.str) {
-			strncpy(string_ret, chan->caller.id.number.str, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_caller(chan)->id.number.valid && ast_channel_caller(chan)->id.number.str) {
+			ast_copy_string(string_ret, ast_channel_caller(chan)->id.number.str, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCIDNAME:
-		if (chan->caller.id.name.valid && chan->caller.id.name.str) {
-			strncpy(string_ret, chan->caller.id.name.str, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_caller(chan)->id.name.valid && ast_channel_caller(chan)->id.name.str) {
+			ast_copy_string(string_ret, ast_channel_caller(chan)->id.name.str, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCIDANI:
-		if (chan->caller.ani.number.valid && chan->caller.ani.number.str) {
-			strncpy(string_ret, chan->caller.ani.number.str, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_caller(chan)->ani.number.valid && ast_channel_caller(chan)->ani.number.str) {
+			ast_copy_string(string_ret, ast_channel_caller(chan)->ani.number.str, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCIDRDNIS:
-		if (chan->redirecting.from.number.valid && chan->redirecting.from.number.str) {
-			strncpy(string_ret, chan->redirecting.from.number.str, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_redirecting(chan)->from.number.valid && ast_channel_redirecting(chan)->from.number.str) {
+			ast_copy_string(string_ret, ast_channel_redirecting(chan)->from.number.str, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANCIDPRES:
-		long_ret = ast_party_id_presentation(&chan->caller.id);
+		long_ret = ast_party_id_presentation(&ast_channel_caller(chan)->id);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANCIDANI2:
-		long_ret = chan->caller.ani2;
+		long_ret = ast_channel_caller(chan)->ani2;
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANCIDTON:
-		long_ret = chan->caller.id.number.plan;
+		long_ret = ast_channel_caller(chan)->id.number.plan;
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANCIDTNS:
-		long_ret = chan->dialed.transit_network_select;
+		long_ret = ast_channel_dialed(chan)->transit_network_select;
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANAMAFLAGS:
-		long_ret = chan->amaflags;
+		long_ret = ast_channel_amaflags(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANADSI:
-		long_ret = chan->adsicpe;
+		long_ret = ast_channel_adsicpe(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANTONEZONE:
-		if (chan->zone) {
-			strncpy(string_ret, chan->zone->country, sizeof(string_ret));
-			string_ret[sizeof(string_ret) - 1] = '\0';
+		if (ast_channel_zone(chan)) {
+			ast_copy_string(string_ret, ast_channel_zone(chan)->country, sizeof(string_ret));
 			*var_len = strlen(string_ret);
 			ret = (u_char *)string_ret;
 		}
 		break;
 	case ASTCHANHANGUPCAUSE:
-		long_ret = chan->hangupcause;
+		long_ret = ast_channel_hangupcause(chan);
 		ret = (u_char *)&long_ret;
 		break;
 	case ASTCHANVARIABLES:
@@ -503,15 +485,15 @@ static u_char *ast_var_channels_table(struct variable *vp, oid *name, size_t *le
 	case ASTCHANFLAGS:
 		bits_ret[0] = 0;
 		for (bit = 0; bit < 8; bit++)
-			bits_ret[0] |= ((chan->flags & (1 << bit)) >> bit) << (7 - bit);
+			bits_ret[0] |= ((ast_channel_flags(chan)->flags & (1 << bit)) >> bit) << (7 - bit);
 		bits_ret[1] = 0;
 		for (bit = 0; bit < 8; bit++)
-			bits_ret[1] |= (((chan->flags >> 8) & (1 << bit)) >> bit) << (7 - bit);
+			bits_ret[1] |= (((ast_channel_flags(chan)->flags >> 8) & (1 << bit)) >> bit) << (7 - bit);
 		*var_len = 2;
 		ret = bits_ret;
 		break;
 	case ASTCHANTRANSFERCAP:
-		long_ret = chan->transfercapability;
+		long_ret = ast_channel_transfercapability(chan);
 		ret = (u_char *)&long_ret;
 	default:
 		break;
@@ -593,7 +575,7 @@ static u_char *ast_var_channel_types_table(struct variable *vp, oid *name, size_
 		}
 
 		while ((chan = ast_channel_iterator_next(iter))) {
-			if (chan->tech == tech) {
+			if (ast_channel_tech(chan) == tech) {
 				long_ret++;
 			}
 			chan = ast_channel_unref(chan);
@@ -703,6 +685,7 @@ static u_char *ast_var_indications(struct variable *vp, oid *name, size_t *lengt
 			tz = ast_tone_zone_unref(tz);
 			long_ret++;
 		}
+		ao2_iterator_destroy(&i);
 
 		return (u_char *) &long_ret;
 	}
@@ -743,6 +726,7 @@ static u_char *ast_var_indications_table(struct variable *vp, oid *name, size_t 
 		tz = ast_tone_zone_unref(tz);
 		i--;
 	}
+	ao2_iterator_destroy(&iter);
 
 	if (tz == NULL) {
 		return NULL;
@@ -750,24 +734,27 @@ static u_char *ast_var_indications_table(struct variable *vp, oid *name, size_t 
 
 	switch (vp->magic) {
 	case ASTINDINDEX:
+		ast_tone_zone_unref(tz);
 		long_ret = name[*length - 1];
 		return (u_char *)&long_ret;
 	case ASTINDCOUNTRY:
 		ast_copy_string(ret_buf, tz->country, sizeof(ret_buf));
-		tz = ast_tone_zone_unref(tz);
+		ast_tone_zone_unref(tz);
 		*var_len = strlen(ret_buf);
 		return (u_char *) ret_buf;
 	case ASTINDALIAS:
 		/* No longer exists */
+		ast_tone_zone_unref(tz);
 		return NULL;
 	case ASTINDDESCRIPTION:
 		ast_tone_zone_lock(tz);
 		ast_copy_string(ret_buf, tz->description, sizeof(ret_buf));
 		ast_tone_zone_unlock(tz);
-		tz = ast_tone_zone_unref(tz);
+		ast_tone_zone_unref(tz);
 		*var_len = strlen(ret_buf);
 		return (u_char *) ret_buf;
 	default:
+		ast_tone_zone_unref(tz);
 		break;
 	}
 	return NULL;

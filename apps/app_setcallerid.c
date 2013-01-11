@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357542 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -112,8 +112,8 @@ static int setcallerid_pres_exec(struct ast_channel *chan, const char *data)
 	}
 	
 	/* Set the combined caller id presentation. */
-	chan->caller.id.name.presentation = pres;
-	chan->caller.id.number.presentation = pres;
+	ast_channel_caller(chan)->id.name.presentation = pres;
+	ast_channel_caller(chan)->id.number.presentation = pres;
 	return 0;
 }
 

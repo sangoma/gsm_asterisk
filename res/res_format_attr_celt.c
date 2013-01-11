@@ -23,9 +23,13 @@
  * \author David Vossel <dvossel@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 327116 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370055 $")
 
 #include "asterisk/module.h"
 #include "asterisk/format.h"
@@ -40,6 +44,29 @@ struct celt_attr {
 	unsigned int maxbitrate;
 	unsigned int framesize;
 };
+
+static int celt_sdp_parse(struct ast_format_attr *format_attr, const char *attributes)
+{
+	struct celt_attr *attr = (struct celt_attr *) format_attr;
+	unsigned int val;
+
+	if (sscanf(attributes, "framesize=%30u", &val) == 1) {
+		attr->framesize = val;
+	}
+
+	return 0;
+}
+
+static void celt_sdp_generate(const struct ast_format_attr *format_attr, unsigned int payload, struct ast_str **str)
+{
+	struct celt_attr *attr = (struct celt_attr *) format_attr;
+
+	if (!attr->framesize) {
+		return;
+	}
+
+	ast_str_append(str, 0, "a=fmtp:%d framesize=%d\r\n", payload, attr->framesize);
+}
 
 static enum ast_format_cmp_res celt_cmp(const struct ast_format_attr *fattr1, const struct ast_format_attr *fattr2)
 {
@@ -68,8 +95,8 @@ static int celt_get_val(const struct ast_format_attr *fattr, int key, void *resu
 		*val = attr->framesize;
 		break;
 	default:
-		return -1;
 		ast_log(LOG_WARNING, "unknown attribute type %d\n", key);
+		return -1;
 	}
 	return 0;
 }
@@ -100,8 +127,8 @@ static int celt_isset(const struct ast_format_attr *fattr, va_list ap)
 			}
 			break;
 		default:
-			return -1;
 			ast_log(LOG_WARNING, "unknown attribute type %d\n", key);
+			return -1;
 		}
 	}
 	return 0;
@@ -157,6 +184,8 @@ static struct ast_format_attr_interface celt_interface = {
 	.format_attr_set = celt_set,
 	.format_attr_isset = celt_isset,
 	.format_attr_get_val = celt_get_val,
+	.format_attr_sdp_parse = celt_sdp_parse,
+	.format_attr_sdp_generate = celt_sdp_generate,
 };
 
 static int load_module(void)

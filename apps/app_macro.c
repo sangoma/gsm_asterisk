@@ -28,11 +28,11 @@
 /*** MODULEINFO
 	<support_level>core</support_level>
 	<replacement>app_stack (GoSub)</replacement>
- */
+ ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338086 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -164,7 +164,7 @@ static char *exit_app = "MacroExit";
 
 static void macro_fixup(void *data, struct ast_channel *old_chan, struct ast_channel *new_chan);
 
-static struct ast_datastore_info macro_ds_info = {
+static const struct ast_datastore_info macro_ds_info = {
 	.type = "MACRO",
 	.chan_fixup = macro_fixup,
 };
@@ -280,7 +280,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	}
 	
 	/* Used for detecting whether to return when a Macro is called from another Macro after hangup */
-	if (strcmp(chan->exten, "h") == 0)
+	if (strcmp(ast_channel_exten(chan), "h") == 0)
 		pbx_builtin_setvar_helper(chan, "MACRO_IN_HANGUP", "1");
 	
 	if ((inhangupc = pbx_builtin_getvar_helper(chan, "MACRO_IN_HANGUP"))) {
@@ -304,9 +304,9 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 
 	snprintf(fullmacro, sizeof(fullmacro), "macro-%s", macro);
 	if (!ast_exists_extension(chan, fullmacro, "s", 1,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 		if (!ast_context_find(fullmacro)) 
-			ast_log(LOG_WARNING, "No such context '%s' for macro '%s'. Was called by %s@%s\n", fullmacro, macro, chan->exten, chan->context);
+			ast_log(LOG_WARNING, "No such context '%s' for macro '%s'. Was called by %s@%s\n", fullmacro, macro, ast_channel_exten(chan), ast_channel_context(chan));
 		else
 			ast_log(LOG_WARNING, "Context '%s' for macro '%s' lacks 's' extension, priority 1\n", fullmacro, macro);
 		return 0;
@@ -329,13 +329,13 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	}
 
 	/* Save old info */
-	oldpriority = chan->priority;
-	ast_copy_string(oldexten, chan->exten, sizeof(oldexten));
-	ast_copy_string(oldcontext, chan->context, sizeof(oldcontext));
-	if (ast_strlen_zero(chan->macrocontext)) {
-		ast_copy_string(chan->macrocontext, chan->context, sizeof(chan->macrocontext));
-		ast_copy_string(chan->macroexten, chan->exten, sizeof(chan->macroexten));
-		chan->macropriority = chan->priority;
+	oldpriority = ast_channel_priority(chan);
+	ast_copy_string(oldexten, ast_channel_exten(chan), sizeof(oldexten));
+	ast_copy_string(oldcontext, ast_channel_context(chan), sizeof(oldcontext));
+	if (ast_strlen_zero(ast_channel_macrocontext(chan))) {
+		ast_channel_macrocontext_set(chan, ast_channel_context(chan));
+		ast_channel_macroexten_set(chan, ast_channel_exten(chan));
+		ast_channel_macropriority_set(chan, ast_channel_priority(chan));
 		setmacrocontext=1;
 	}
 	argc = 1;
@@ -356,10 +356,9 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
 
 	/* Setup environment for new run */
-	chan->exten[0] = 's';
-	chan->exten[1] = '\0';
-	ast_copy_string(chan->context, fullmacro, sizeof(chan->context));
-	chan->priority = 1;
+	ast_channel_exten_set(chan, "s");
+	ast_channel_context_set(chan, fullmacro);
+	ast_channel_priority_set(chan, 1);
 
 	ast_channel_lock(chan);
 	while((cur = strsep(&rest, ",")) && (argc < MAX_ARGS)) {
@@ -374,10 +373,10 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		argc++;
 	}
 	ast_channel_unlock(chan);
-	autoloopflag = ast_test_flag(chan, AST_FLAG_IN_AUTOLOOP);
-	ast_set_flag(chan, AST_FLAG_IN_AUTOLOOP);
-	while (ast_exists_extension(chan, chan->context, chan->exten, chan->priority,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+	autoloopflag = ast_test_flag(ast_channel_flags(chan), AST_FLAG_IN_AUTOLOOP);
+	ast_set_flag(ast_channel_flags(chan), AST_FLAG_IN_AUTOLOOP);
+	while (ast_exists_extension(chan, ast_channel_context(chan), ast_channel_exten(chan), ast_channel_priority(chan),
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 		struct ast_context *c;
 		struct ast_exten *e;
 		int foundx;
@@ -389,12 +388,12 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 			ast_log(LOG_WARNING, "Failed to lock contexts list\n");
 		} else {
 			for (c = ast_walk_contexts(NULL), e = NULL; c; c = ast_walk_contexts(c)) {
-				if (!strcmp(ast_get_context_name(c), chan->context)) {
+				if (!strcmp(ast_get_context_name(c), ast_channel_context(chan))) {
 					if (ast_rdlock_context(c)) {
 						ast_log(LOG_WARNING, "Unable to lock context?\n");
 					} else {
-						e = find_matching_priority(c, chan->exten, chan->priority,
-							S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+						e = find_matching_priority(c, ast_channel_exten(chan), ast_channel_priority(chan),
+							S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL));
 						if (e) { /* This will only be undefined for pbx_realtime, which is majorly broken. */
 							ast_copy_string(runningapp, ast_get_extension_app(e), sizeof(runningapp));
 							ast_copy_string(runningdata, ast_get_extension_app_data(e), sizeof(runningdata));
@@ -410,8 +409,8 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		/* Reset the macro depth, if it was changed in the last iteration */
 		pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
 
-		res = ast_spawn_extension(chan, chan->context, chan->exten, chan->priority,
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL),
+		res = ast_spawn_extension(chan, ast_channel_context(chan), ast_channel_exten(chan), ast_channel_priority(chan),
+			S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL),
 			&foundx, 1);
 		if (res) {
 			/* Something bad happened, or a hangup has been requested. */
@@ -426,8 +425,8 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 				res = 0;
 				goto out;
 			default:
-				ast_debug(2, "Spawn extension (%s,%s,%d) exited non-zero on '%s' in macro '%s'\n", chan->context, chan->exten, chan->priority, chan->name, macro);
-				ast_verb(2, "Spawn extension (%s, %s, %d) exited non-zero on '%s' in macro '%s'\n", chan->context, chan->exten, chan->priority, chan->name, macro);
+				ast_debug(2, "Spawn extension (%s,%s,%d) exited non-zero on '%s' in macro '%s'\n", ast_channel_context(chan), ast_channel_exten(chan), ast_channel_priority(chan), ast_channel_name(chan), macro);
+				ast_verb(2, "Spawn extension (%s, %s, %d) exited non-zero on '%s' in macro '%s'\n", ast_channel_context(chan), ast_channel_exten(chan), ast_channel_priority(chan), ast_channel_name(chan), macro);
 				goto out;
 			}
 		}
@@ -493,17 +492,17 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 			}
 		}
 
-		if (gosub_level == 0 && strcasecmp(chan->context, fullmacro)) {
-			ast_verb(2, "Channel '%s' jumping out of macro '%s'\n", chan->name, macro);
+		if (gosub_level == 0 && strcasecmp(ast_channel_context(chan), fullmacro)) {
+			ast_verb(2, "Channel '%s' jumping out of macro '%s'\n", ast_channel_name(chan), macro);
 			break;
 		}
 
 		/* don't stop executing extensions when we're in "h" */
 		if (ast_check_hangup(chan) && !inhangup) {
-			ast_debug(1, "Extension %s, macroexten %s, priority %d returned normally even though call was hung up\n", chan->exten, chan->macroexten, chan->priority);
+			ast_debug(1, "Extension %s, macroexten %s, priority %d returned normally even though call was hung up\n", ast_channel_exten(chan), ast_channel_macroexten(chan), ast_channel_priority(chan));
 			goto out;
 		}
-		chan->priority++;
+		ast_channel_priority_set(chan, ast_channel_priority(chan) + 1);
   	}
 	out:
 
@@ -513,7 +512,7 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 	/* Reset the depth back to what it was when the routine was entered (like if we called Macro recursively) */
 	snprintf(depthc, sizeof(depthc), "%d", depth);
 	pbx_builtin_setvar_helper(chan, "MACRO_DEPTH", depthc);
-	ast_set2_flag(chan, autoloopflag, AST_FLAG_IN_AUTOLOOP);
+	ast_set2_flag(ast_channel_flags(chan), autoloopflag, AST_FLAG_IN_AUTOLOOP);
 
   	for (x = 1; x < argc; x++) {
   		/* Restore old arguments and delete ours */
@@ -538,26 +537,26 @@ static int _macro_exec(struct ast_channel *chan, const char *data, int exclusive
 		ast_free(save_macro_priority);
 
 	if (setmacrocontext) {
-		chan->macrocontext[0] = '\0';
-		chan->macroexten[0] = '\0';
-		chan->macropriority = 0;
+		ast_channel_macrocontext_set(chan, "");
+		ast_channel_macroexten_set(chan, "");
+		ast_channel_macropriority_set(chan, 0);
 	}
 
-	if (!strcasecmp(chan->context, fullmacro)) {
+	if (!strcasecmp(ast_channel_context(chan), fullmacro)) {
 		const char *offsets;
 
   		/* If we're leaving the macro normally, restore original information */
-		chan->priority = oldpriority;
-		ast_copy_string(chan->context, oldcontext, sizeof(chan->context));
-		ast_copy_string(chan->exten, oldexten, sizeof(chan->exten));
+		ast_channel_priority_set(chan, oldpriority);
+		ast_channel_context_set(chan, oldcontext);
+		ast_channel_exten_set(chan, oldexten);
 		if ((offsets = pbx_builtin_getvar_helper(chan, "MACRO_OFFSET"))) {
 			/* Handle macro offset if it's set by checking the availability of step n + offset + 1, otherwise continue
 			normally if there is any problem */
 			if (sscanf(offsets, "%30d", &offset) == 1) {
-				if (ast_exists_extension(chan, chan->context, chan->exten,
-					chan->priority + offset + 1,
-					S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
-					chan->priority += offset;
+				if (ast_exists_extension(chan, ast_channel_context(chan), ast_channel_exten(chan),
+					ast_channel_priority(chan) + offset + 1,
+					S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
+					ast_channel_priority_set(chan, ast_channel_priority(chan) + offset);
 				}
 			}
 		}
@@ -596,8 +595,7 @@ static int macroif_exec(struct ast_channel *chan, const char *data)
 	char *expr = NULL, *label_a = NULL, *label_b = NULL;
 	int res = 0;
 
-	if (!(expr = ast_strdupa(data)))
-		return -1;
+	expr = ast_strdupa(data);
 
 	if ((label_a = strchr(expr, '?'))) {
 		*label_a = '\0';

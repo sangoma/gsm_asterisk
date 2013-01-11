@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371592 $")
 
 #include "asterisk/module.h"
 #include "asterisk/file.h"
@@ -119,7 +119,7 @@ struct acf_odbc_query {
 
 static void odbc_datastore_free(void *data);
 
-static struct ast_datastore_info odbc_info = {
+static const struct ast_datastore_info odbc_info = {
 	.type = "FUNC_ODBC",
 	.destroy = odbc_datastore_free,
 };
@@ -151,6 +151,11 @@ static void odbc_datastore_free(void *data)
 {
 	struct odbc_datastore *result = data;
 	struct odbc_datastore_row *row;
+
+	if (!result) {
+		return;
+	}
+
 	AST_LIST_LOCK(result);
 	while ((row = AST_LIST_REMOVE_HEAD(result, list))) {
 		ast_free(row);
@@ -539,6 +544,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 			pbx_builtin_setvar_helper(chan, "ODBCROWS", rowcount);
 			ast_autoservice_stop(chan);
 		}
+		odbc_datastore_free(resultset);
 		return -1;
 	}
 
@@ -553,6 +559,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 			pbx_builtin_setvar_helper(chan, "ODBCROWS", rowcount);
 			ast_autoservice_stop(chan);
 		}
+		odbc_datastore_free(resultset);
 		return -1;
 	}
 
@@ -578,6 +585,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 			pbx_builtin_setvar_helper(chan, "ODBCSTATUS", status);
 			ast_autoservice_stop(chan);
 		}
+		odbc_datastore_free(resultset);
 		return res1;
 	}
 
@@ -591,7 +599,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 			char *ptrcoldata;
 
 			if (!coldata) {
-				ast_free(resultset);
+				odbc_datastore_free(resultset);
 				SQLCloseCursor(stmt);
 				SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 				ast_odbc_release_obj(obj);
@@ -624,7 +632,7 @@ static int acf_odbc_read(struct ast_channel *chan, const char *cmd, char *s, cha
 					void *tmp = ast_realloc(resultset, sizeof(*resultset) + ast_str_strlen(colnames) + 1);
 					if (!tmp) {
 						ast_log(LOG_ERROR, "No space for a new resultset?\n");
-						ast_free(resultset);
+						odbc_datastore_free(resultset);
 						SQLCloseCursor(stmt);
 						SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 						ast_odbc_release_obj(obj);
@@ -714,9 +722,9 @@ end_acf_read:
 		pbx_builtin_setvar_helper(chan, "ODBCSTATUS", status);
 		pbx_builtin_setvar_helper(chan, "~ODBCFIELDS~", ast_str_buffer(colnames));
 		if (resultset) {
-			int uid;
 			struct ast_datastore *odbc_store;
 			if (multirow) {
+				int uid;
 				uid = ast_atomic_fetchadd_int(&resultcount, +1) + 1;
 				snprintf(buf, len, "%d", uid);
 			} else {
@@ -727,8 +735,7 @@ end_acf_read:
 				ast_channel_lock(chan);
 				if ((odbc_store = ast_channel_datastore_find(chan, &odbc_info, buf))) {
 					ast_channel_datastore_remove(chan, odbc_store);
-					odbc_datastore_free(odbc_store->data);
-					ast_free(odbc_store);
+					ast_datastore_free(odbc_store);
 				}
 				ast_channel_unlock(chan);
 			}
@@ -745,7 +752,9 @@ end_acf_read:
 				return -1;
 			}
 			odbc_store->data = resultset;
+			ast_channel_lock(chan);
 			ast_channel_datastore_add(chan, odbc_store);
+			ast_channel_unlock(chan);
 		}
 	}
 	SQLCloseCursor(stmt);
@@ -791,8 +800,11 @@ static int acf_fetch(struct ast_channel *chan, const char *cmd, char *data, char
 	struct ast_datastore *store;
 	struct odbc_datastore *resultset;
 	struct odbc_datastore_row *row;
+
+	ast_channel_lock(chan);
 	store = ast_channel_datastore_find(chan, &odbc_info, data);
 	if (!store) {
+		ast_channel_unlock(chan);
 		pbx_builtin_setvar_helper(chan, "ODBC_FETCH_STATUS", "FAILURE");
 		return -1;
 	}
@@ -804,10 +816,12 @@ static int acf_fetch(struct ast_channel *chan, const char *cmd, char *data, char
 		/* Cleanup datastore */
 		ast_channel_datastore_remove(chan, store);
 		ast_datastore_free(store);
+		ast_channel_unlock(chan);
 		pbx_builtin_setvar_helper(chan, "ODBC_FETCH_STATUS", "FAILURE");
 		return -1;
 	}
 	pbx_builtin_setvar_helper(chan, "~ODBCFIELDS~", resultset->names);
+	ast_channel_unlock(chan);
 	ast_copy_string(buf, row->data, len);
 	ast_free(row);
 	pbx_builtin_setvar_helper(chan, "ODBC_FETCH_STATUS", "SUCCESS");
@@ -824,11 +838,15 @@ static char *app_odbcfinish = "ODBCFinish";
 
 static int exec_odbcfinish(struct ast_channel *chan, const char *data)
 {
-	struct ast_datastore *store = ast_channel_datastore_find(chan, &odbc_info, data);
-	if (!store) /* Already freed; no big deal. */
-		return 0;
-	ast_channel_datastore_remove(chan, store);
-	ast_datastore_free(store);
+	struct ast_datastore *store;
+
+	ast_channel_lock(chan);
+	store = ast_channel_datastore_find(chan, &odbc_info, data);
+	if (store) {
+		ast_channel_datastore_remove(chan, store);
+		ast_datastore_free(store);
+	}
+	ast_channel_unlock(chan);
 	return 0;
 }
 
@@ -935,12 +953,12 @@ static int init_acf_query(struct ast_config *cfg, char *catg, struct acf_odbc_qu
 	}
 
 	if ((tmp = ast_variable_retrieve(cfg, catg, "prefix")) && !ast_strlen_zero(tmp)) {
-		if (asprintf((char **)&((*query)->acf->name), "%s_%s", tmp, catg) < 0) {
-			ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+		if (ast_asprintf((char **)&((*query)->acf->name), "%s_%s", tmp, catg) < 0) {
+			(*query)->acf->name = NULL;
 		}
 	} else {
-		if (asprintf((char **)&((*query)->acf->name), "ODBC_%s", catg) < 0) {
-			ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+		if (ast_asprintf((char **)&((*query)->acf->name), "ODBC_%s", catg) < 0) {
+			(*query)->acf->name = NULL;
 		}
 	}
 
@@ -1494,7 +1512,7 @@ static int unload_module(void)
 	AST_RWLIST_WRLOCK(&queries);
 
 	AST_RWLIST_UNLOCK(&queries);
-	return 0;
+	return res;
 }
 
 static int reload(void)

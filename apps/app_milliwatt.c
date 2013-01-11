@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 361155 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -78,7 +78,7 @@ static void milliwatt_release(struct ast_channel *chan, void *data)
 static int milliwatt_generate(struct ast_channel *chan, void *data, int len, int samples)
 {
 	unsigned char buf[AST_FRIENDLY_OFFSET + 640];
-	const int maxsamples = ARRAY_LEN(buf);
+	const int maxsamples = ARRAY_LEN(buf) - (AST_FRIENDLY_OFFSET / sizeof(buf[0]));
 	int i, *indexp = (int *) data;
 	struct ast_frame wf = {
 		.frametype = AST_FRAME_VOICE,
@@ -109,7 +109,7 @@ static int milliwatt_generate(struct ast_channel *chan, void *data, int len, int
 	}
 
 	if (ast_write(chan,&wf) < 0) {
-		ast_log(LOG_WARNING,"Failed to write frame to '%s': %s\n",chan->name,strerror(errno));
+		ast_log(LOG_WARNING,"Failed to write frame to '%s': %s\n",ast_channel_name(chan),strerror(errno));
 		return -1;
 	}
 
@@ -117,9 +117,9 @@ static int milliwatt_generate(struct ast_channel *chan, void *data, int len, int
 }
 
 static struct ast_generator milliwattgen = {
-	alloc: milliwatt_alloc,
-	release: milliwatt_release,
-	generate: milliwatt_generate,
+	.alloc = milliwatt_alloc,
+	.release = milliwatt_release,
+	.generate = milliwatt_generate,
 };
 
 static int old_milliwatt_exec(struct ast_channel *chan)
@@ -127,12 +127,12 @@ static int old_milliwatt_exec(struct ast_channel *chan)
 	ast_set_write_format_by_id(chan, AST_FORMAT_ULAW);
 	ast_set_read_format_by_id(chan, AST_FORMAT_ULAW);
 
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		ast_answer(chan);
 	}
 
 	if (ast_activate_generator(chan,&milliwattgen,"milliwatt") < 0) {
-		ast_log(LOG_WARNING,"Failed to activate generator on '%s'\n",chan->name);
+		ast_log(LOG_WARNING,"Failed to activate generator on '%s'\n",ast_channel_name(chan));
 		return -1;
 	}
 

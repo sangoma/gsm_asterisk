@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 372419 $")
 
 #include "asterisk/network.h"
 #include <sys/ioctl.h>
@@ -58,7 +58,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 #include "asterisk/sched.h"
 #include "asterisk/io.h"
 #include "asterisk/utils.h"
-#include "asterisk/netsock.h"
+#include "asterisk/netsock2.h"
 #include "asterisk/crypto.h"
 #include "asterisk/astdb.h"
 #include "asterisk/acl.h"
@@ -545,13 +545,18 @@ struct dundi_query_state {
 	char fluffy[0];
 };
 
-static int get_mapping_weight(struct dundi_mapping *map)
+static int get_mapping_weight(struct dundi_mapping *map, struct varshead *headp)
 {
 	char buf[32];
 
 	buf[0] = 0;
 	if (map->weightstr) {
-		pbx_substitute_variables_helper(NULL, map->weightstr, buf, sizeof(buf) - 1);
+		if (headp) {
+			pbx_substitute_variables_varshead(headp, map->weightstr, buf, sizeof(buf) - 1);
+		} else {                
+			pbx_substitute_variables_helper(NULL, map->weightstr, buf, sizeof(buf) - 1);
+		}
+
 		if (sscanf(buf, "%30d", &map->_weight) != 1)
 			map->_weight = MAX_WEIGHT;
 	}
@@ -587,7 +592,6 @@ static int dundi_lookup_local(struct dundi_result *dr, struct dundi_mapping *map
 			ast_set_flag(&flags, map->options & 0xffff);
 			ast_copy_flags(dr + anscnt, &flags, AST_FLAGS_ALL);
 			dr[anscnt].techint = map->tech;
-			dr[anscnt].weight = get_mapping_weight(map);
 			dr[anscnt].expiration = dundi_cache_time;
 			ast_copy_string(dr[anscnt].tech, tech2str(map->tech), sizeof(dr[anscnt].tech));
 			dr[anscnt].eid = *us_eid;
@@ -603,10 +607,13 @@ static int dundi_lookup_local(struct dundi_result *dr, struct dundi_mapping *map
 				newvariable = ast_var_assign("IPADDR", ipaddr);
 				AST_LIST_INSERT_HEAD(&headp, newvariable, entries);
 				pbx_substitute_variables_varshead(&headp, map->dest, dr[anscnt].dest, sizeof(dr[anscnt].dest));
+				dr[anscnt].weight = get_mapping_weight(map, &headp);
 				while ((newvariable = AST_LIST_REMOVE_HEAD(&headp, entries)))
 					ast_var_delete(newvariable);
-			} else
+			} else {
 				dr[anscnt].dest[0] = '\0';
+				dr[anscnt].weight = get_mapping_weight(map, NULL);
+			}
 			anscnt++;
 		} else {
 			/* No answers...  Find the fewest number of digits from the
@@ -1014,7 +1021,7 @@ static int dundi_prop_precache(struct dundi_transaction *trans, struct dundi_ies
 	totallen += (ies->eidcount - skipfirst) * sizeof(dundi_eid);
 	st = ast_calloc(1, totallen);
 	if (st) {
-		ast_copy_string(st->called_context, ies->called_context, sizeof(st->called_context));
+		ast_copy_string(st->called_context, dr.dcontext, sizeof(st->called_context));
 		ast_copy_string(st->called_number, ies->called_number, sizeof(st->called_number));
 		st->trans = trans;
 		st->ttl = ies->ttl - 1;
@@ -1217,7 +1224,7 @@ static int cache_lookup_internal(time_t now, struct dundi_request *req, char *ke
 	return 0;
 }
 
-static int cache_lookup(struct dundi_request *req, dundi_eid *peer_eid, uint32_t crc32, int *lowexpiration)
+static int cache_lookup(struct dundi_request *req, dundi_eid *peer_eid, uint32_t crc, int *lowexpiration)
 {
 	char key[256];
 	char eid_str[20];
@@ -1233,7 +1240,7 @@ static int cache_lookup(struct dundi_request *req, dundi_eid *peer_eid, uint32_t
 	dundi_eid_to_str_short(eid_str, sizeof(eid_str), peer_eid);
 	dundi_eid_to_str_short(eidroot_str, sizeof(eidroot_str), &req->root_eid);
 	ast_eid_to_str(eid_str_full, sizeof(eid_str_full), peer_eid);
-	snprintf(key, sizeof(key), "%s/%s/%s/e%08x", eid_str, req->number, req->dcontext, crc32);
+	snprintf(key, sizeof(key), "%s/%s/%s/e%08x", eid_str, req->number, req->dcontext, crc);
 	res |= cache_lookup_internal(now, req, key, eid_str_full, lowexpiration);
 	snprintf(key, sizeof(key), "%s/%s/%s/e%08x", eid_str, req->number, req->dcontext, 0);
 	res |= cache_lookup_internal(now, req, key, eid_str_full, lowexpiration);
@@ -1248,7 +1255,7 @@ static int cache_lookup(struct dundi_request *req, dundi_eid *peer_eid, uint32_t
 				break;
 			x++;
 			/* Check for hints */
-			snprintf(key, sizeof(key), "hint/%s/%s/%s/e%08x", eid_str, tmp, req->dcontext, crc32);
+			snprintf(key, sizeof(key), "hint/%s/%s/%s/e%08x", eid_str, tmp, req->dcontext, crc);
 			res2 |= cache_lookup_internal(now, req, key, eid_str_full, lowexpiration);
 			snprintf(key, sizeof(key), "hint/%s/%s/%s/e%08x", eid_str, tmp, req->dcontext, 0);
 			res2 |= cache_lookup_internal(now, req, key, eid_str_full, lowexpiration);
@@ -1383,9 +1390,7 @@ static struct dundi_hdr *dundi_decrypt(struct dundi_transaction *trans, unsigned
 	unsigned long bytes;
 	struct dundi_hdr *h;
 	unsigned char *decrypt_space;
-	decrypt_space = alloca(srclen);
-	if (!decrypt_space)
-		return NULL;
+	decrypt_space = ast_alloca(srclen);
 	decrypt_memcpy(decrypt_space, src->encdata, srclen, src->iv, &trans->dcx);
 	/* Setup header */
 	h = (struct dundi_hdr *)dst;
@@ -1411,61 +1416,58 @@ static int dundi_encrypt(struct dundi_transaction *trans, struct dundi_packet *p
 	struct dundi_peer *peer;
 	unsigned char iv[16];
 	len = pack->datalen + pack->datalen / 100 + 42;
-	compress_space = alloca(len);
-	if (compress_space) {
-		memset(compress_space, 0, len);
-		/* We care about everthing save the first 6 bytes of header */
-		bytes = len;
-		res = compress(compress_space, &bytes, pack->data + 6, pack->datalen - 6);
-		if (res != Z_OK) {
-			ast_debug(1, "Ouch, compression failed!\n");
-			return -1;
-		}
-		memset(&ied, 0, sizeof(ied));
-		/* Say who we are */
-		if (!pack->h->iseqno && !pack->h->oseqno) {
-			/* Need the key in the first copy */
-			if (!(peer = find_peer(&trans->them_eid)))
-				return -1;
-			if (update_key(peer))
-				return -1;
-			if (!peer->sentfullkey)
-				ast_set_flag(trans, FLAG_SENDFULLKEY);
-			/* Append key data */
-			dundi_ie_append_eid(&ied, DUNDI_IE_EID, &trans->us_eid);
-			if (ast_test_flag(trans, FLAG_SENDFULLKEY)) {
-				dundi_ie_append_raw(&ied, DUNDI_IE_SHAREDKEY, peer->txenckey, 128);
-				dundi_ie_append_raw(&ied, DUNDI_IE_SIGNATURE, peer->txenckey + 128, 128);
-			} else {
-				dundi_ie_append_int(&ied, DUNDI_IE_KEYCRC32, peer->us_keycrc32);
-			}
-			/* Setup contexts */
-			trans->ecx = peer->us_ecx;
-			trans->dcx = peer->us_dcx;
-
-			/* We've sent the full key */
-			peer->sentfullkey = 1;
-		}
-		/* Build initialization vector */
-		build_iv(iv);
-		/* Add the field, rounded up to 16 bytes */
-		dundi_ie_append_encdata(&ied, DUNDI_IE_ENCDATA, iv, NULL, ((bytes + 15) / 16) * 16);
-		/* Copy the data */
-		if ((ied.pos + bytes) >= sizeof(ied.buf)) {
-			ast_log(LOG_NOTICE, "Final packet too large!\n");
-			return -1;
-		}
-		encrypt_memcpy(ied.buf + ied.pos, compress_space, bytes, iv, &trans->ecx);
-		ied.pos += ((bytes + 15) / 16) * 16;
-		/* Reconstruct header */
-		pack->datalen = sizeof(struct dundi_hdr);
-		pack->h->cmdresp = DUNDI_COMMAND_ENCRYPT;
-		pack->h->cmdflags = 0;
-		memcpy(pack->h->ies, ied.buf, ied.pos);
-		pack->datalen += ied.pos;
-		return 0;
+	compress_space = ast_alloca(len);
+	memset(compress_space, 0, len);
+	/* We care about everthing save the first 6 bytes of header */
+	bytes = len;
+	res = compress(compress_space, &bytes, pack->data + 6, pack->datalen - 6);
+	if (res != Z_OK) {
+		ast_debug(1, "Ouch, compression failed!\n");
+		return -1;
 	}
-	return -1;
+	memset(&ied, 0, sizeof(ied));
+	/* Say who we are */
+	if (!pack->h->iseqno && !pack->h->oseqno) {
+		/* Need the key in the first copy */
+		if (!(peer = find_peer(&trans->them_eid)))
+			return -1;
+		if (update_key(peer))
+			return -1;
+		if (!peer->sentfullkey)
+			ast_set_flag(trans, FLAG_SENDFULLKEY);
+		/* Append key data */
+		dundi_ie_append_eid(&ied, DUNDI_IE_EID, &trans->us_eid);
+		if (ast_test_flag(trans, FLAG_SENDFULLKEY)) {
+			dundi_ie_append_raw(&ied, DUNDI_IE_SHAREDKEY, peer->txenckey, 128);
+			dundi_ie_append_raw(&ied, DUNDI_IE_SIGNATURE, peer->txenckey + 128, 128);
+		} else {
+			dundi_ie_append_int(&ied, DUNDI_IE_KEYCRC32, peer->us_keycrc32);
+		}
+		/* Setup contexts */
+		trans->ecx = peer->us_ecx;
+		trans->dcx = peer->us_dcx;
+
+		/* We've sent the full key */
+		peer->sentfullkey = 1;
+	}
+	/* Build initialization vector */
+	build_iv(iv);
+	/* Add the field, rounded up to 16 bytes */
+	dundi_ie_append_encdata(&ied, DUNDI_IE_ENCDATA, iv, NULL, ((bytes + 15) / 16) * 16);
+	/* Copy the data */
+	if ((ied.pos + bytes) >= sizeof(ied.buf)) {
+		ast_log(LOG_NOTICE, "Final packet too large!\n");
+		return -1;
+	}
+	encrypt_memcpy(ied.buf + ied.pos, compress_space, bytes, iv, &trans->ecx);
+	ied.pos += ((bytes + 15) / 16) * 16;
+	/* Reconstruct header */
+	pack->datalen = sizeof(struct dundi_hdr);
+	pack->h->cmdresp = DUNDI_COMMAND_ENCRYPT;
+	pack->h->cmdflags = 0;
+	memcpy(pack->h->ies, ied.buf, ied.pos);
+	pack->datalen += ied.pos;
+	return 0;
 }
 
 static int check_key(struct dundi_peer *peer, unsigned char *newkey, unsigned char *newsig, uint32_t keycrc32)
@@ -1582,10 +1584,7 @@ static int handle_command_response(struct dundi_transaction *trans, struct dundi
 	}
 
 	if (datalen) {
-		bufcpy = alloca(datalen);
-		if (!bufcpy) {
-			goto return_cleanup;
-		}
+		bufcpy = ast_alloca(datalen);
 		/* Make a copy for parsing */
 		memcpy(bufcpy, hdr->ies, datalen);
 		ast_debug(1, "Got canonical message %d (%d), %d bytes data%s\n", cmd, hdr->oseqno, datalen, final ? " (Final)" : "");
@@ -2282,9 +2281,9 @@ static char *dundi_set_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		return NULL;
 	}
 
-	if (a->argc != e->args)
+	if (a->argc != e->args) {
 		return CLI_SHOWUSAGE;
-
+	}
 	if (!strncasecmp(a->argv[e->args -1], "on", 2)) {
 		dundidebug = 1;
 		ast_cli(a->fd, "DUNDi Debugging Enabled\n");
@@ -2309,9 +2308,9 @@ static char *dundi_store_history(struct ast_cli_entry *e, int cmd, struct ast_cl
 		return NULL;
 	}
 
-	if (a->argc != e->args)
+	if (a->argc != e->args) {
 		return CLI_SHOWUSAGE;
-
+	}
 	if (!strncasecmp(a->argv[e->args -1], "on", 2)) {
 		global_storehistory = 1;
 		ast_cli(a->fd, "DUNDi History Storage Enabled\n");
@@ -2337,13 +2336,15 @@ static char *dundi_flush(struct ast_cli_entry *e, int cmd, struct ast_cli_args *
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if ((a->argc < 2) || (a->argc > 3))
+	if ((a->argc < 2) || (a->argc > 3)) {
 		return CLI_SHOWUSAGE;
+	}
 	if (a->argc > 2) {
-		if (!strcasecmp(a->argv[2], "stats"))
+		if (!strcasecmp(a->argv[2], "stats")) {
 			stats = 1;
-		else
+		} else {
 			return CLI_SHOWUSAGE;
+		}
 	}
 	if (stats) {
 		/* Flush statistics */
@@ -2443,13 +2444,15 @@ static char *dundi_do_lookup(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		return NULL;
 	}
 
-	if ((a->argc < 3) || (a->argc > 4))
+	if ((a->argc < 3) || (a->argc > 4)) {
 		return CLI_SHOWUSAGE;
+	}
 	if (a->argc > 3) {
-		if (!strcasecmp(a->argv[3], "bypass"))
+		if (!strcasecmp(a->argv[3], "bypass")) {
 			bypass=1;
-		else
+		} else {
 			return CLI_SHOWUSAGE;
+		}
 	}
 	ast_copy_string(tmp, a->argv[2], sizeof(tmp));
 	context = strchr(tmp, '@');
@@ -2492,8 +2495,9 @@ static char *dundi_do_precache(struct ast_cli_entry *e, int cmd, struct ast_cli_
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if ((a->argc < 3) || (a->argc > 3))
+	if ((a->argc < 3) || (a->argc > 3)) {
 		return CLI_SHOWUSAGE;
+	}
 	ast_copy_string(tmp, a->argv[2], sizeof(tmp));
 	context = strchr(tmp, '@');
 	if (context) {
@@ -2530,8 +2534,9 @@ static char *dundi_do_query(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if ((a->argc < 3) || (a->argc > 3))
+	if ((a->argc < 3) || (a->argc > 3)) {
 		return CLI_SHOWUSAGE;
+	}
 	if (ast_str_to_eid(&eid, a->argv[2])) {
 		ast_cli(a->fd, "'%s' is not a valid EID!\n", a->argv[2]);
 		return CLI_SHOWUSAGE;
@@ -2578,8 +2583,9 @@ static char *dundi_show_peer(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 	case CLI_GENERATE:
 		return complete_peer_helper(a->line, a->word, a->pos, a->n, 3);
 	}
-	if (a->argc != 4)
+	if (a->argc != 4) {
 		return CLI_SHOWUSAGE;
+	}
 	AST_LIST_LOCK(&peers);
 	AST_LIST_TRAVERSE(&peers, peer, list) {
 		if (!strcasecmp(ast_eid_to_str(eid_str, sizeof(eid_str), &peer->eid), a->argv[3]))
@@ -2660,14 +2666,16 @@ static char *dundi_show_peers(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 		return NULL;
 	}
 
-	if ((a->argc != 3) && (a->argc != 4) && (a->argc != 5))
+	if ((a->argc != 3) && (a->argc != 4) && (a->argc != 5)) {
 		return CLI_SHOWUSAGE;
+	}
 	if ((a->argc == 4)) {
- 		if (!strcasecmp(a->argv[3], "registered")) {
+		if (!strcasecmp(a->argv[3], "registered")) {
 			registeredonly = 1;
-		} else
+		} else {
 			return CLI_SHOWUSAGE;
- 	}
+		}
+	}
 	AST_LIST_LOCK(&peers);
 	ast_cli(a->fd, FORMAT2, "EID", "Host", "Port", "Model", "AvgTime", "Status");
 	AST_LIST_TRAVERSE(&peers, peer, list) {
@@ -2746,8 +2754,9 @@ static char *dundi_show_trans(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (a->argc != 3)
+	if (a->argc != 3) {
 		return CLI_SHOWUSAGE;
+	}
 	AST_LIST_LOCK(&peers);
 	ast_cli(a->fd, FORMAT2, "Remote", "Src", "Dst", "Tx", "Rx", "Ack");
 	AST_LIST_TRAVERSE(&alltrans, trans, all) {
@@ -2773,8 +2782,9 @@ static char *dundi_show_entityid(struct ast_cli_entry *e, int cmd, struct ast_cl
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (a->argc != 3)
+	if (a->argc != 3) {
 		return CLI_SHOWUSAGE;
+	}
 	AST_LIST_LOCK(&peers);
 	ast_eid_to_str(eid_str, sizeof(eid_str), &global_eid);
 	AST_LIST_UNLOCK(&peers);
@@ -2798,8 +2808,9 @@ static char *dundi_show_requests(struct ast_cli_entry *e, int cmd, struct ast_cl
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (a->argc != 3)
+	if (a->argc != 3) {
 		return CLI_SHOWUSAGE;
+	}
 	AST_LIST_LOCK(&peers);
 	ast_cli(a->fd, FORMAT2, "Number", "Context", "Root", "Max", "Rsp");
 	AST_LIST_TRAVERSE(&requests, req, list) {
@@ -2831,12 +2842,13 @@ static char *dundi_show_mappings(struct ast_cli_entry *e, int cmd, struct ast_cl
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (a->argc != 3)
+	if (a->argc != 3) {
 		return CLI_SHOWUSAGE;
+	}
 	AST_LIST_LOCK(&peers);
 	ast_cli(a->fd, FORMAT2, "DUNDi Cntxt", "Weight", "Local Cntxt", "Options", "Tech", "Destination");
 	AST_LIST_TRAVERSE(&mappings, map, list) {
-		snprintf(weight, sizeof(weight), "%d", get_mapping_weight(map));
+		snprintf(weight, sizeof(weight), "%d", get_mapping_weight(map, NULL));
 		ast_cli(a->fd, FORMAT, map->dcontext, weight,
 			ast_strlen_zero(map->lcontext) ? "<none>" : map->lcontext,
 			dundi_flags2str(fs, sizeof(fs), map->options), tech2str(map->tech), map->dest);
@@ -2864,8 +2876,9 @@ static char *dundi_show_precache(struct ast_cli_entry *e, int cmd, struct ast_cl
 	case CLI_GENERATE:
 		return NULL;
 	}
-	if (a->argc != 3)
+	if (a->argc != 3) {
 		return CLI_SHOWUSAGE;
+	}
 	time(&now);
 	ast_cli(a->fd, FORMAT2, "Number", "Context", "Expiration");
 	AST_LIST_LOCK(&pcq);
@@ -2884,6 +2897,166 @@ static char *dundi_show_precache(struct ast_cli_entry *e, int cmd, struct ast_cl
 #undef FORMAT2
 }
 
+static char *dundi_show_cache(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+#define FORMAT2 "%-12.12s %-16.16s %-10.10s  %-18s %-7s %s\n"
+#define FORMAT "%-12.12s %-16.16s %6d sec  %-18s %-7d %s/%s (%s)\n"
+        struct ast_db_entry *db_tree, *db_entry;
+	int cnt = 0;
+	time_t ts, now;
+	dundi_eid src_eid;
+	char src_eid_str[20];
+	int expiry, tech, weight;
+	struct ast_flags flags;
+	char fs[256];
+	int length;
+	char *ptr, *term, *src, *number, *context, *dst;
+
+	switch (cmd) {
+	case CLI_INIT:
+		e->command = "dundi show cache";
+		e->usage =
+		"Usage: dundi show cache\n"
+		"       Lists all DUNDi cache entries.\n";
+		return NULL;
+	case CLI_GENERATE:
+		return NULL;
+	}
+
+	if (a->argc != 3) {
+		return CLI_SHOWUSAGE;
+	}
+
+	time(&now);
+	db_tree = ast_db_gettree("dundi/cache", NULL);
+	ast_cli(a->fd, FORMAT2, "Number", "Context", "Expiration", "From", "Weight", "Destination (Flags)");
+	for (db_entry = db_tree; db_entry; db_entry = db_entry->next) {
+		if ((strncmp(db_entry->key, "/dundi/cache/hint/", 18) == 0) || ast_get_time_t(db_entry->data, &ts, 0, &length)) {
+			continue;
+		}
+
+		expiry = ts - now;
+
+		if (expiry <= 0) {
+			continue;
+		}
+
+		ptr = db_entry->key + sizeof("/dundi/cache");
+		strtok(ptr, "/");
+		number = strtok(NULL, "/");
+		context = strtok(NULL, "/");
+		ptr = strtok(NULL, "/");
+
+		if (*ptr != 'e') {
+			continue;
+		}
+
+		ptr = db_entry->data + length + 1;
+
+		if ((sscanf(ptr, "%30d/%30d/%30d/%n", &(flags.flags), &weight, &tech, &length) != 3)) {
+			continue;
+		}
+
+		ptr += length;
+		dst = ptr;
+		term = strchr(ptr, '|');
+
+		if (!term) {
+			continue;
+		}
+
+		/* Ok, at this point we know we aren't going to skp the entry, so we go ahead and increment the count. */
+		cnt++;
+
+		*term = '\0';
+		src = strrchr(ptr, '/');
+		dundi_eid_zero(&src_eid);
+
+		if (src) {
+			*src = '\0';
+			src++;
+			dundi_str_short_to_eid(&src_eid, src);
+			ast_eid_to_str(src_eid_str, sizeof(src_eid_str), &src_eid);
+		}
+
+		ast_cli(a->fd, FORMAT, number, context, expiry, src_eid_str, weight, tech2str(tech), dst, dundi_flags2str(fs, sizeof(fs), flags.flags));
+	}
+
+	ast_cli(a->fd, "Number of entries: %d\n", cnt);
+	ast_db_freetree(db_tree);
+
+	return CLI_SUCCESS;
+#undef FORMAT
+#undef FORMAT2
+}
+
+static char *dundi_show_hints(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+#define FORMAT2 "%-12.12s %-16.16s %-10.10s  %-18s\n"
+#define FORMAT "%-12.12s %-16.16s %6d sec  %-18s\n"
+	struct ast_db_entry *db_tree, *db_entry;
+	int cnt = 0;
+	time_t ts, now;
+	dundi_eid src_eid;
+	char src_eid_str[20];
+	int expiry;
+	int length;
+	char *ptr, *src, *number, *context;
+
+	switch (cmd) {
+	case CLI_INIT:
+		e->command = "dundi show hints";
+		e->usage =
+			"Usage: dundi show hints\n"
+			"       Lists all DUNDi 'DONTASK' hints in the cache.\n";
+		return NULL;
+	case CLI_GENERATE:
+		return NULL;
+	}
+
+	if (a->argc != 3) {
+		return CLI_SHOWUSAGE;
+	}
+
+	time(&now);
+	db_tree = ast_db_gettree("dundi/cache/hint", NULL);
+	ast_cli(a->fd, FORMAT2, "Prefix", "Context", "Expiration", "From");
+
+	for (db_entry = db_tree; db_entry; db_entry = db_entry->next) {
+		if (ast_get_time_t(db_entry->data, &ts, 0, &length)) {
+			continue;
+		}
+
+		expiry = ts - now;
+
+		if (expiry <= 0) {
+			continue;
+		}
+
+		ptr = db_entry->key + sizeof("/dundi/cache/hint");
+		src = strtok(ptr, "/");
+		number = strtok(NULL, "/");
+		context = strtok(NULL, "/");
+		ptr = strtok(NULL, "/");
+
+		if (*ptr != 'e') {
+			continue;
+		}
+
+		cnt++;
+		dundi_str_short_to_eid(&src_eid, src);
+		ast_eid_to_str(src_eid_str, sizeof(src_eid_str), &src_eid);
+		ast_cli(a->fd, FORMAT, number, context, expiry, src_eid_str);
+	}
+
+	ast_cli(a->fd, "Number of entries: %d\n", cnt);
+	ast_db_freetree(db_tree);
+
+	return CLI_SUCCESS;
+#undef FORMAT
+#undef FORMAT2
+}
+
 static struct ast_cli_entry cli_dundi[] = {
 	AST_CLI_DEFINE(dundi_set_debug, "Enable/Disable DUNDi debugging"),
 	AST_CLI_DEFINE(dundi_store_history, "Enable/Disable DUNDi historic records"),
@@ -2895,6 +3068,8 @@ static struct ast_cli_entry cli_dundi[] = {
 	AST_CLI_DEFINE(dundi_show_precache, "Show DUNDi precache"),
 	AST_CLI_DEFINE(dundi_show_requests, "Show DUNDi requests"),
 	AST_CLI_DEFINE(dundi_show_peer, "Show info on a specific DUNDi peer"),
+	AST_CLI_DEFINE(dundi_show_cache, "Show DUNDi cache"),
+	AST_CLI_DEFINE(dundi_show_hints, "Show DUNDi hints in the cache"),
 	AST_CLI_DEFINE(dundi_do_precache, "Precache a number in DUNDi"),
 	AST_CLI_DEFINE(dundi_do_lookup, "Lookup a number in DUNDi"),
 	AST_CLI_DEFINE(dundi_do_query, "Query a DUNDi EID"),
@@ -3359,8 +3534,10 @@ static int optimize_transactions(struct dundi_request *dr, int order)
 		}
 
 		AST_LIST_TRAVERSE(&peers, peer, list) {
-			if (has_permission(&peer->include, dr->dcontext) &&
-			    ast_eid_cmp(&peer->eid, &trans->them_eid) &&
+			if (ast_eid_cmp(&peer->eid, &empty_eid) &&			/* peer's eid is not empty (in case of dynamic peers) */
+				(peer->lastms > -1) &&							/* peer is reachable */
+				has_permission(&peer->include, dr->dcontext) &&	/* peer has destination context */
+				ast_eid_cmp(&peer->eid, &trans->them_eid) &&	/* peer is not transaction endpoint */
 				(peer->order <= order)) {
 				/* For each other transaction, make sure we don't
 				   ask this EID about the others if they're not
@@ -3666,7 +3843,7 @@ static int dundi_lookup_internal(struct dundi_result *result, int maxret, struct
 		ast_waitfor_n_fd(dr.pfds, 1, &ms, NULL);
 	}
 	if (chan && ast_check_hangup(chan))
-		ast_debug(1, "Hrm, '%s' hungup before their query for %s@%s finished\n", chan->name, dr.number, dr.dcontext);
+		ast_debug(1, "Hrm, '%s' hungup before their query for %s@%s finished\n", ast_channel_name(chan), dr.number, dr.dcontext);
 	cancel_request(&dr);
 	unregister_request(&dr);
 	res = dr.respcount;
@@ -3767,18 +3944,17 @@ static int dundi_precache_internal(const char *context, const char *number, int 
 			nummaps++;
 	}
 	if (nummaps) {
-		maps = alloca(nummaps * sizeof(*maps));
+		maps = ast_alloca(nummaps * sizeof(*maps));
 		nummaps = 0;
-		if (maps) {
-			AST_LIST_TRAVERSE(&mappings, cur, list) {
-				if (!strcasecmp(cur->dcontext, context))
-					maps[nummaps++] = *cur;
-			}
+		AST_LIST_TRAVERSE(&mappings, cur, list) {
+			if (!strcasecmp(cur->dcontext, context))
+				maps[nummaps++] = *cur;
 		}
 	}
 	AST_LIST_UNLOCK(&peers);
-	if (!nummaps || !maps)
+	if (!nummaps) {
 		return -1;
+	}
 	ttlms = DUNDI_FLUFF_TIME + ttl * DUNDI_TTL_TIME;
 	memset(&dr2, 0, sizeof(dr2));
 	memset(&dr, 0, sizeof(dr));
@@ -4514,7 +4690,9 @@ static void build_peer(dundi_eid *eid, struct ast_variable *v, int *globalpcmode
 		if (needregister) {
 			peer->registerid = ast_sched_add(sched, 2000, do_register, peer);
 		}
-		qualify_peer(peer, 1);
+		if (ast_eid_cmp(&peer->eid, &empty_eid)) {
+			qualify_peer(peer, 1);
+		}
 	}
 	AST_LIST_UNLOCK(&peers);
 }
@@ -4534,9 +4712,9 @@ static int dundi_helper(struct ast_channel *chan, const char *context, const cha
 		if (!strcasecmp(exten, "s")) {
 			exten = pbx_builtin_getvar_helper(chan, "ARG1");
 			if (ast_strlen_zero(exten))
-				exten = chan->macroexten;
+				exten = ast_channel_macroexten(chan);
 			if (ast_strlen_zero(exten))
-				exten = chan->exten;
+				exten = ast_channel_exten(chan);
 			if (ast_strlen_zero(exten)) {
 				ast_log(LOG_WARNING, "Called in Macro mode with no ARG1 or MACRO_EXTEN?\n");
 				return -1;
@@ -4586,9 +4764,9 @@ static int dundi_exec(struct ast_channel *chan, const char *context, const char 
 		if (!strcasecmp(exten, "s")) {
 			exten = pbx_builtin_getvar_helper(chan, "ARG1");
 			if (ast_strlen_zero(exten))
-				exten = chan->macroexten;
+				exten = ast_channel_macroexten(chan);
 			if (ast_strlen_zero(exten))
-				exten = chan->exten;
+				exten = ast_channel_exten(chan);
 			if (ast_strlen_zero(exten)) {
 				ast_log(LOG_WARNING, "Called in Macro mode with no ARG1 or MACRO_EXTEN?\n");
 				return -1;
@@ -4858,7 +5036,7 @@ static int load_module(void)
 		return AST_MODULE_LOAD_DECLINE;
 	}
 
-	ast_netsock_set_qos(netsocket, tos, 0, "DUNDi");
+	ast_set_qos(netsocket, tos, 0, "DUNDi");
 
 	if (start_network_thread()) {
 		ast_log(LOG_ERROR, "Unable to start network thread\n");

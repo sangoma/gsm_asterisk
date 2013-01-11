@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 366917 $")
 
 #include <libical/ical.h>
 #include <ne_session.h>
@@ -433,9 +433,8 @@ static int exchangecal_write_event(struct ast_calendar_event *event)
 		return -1;
 	}
 	if (!(body = ast_str_create(512)) ||
-		!(subdir = ast_str_create(32)) ||
-		!(response = ast_str_create(512))) {
-		ast_log(LOG_ERROR, "Could not allocate memory for request and response!\n");
+		!(subdir = ast_str_create(32))) {
+		ast_log(LOG_ERROR, "Could not allocate memory for request!\n");
 		goto write_cleanup;
 	}
 
@@ -505,9 +504,10 @@ static int exchangecal_write_event(struct ast_calendar_event *event)
 	ast_verb(0, "\n\n%s\n\n", ast_str_buffer(body));
 	ast_str_set(&subdir, 0, "/Calendar/%s.eml", ast_str_buffer(uid));
 
-	response = exchangecal_request(event->owner->tech_pvt, "PROPPATCH", body, subdir);
+	if ((response = exchangecal_request(event->owner->tech_pvt, "PROPPATCH", body, subdir))) {
+		ret = 0;
+	}
 
-	ret = 0;
 write_cleanup:
 	if (uid) {
 		ast_free(uid);

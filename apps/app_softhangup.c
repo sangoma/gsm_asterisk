@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 356042 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -104,10 +104,10 @@ static int softhangup_exec(struct ast_channel *chan, const char *data)
 
 	while ((c = ast_channel_iterator_next(iter))) {
 		ast_channel_lock(c);
-		ast_copy_string(name, c->name, sizeof(name));
+		ast_copy_string(name, ast_channel_name(c), sizeof(name));
 		if (ast_test_flag(&flags, OPTION_ALL)) {
 			/* CAPI is set up like CAPI[foo/bar]/clcnt */ 
-			if (!strcmp(c->tech->type, "CAPI")) {
+			if (!strcmp(ast_channel_tech(c)->type, "CAPI")) {
 				cut = strrchr(name, '/');
 			/* Basically everything else is Foo/Bar-Z */
 			} else {
@@ -119,7 +119,7 @@ static int softhangup_exec(struct ast_channel *chan, const char *data)
 				*cut = 0;
 		}
 		if (!strcasecmp(name, args.channel)) {
-			ast_log(LOG_WARNING, "Soft hanging %s up.\n", c->name);
+			ast_log(LOG_WARNING, "Soft hanging %s up.\n", ast_channel_name(c));
 			ast_softhangup(c, AST_SOFTHANGUP_EXPLICIT);
 			if (!ast_test_flag(&flags, OPTION_ALL)) {
 				ast_channel_unlock(c);

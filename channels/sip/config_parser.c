@@ -19,9 +19,13 @@
  * \brief sip config parsing functions and unit tests
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 281688 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370773 $")
 
 #include "include/sip.h"
 #include "include/config_parser.h"
@@ -530,60 +534,6 @@ AST_TEST_DEFINE(sip_parse_register_line_test)
 	ast_string_field_free_memory(reg);
 	ast_free(reg);
 
-	/* ---Test reg12, add domain port --- */
-	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
-		goto alloc_fail;
-	} else if (
-	   sip_parse_register_line(reg, default_expiry, reg12, 1) ||
-		strcmp(reg->callback, "s")           ||
-		strcmp(reg->username, "name") ||
-		strcmp(reg->regdomain, "namedomain") ||
-		strcmp(reg->hostname, "domain")     ||
-		strcmp(reg->authuser, "authuser")           ||
-		strcmp(reg->secret, "pass")         ||
-		strcmp(reg->peername, "")           ||
-		reg->transport != SIP_TRANSPORT_UDP ||
-		reg->timeout != -1                  ||
-		reg->expire != -1                   ||
-		reg->refresh != default_expiry ||
-		reg->expiry != default_expiry ||
-		reg->configured_expiry != default_expiry ||
-		reg->portno != STANDARD_SIP_PORT    ||
-		reg->regdomainport != 4321          ||
-		reg->callid_valid != FALSE          ||
-		reg->ocseq != INITIAL_CSEQ) {
-
-		ast_test_status_update(test, "Test 12, add domain port failed.\n");
-		res = AST_TEST_FAIL;
-	}
-
-	/* ---Test reg13, domain port without secret --- */
-	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
-		goto alloc_fail;
-	} else if (
-	   sip_parse_register_line(reg, default_expiry, reg13, 1) ||
-		strcmp(reg->callback, "s")           ||
-		strcmp(reg->username, "name") ||
-		strcmp(reg->regdomain, "namedomain") ||
-		strcmp(reg->hostname, "domain")     ||
-		strcmp(reg->authuser, "")           ||
-		strcmp(reg->secret, "")         ||
-		strcmp(reg->peername, "")           ||
-		reg->transport != SIP_TRANSPORT_UDP ||
-		reg->timeout != -1                  ||
-		reg->expire != -1                   ||
-		reg->refresh != default_expiry ||
-		reg->expiry != default_expiry ||
-		reg->configured_expiry != default_expiry ||
-		reg->portno != STANDARD_SIP_PORT    ||
-		reg->regdomainport != 4321          ||
-		reg->callid_valid != FALSE          ||
-		reg->ocseq != INITIAL_CSEQ) {
-
-		ast_test_status_update(test, "Test 13, domain port without secret failed.\n");
-		res = AST_TEST_FAIL;
-}
-
 	/* ---Test reg 9, missing domain, expected to fail --- */
 	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
 		goto alloc_fail;
@@ -613,13 +563,71 @@ AST_TEST_DEFINE(sip_parse_register_line_test)
 		res = AST_TEST_FAIL;
 	}
 
-	/* ---Test reg 11,  no registry line, expected to fail --- */
+	/* ---Test reg 12,  no registry line, expected to fail --- */
 	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
 		goto alloc_fail;
 	} else if (!sip_parse_register_line(reg, default_expiry, NULL, 1)) {
 
 		ast_test_status_update(test,
-				"Test 11, NULL register line expected to fail but did not.\n");
+				"Test 12, NULL register line expected to fail but did not.\n");
+		res = AST_TEST_FAIL;
+	}
+	ast_string_field_free_memory(reg);
+	ast_free(reg);
+
+	/* ---Test reg13, add domain port --- */
+	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
+		goto alloc_fail;
+	} else if (
+	   sip_parse_register_line(reg, default_expiry, reg12, 1) ||
+		strcmp(reg->callback, "s")           ||
+		strcmp(reg->username, "name") ||
+		strcmp(reg->regdomain, "namedomain") ||
+		strcmp(reg->hostname, "domain")     ||
+		strcmp(reg->authuser, "authuser")           ||
+		strcmp(reg->secret, "pass")         ||
+		strcmp(reg->peername, "")           ||
+		reg->transport != SIP_TRANSPORT_UDP ||
+		reg->timeout != -1                  ||
+		reg->expire != -1                   ||
+		reg->refresh != default_expiry ||
+		reg->expiry != default_expiry ||
+		reg->configured_expiry != default_expiry ||
+		reg->portno != STANDARD_SIP_PORT    ||
+		reg->regdomainport != 4321          ||
+		reg->callid_valid != FALSE          ||
+		reg->ocseq != INITIAL_CSEQ) {
+
+		ast_test_status_update(test, "Test 13, add domain port failed.\n");
+		res = AST_TEST_FAIL;
+	}
+	ast_string_field_free_memory(reg);
+	ast_free(reg);
+
+	/* ---Test reg14, domain port without secret --- */
+	if (!(reg = ast_calloc_with_stringfields(1, struct sip_registry, 256))) {
+		goto alloc_fail;
+	} else if (
+	   sip_parse_register_line(reg, default_expiry, reg13, 1) ||
+		strcmp(reg->callback, "s")           ||
+		strcmp(reg->username, "name") ||
+		strcmp(reg->regdomain, "namedomain") ||
+		strcmp(reg->hostname, "domain")     ||
+		strcmp(reg->authuser, "")           ||
+		strcmp(reg->secret, "")         ||
+		strcmp(reg->peername, "")           ||
+		reg->transport != SIP_TRANSPORT_UDP ||
+		reg->timeout != -1                  ||
+		reg->expire != -1                   ||
+		reg->refresh != default_expiry ||
+		reg->expiry != default_expiry ||
+		reg->configured_expiry != default_expiry ||
+		reg->portno != STANDARD_SIP_PORT    ||
+		reg->regdomainport != 4321          ||
+		reg->callid_valid != FALSE          ||
+		reg->ocseq != INITIAL_CSEQ) {
+
+		ast_test_status_update(test, "Test 14, domain port without secret failed.\n");
 		res = AST_TEST_FAIL;
 	}
 	ast_string_field_free_memory(reg);
@@ -638,19 +646,23 @@ int sip_parse_host(char *line, int lineno, char **hostname, int *portnum, enum s
 	char *port;
 
 	if (ast_strlen_zero(line)) {
+		*hostname = NULL;
 		return -1;
 	}
 	if ((*hostname = strstr(line, "://"))) {
 		*hostname += 3;
 
-		if (!strncasecmp(line, "tcp", 3))
+		if (!strncasecmp(line, "tcp", 3)) {
 			*transport = SIP_TRANSPORT_TCP;
-		else if (!strncasecmp(line, "tls", 3))
+		} else if (!strncasecmp(line, "tls", 3)) {
 			*transport = SIP_TRANSPORT_TLS;
-		else if (!strncasecmp(line, "udp", 3))
+		} else if (!strncasecmp(line, "udp", 3)) {
 			*transport = SIP_TRANSPORT_UDP;
-		else
+		} else if (lineno) {
 			ast_log(LOG_NOTICE, "'%.3s' is not a valid transport type on line %d of sip.conf. defaulting to udp.\n", line, lineno);
+		} else {
+			ast_log(LOG_NOTICE, "'%.3s' is not a valid transport type in sip config. defaulting to udp.\n", line);
+		}
 	} else {
 		*hostname = line;
 		*transport = SIP_TRANSPORT_UDP;
@@ -662,17 +674,27 @@ int sip_parse_host(char *line, int lineno, char **hostname, int *portnum, enum s
 		line = *hostname;
 
 	if (ast_sockaddr_split_hostport(line, hostname, &port, 0) == 0) {
-		ast_log(LOG_WARNING, "Cannot parse host '%s' on line %d of sip.conf.\n",
-			line, lineno);
+		if (lineno) {
+			ast_log(LOG_WARNING, "Cannot parse host '%s' on line %d of sip.conf.\n",
+				line, lineno);
+		} else {
+			ast_log(LOG_WARNING, "Cannot parse host '%s' in sip config.\n", line);
+		}
 		return -1;
 	}
 
 	if (port) {
 		if (!sscanf(port, "%5u", portnum)) {
-			ast_log(LOG_NOTICE, "'%s' is not a valid port number on line %d of sip.conf. using default.\n", port, lineno);
+			if (lineno) {
+				ast_log(LOG_NOTICE, "'%s' is not a valid port number on line %d of sip.conf. using default.\n", port, lineno);
+			} else {
+				ast_log(LOG_NOTICE, "'%s' is not a valid port number in sip config. using default.\n", port);
+			}
 			port = NULL;
 		}
-	} else {
+	}
+
+	if (!port) {
 		if (*transport & SIP_TRANSPORT_TLS) {
 			*portnum = STANDARD_TLS_PORT;
 		} else {
@@ -763,11 +785,128 @@ AST_TEST_DEFINE(sip_parse_host_line_test)
 
 }
 
+/*! \brief Parse the comma-separated nat= option values */
+void sip_parse_nat_option(const char *value, struct ast_flags *mask, struct ast_flags *flags)
+{
+	char *parse, *this;
+
+	if (!(parse = ast_strdupa(value))) {
+		return;
+	}
+
+	/* Since we need to completely override the general settings if we are being called
+	 * later for a peer, always set the flags for all options on the mask */
+	ast_set_flag(&mask[0], SIP_NAT_FORCE_RPORT);
+	ast_set_flag(&mask[1], SIP_PAGE2_SYMMETRICRTP);
+	ast_set_flag(&mask[2], SIP_PAGE3_NAT_AUTO_RPORT);
+	ast_set_flag(&mask[2], SIP_PAGE3_NAT_AUTO_COMEDIA);
+
+	while ((this = strsep(&parse, ","))) {
+		if (ast_false(this)) {
+			ast_clear_flag(&flags[0], SIP_NAT_FORCE_RPORT);
+			ast_clear_flag(&flags[1], SIP_PAGE2_SYMMETRICRTP);
+			ast_clear_flag(&flags[2], SIP_PAGE3_NAT_AUTO_RPORT);
+			ast_clear_flag(&flags[2], SIP_PAGE3_NAT_AUTO_COMEDIA);
+			break; /* It doesn't make sense to have no + something else */
+		} else if (!strcasecmp(this, "yes")) {
+			ast_log(LOG_WARNING, "nat=yes is deprecated, use nat=force_rport,comedia instead\n");
+			ast_set_flag(&flags[0], SIP_NAT_FORCE_RPORT);
+			ast_set_flag(&flags[1], SIP_PAGE2_SYMMETRICRTP);
+			ast_clear_flag(&flags[2], SIP_PAGE3_NAT_AUTO_RPORT);
+			ast_clear_flag(&flags[2], SIP_PAGE3_NAT_AUTO_COMEDIA);
+			break; /* It doesn't make sense to have yes + something else */
+		} else if (!strcasecmp(this, "force_rport") && !ast_test_flag(&flags[2], SIP_PAGE3_NAT_AUTO_RPORT)) {
+			ast_set_flag(&flags[0], SIP_NAT_FORCE_RPORT);
+		} else if (!strcasecmp(this, "comedia") && !ast_test_flag(&flags[2], SIP_PAGE3_NAT_AUTO_COMEDIA)) {
+			ast_set_flag(&flags[1], SIP_PAGE2_SYMMETRICRTP);
+		} else if (!strcasecmp(this, "auto_force_rport")) {
+			ast_set_flag(&flags[2], SIP_PAGE3_NAT_AUTO_RPORT);
+			/* In case someone did something dumb like nat=force_rport,auto_force_rport */
+			ast_clear_flag(&flags[0], SIP_NAT_FORCE_RPORT);
+		} else if (!strcasecmp(this, "auto_comedia")) {
+			ast_set_flag(&flags[2], SIP_PAGE3_NAT_AUTO_COMEDIA);
+			/* In case someone did something dumb like nat=comedia,auto_comedia*/
+			ast_clear_flag(&flags[1], SIP_PAGE2_SYMMETRICRTP);
+		}
+	}
+}
+
+#define TEST_FORCE_RPORT      1 << 0
+#define TEST_COMEDIA          1 << 1
+#define TEST_AUTO_FORCE_RPORT 1 << 2
+#define TEST_AUTO_COMEDIA     1 << 3
+static int match_nat_options(int val, struct ast_flags *flags)
+{
+	if ((!ast_test_flag(&flags[0], SIP_NAT_FORCE_RPORT)) != !(val & TEST_FORCE_RPORT)) {
+		return 0;
+	}
+	if (!ast_test_flag(&flags[1], SIP_PAGE2_SYMMETRICRTP) != !(val & TEST_COMEDIA)) {
+		return 0;
+	}
+	if (!ast_test_flag(&flags[2], SIP_PAGE3_NAT_AUTO_RPORT) != !(val & TEST_AUTO_FORCE_RPORT)) {
+		return 0;
+	}
+	if (!ast_test_flag(&flags[2], SIP_PAGE3_NAT_AUTO_COMEDIA) != !(val & TEST_AUTO_COMEDIA)) {
+	   return 0;
+	}
+	return 1;
+}
+
+AST_TEST_DEFINE(sip_parse_nat_test)
+{
+	int i, res = AST_TEST_PASS;
+	struct ast_flags mask[3] = {{0}}, flags[3] = {{0}};
+	struct {
+		const char *str;
+		int i;
+	} options[] = {
+		{ "yes", TEST_FORCE_RPORT | TEST_COMEDIA },
+		{ "no", 0 },
+		{ "force_rport", TEST_FORCE_RPORT },
+		{ "comedia", TEST_COMEDIA },
+		{ "auto_force_rport", TEST_AUTO_FORCE_RPORT },
+		{ "auto_comedia", TEST_AUTO_COMEDIA },
+		{ "force_rport,auto_force_rport", TEST_AUTO_FORCE_RPORT },
+		{ "auto_force_rport,force_rport", TEST_AUTO_FORCE_RPORT },
+		{ "comedia,auto_comedia", TEST_AUTO_COMEDIA },
+		{ "auto_comedia,comedia", TEST_AUTO_COMEDIA },
+		{ "force_rport,comedia", TEST_FORCE_RPORT | TEST_COMEDIA },
+		{ "force_rport,auto_comedia", TEST_FORCE_RPORT | TEST_AUTO_COMEDIA },
+		{ "force_rport,yes,no", TEST_FORCE_RPORT | TEST_COMEDIA },
+		{ "auto_comedia,no,yes", 0 },
+	};
+
+	switch (cmd) {
+	case TEST_INIT:
+		info->name = "sip_parse_nat_test";
+		info->category = "/channels/chan_sip/";
+		info->summary = "tests sip.conf nat line parsing";
+		info->description =
+							"Tests parsing of various nat line configurations. "
+							"Verifies output matches expected behavior.";
+		return AST_TEST_NOT_RUN;
+	case TEST_EXECUTE:
+		break;
+	}
+
+	for (i = 0; i < ARRAY_LEN(options); i++) {
+		sip_parse_nat_option(options[i].str, mask, flags);
+		if (!match_nat_options(options[i].i, flags)) {
+			ast_test_status_update(test, "Failed nat=%s\n", options[i].str);
+			res = AST_TEST_FAIL;
+		}
+		memset(flags, 0, sizeof(flags));
+		memset(mask, 0, sizeof(mask));
+	}
+
+	return res;
+}
 /*! \brief SIP test registration */
 void sip_config_parser_register_tests(void)
 {
 	AST_TEST_REGISTER(sip_parse_register_line_test);
 	AST_TEST_REGISTER(sip_parse_host_line_test);
+	AST_TEST_REGISTER(sip_parse_nat_test);
 }
 
 /*! \brief SIP test registration */
@@ -775,5 +914,6 @@ void sip_config_parser_unregister_tests(void)
 {
 	AST_TEST_UNREGISTER(sip_parse_register_line_test);
 	AST_TEST_UNREGISTER(sip_parse_host_line_test);
+	AST_TEST_UNREGISTER(sip_parse_nat_test);
 }
 

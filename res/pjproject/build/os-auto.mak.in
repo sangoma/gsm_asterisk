@@ -1,0 +1,11 @@
+# @configure_input@
+
+export OS_CFLAGS   := $(CC_DEF)PJ_AUTOCONF=1 @CFLAGS@ -g
+
+export OS_CXXFLAGS := $(CC_DEF)PJ_AUTOCONF=1 @CXXFLAGS@ -g
+
+export OS_LDFLAGS  := @LDFLAGS@ @LIBS@
+
+export OS_SOURCES  := 
+
+

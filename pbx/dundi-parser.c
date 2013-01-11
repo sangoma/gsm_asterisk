@@ -22,9 +22,13 @@
  *
  */
 
+/*** MODULEINFO
+	<support_level>extended</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 196072 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -454,15 +458,6 @@ void dundi_showframe(struct dundi_hdr *fhi, int rx, struct sockaddr_in *sin, int
 	char subclass2[20];
 	char *subclass;
 	char tmp[256];
-	char retries[20];
-	if (ntohs(fhi->dtrans) & DUNDI_FLAG_RETRANS)
-		strcpy(retries, "Yes");
-	else
-		strcpy(retries, "No");
-	if ((ntohs(fhi->strans) & DUNDI_FLAG_RESERVED)) {
-		/* Ignore frames with high bit set to 1 */
-		return;
-	}
 	if ((fhi->cmdresp & 0x3f) > (int)sizeof(commands)/(int)sizeof(char *)) {
 		snprintf(class2, (int)sizeof(class2), "(%d?)", fhi->cmdresp);
 		class = class2;
@@ -472,9 +467,9 @@ void dundi_showframe(struct dundi_hdr *fhi, int rx, struct sockaddr_in *sin, int
 	snprintf(subclass2, (int)sizeof(subclass2), "%02x", fhi->cmdflags);
 	subclass = subclass2;
 	snprintf(tmp, (int)sizeof(tmp), 
-		"%s-Frame Retry[%s] -- OSeqno: %3.3d ISeqno: %3.3d Type: %s (%s)\n",
+		"%s-Frame -- OSeqno: %3.3d ISeqno: %3.3d Type: %s (%s)\n",
 		pref[rx],
-		retries, fhi->oseqno, fhi->iseqno, class, fhi->cmdresp & 0x40 ? "Response" : "Command");
+		fhi->oseqno, fhi->iseqno, class, fhi->cmdresp & 0x40 ? "Response" : "Command");
 	outputf(tmp);
 	snprintf(tmp, (int)sizeof(tmp), 
 		"%s     Flags: %s STrans: %5.5d  DTrans: %5.5d [%s:%d]%s\n", (rx > 1) ? "     " : "",
@@ -512,8 +507,10 @@ int dundi_ie_append_cause(struct dundi_ie_data *ied, unsigned char ie, unsigned 
 	ied->buf[ied->pos++] = ie;
 	ied->buf[ied->pos++] = datalen;
 	ied->buf[ied->pos++] = cause;
-	memcpy(ied->buf + ied->pos, data, datalen-1);
-	ied->pos += datalen-1;
+	if (data) {
+		memcpy(ied->buf + ied->pos, data, datalen-1);
+		ied->pos += datalen-1;
+	}
 	return 0;
 }
 
@@ -531,8 +528,10 @@ int dundi_ie_append_hint(struct dundi_ie_data *ied, unsigned char ie, unsigned s
 	flags = htons(flags);
 	memcpy(ied->buf + ied->pos, &flags, sizeof(flags));
 	ied->pos += 2;
-	memcpy(ied->buf + ied->pos, data, datalen-1);
-	ied->pos += datalen-2;
+	if (data) {
+		memcpy(ied->buf + ied->pos, data, datalen-2);
+		ied->pos += datalen-2;
+	}
 	return 0;
 }
 

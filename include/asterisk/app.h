@@ -23,8 +23,11 @@
 #ifndef _ASTERISK_APP_H
 #define _ASTERISK_APP_H
 
+#include "asterisk/stringfields.h"
 #include "asterisk/strings.h"
 #include "asterisk/threadstorage.h"
+#include "asterisk/file.h"
+#include "asterisk/linkedlists.h"
 
 struct ast_flags64;
 
@@ -77,6 +80,27 @@ struct ast_ivr_menu {
 	unsigned int flags;	/*!< Flags */
 	struct ast_ivr_option *options;	/*!< All options */
 };
+ 
+/*!
+ * \brief Structure used for ast_copy_recording_to_vm in order to cleanly supply
+ * data needed for making the recording from the recorded file.
+ */
+struct ast_vm_recording_data {
+	AST_DECLARE_STRING_FIELDS(
+		AST_STRING_FIELD(context);
+		AST_STRING_FIELD(mailbox);
+		AST_STRING_FIELD(folder);
+		AST_STRING_FIELD(recording_file);
+		AST_STRING_FIELD(recording_ext);
+
+		AST_STRING_FIELD(call_context);
+		AST_STRING_FIELD(call_macrocontext);
+		AST_STRING_FIELD(call_extension);
+		AST_STRING_FIELD(call_callerchan);
+		AST_STRING_FIELD(call_callerid);
+		);
+	int call_priority;
+};
 
 #define AST_IVR_FLAG_AUTORESTART (1 << 0)
 
@@ -115,41 +139,263 @@ int ast_app_getdata(struct ast_channel *c, const char *prompt, char *s, int maxl
 int ast_app_getdata_full(struct ast_channel *c, const char *prompt, char *s, int maxlen, int timeout, int audiofd, int ctrlfd);
 
 /*!
- * \since 1.8
- * \brief Run a macro on a channel, placing a second channel into autoservice.
+ * \brief Run a macro on a channel, placing an optional second channel into autoservice.
+ * \since 11.0
  *
- * This is a shorthand method that makes it very easy to run a macro on any given 
- * channel. It is perfectly reasonable to supply a NULL autoservice_chan here in case
- * there is no channel to place into autoservice. It is very important that the 
- * autoservice_chan parameter is not locked prior to calling ast_app_run_macro. A 
- * deadlock could result, otherwise.
+ * \details
+ * This is a shorthand method that makes it very easy to run a
+ * macro on any given channel.  It is perfectly reasonable to
+ * supply a NULL autoservice_chan here in case there is no
+ * channel to place into autoservice.
+ *
+ * \note Absolutely _NO_ channel locks should be held before calling this function.
  *
  * \param autoservice_chan A channel to place into autoservice while the macro is run
- * \param macro_chan The channel to run the macro on
- * \param macro_name The name of the macro to run
- * \param macro_args The arguments to pass to the macro
+ * \param macro_chan Channel to execute macro on.
+ * \param macro_args Macro application argument string.
+ *
  * \retval 0 success
- * \retval -1 failure
+ * \retval -1 on error
  */
-int ast_app_run_macro(struct ast_channel *autoservice_chan, struct ast_channel 
-		*macro_chan, const char * const macro_name, const char * const macro_args);
+int ast_app_exec_macro(struct ast_channel *autoservice_chan, struct ast_channel *macro_chan, const char *macro_args);
+
+/*!
+ * \since 1.8
+ * \brief Run a macro on a channel, placing an optional second channel into autoservice.
+ *
+ * \details
+ * This is a shorthand method that makes it very easy to run a
+ * macro on any given channel.  It is perfectly reasonable to
+ * supply a NULL autoservice_chan here in case there is no
+ * channel to place into autoservice.
+ *
+ * \note Absolutely _NO_ channel locks should be held before calling this function.
+ *
+ * \param autoservice_chan A channel to place into autoservice while the macro is run
+ * \param macro_chan Channel to execute macro on.
+ * \param macro_name The name of the macro to run.
+ * \param macro_args The arguments to pass to the macro.
+ *
+ * \retval 0 success
+ * \retval -1 on error
+ */
+int ast_app_run_macro(struct ast_channel *autoservice_chan,
+	struct ast_channel *macro_chan, const char *macro_name, const char *macro_args);
+
+/*!
+ * \brief Stack applications callback functions.
+ */
+struct ast_app_stack_funcs {
+	/*!
+	 * Module reference pointer so the module will stick around
+	 * while a callback is active.
+	 */
+	void *module;
+
+	/*!
+	 * \brief Callback for the routine to run a subroutine on a channel.
+	 *
+	 * \note Absolutely _NO_ channel locks should be held before calling this function.
+	 *
+	 * \param chan Channel to execute subroutine on.
+	 * \param args Gosub application argument string.
+	 * \param ignore_hangup TRUE if a hangup does not stop execution of the routine.
+	 *
+	 * \retval 0 success
+	 * \retval -1 on error
+	 */
+	int (*run_sub)(struct ast_channel *chan, const char *args, int ignore_hangup);
+
+	/*!
+	 * \brief Add missing context/exten to Gosub application argument string.
+	 *
+	 * \param chan Channel to obtain context/exten.
+	 * \param args Gosub application argument string.
+	 *
+	 * \details
+	 * Fills in the optional context and exten from the given channel.
+	 *
+	 * \retval New-args Gosub argument string on success.  Must be freed.
+	 * \retval NULL on error.
+	 */
+	const char *(*expand_sub_args)(struct ast_channel *chan, const char *args);
+
+	/* Add new API calls to the end here. */
+};
+
+/*!
+ * \since 11
+ * \brief Set stack application function callbacks
+ * \param funcs Stack applications callback functions.
+ */
+void ast_install_stack_functions(const struct ast_app_stack_funcs *funcs);
+
+/*!
+ * \brief Add missing context/exten to subroutine argument string.
+ *
+ * \param chan Channel to obtain context/exten.
+ * \param args Gosub application argument string.
+ *
+ * \details
+ * Fills in the optional context and exten from the given channel.
+ *
+ * \retval New-args Gosub argument string on success.  Must be freed.
+ * \retval NULL on error.
+ */
+const char *ast_app_expand_sub_args(struct ast_channel *chan, const char *args);
+
+/*!
+ * \since 11
+ * \brief Run a subroutine on a channel, placing an optional second channel into autoservice.
+ *
+ * \details
+ * This is a shorthand method that makes it very easy to run a
+ * subroutine on any given channel.  It is perfectly reasonable
+ * to supply a NULL autoservice_chan here in case there is no
+ * channel to place into autoservice.
+ *
+ * \note Absolutely _NO_ channel locks should be held before calling this function.
+ *
+ * \param autoservice_chan A channel to place into autoservice while the subroutine is run
+ * \param sub_chan Channel to execute subroutine on.
+ * \param sub_args Gosub application argument string.
+ * \param ignore_hangup TRUE if a hangup does not stop execution of the routine.
+ *
+ * \retval 0 success
+ * \retval -1 on error
+ */
+int ast_app_exec_sub(struct ast_channel *autoservice_chan, struct ast_channel *sub_chan, const char *sub_args, int ignore_hangup);
+
+/*!
+ * \since 11
+ * \brief Run a subroutine on a channel, placing an optional second channel into autoservice.
+ *
+ * \details
+ * This is a shorthand method that makes it very easy to run a
+ * subroutine on any given channel.  It is perfectly reasonable
+ * to supply a NULL autoservice_chan here in case there is no
+ * channel to place into autoservice.
+ *
+ * \note Absolutely _NO_ channel locks should be held before calling this function.
+ *
+ * \param autoservice_chan A channel to place into autoservice while the subroutine is run
+ * \param sub_chan Channel to execute subroutine on.
+ * \param sub_location The location of the subroutine to run.
+ * \param sub_args The arguments to pass to the subroutine.
+ * \param ignore_hangup TRUE if a hangup does not stop execution of the routine.
+ *
+ * \retval 0 success
+ * \retval -1 on error
+ */
+int ast_app_run_sub(struct ast_channel *autoservice_chan,
+	struct ast_channel *sub_chan, const char *sub_location, const char *sub_args, int ignore_hangup);
+
+enum ast_vm_snapshot_sort_val {
+	AST_VM_SNAPSHOT_SORT_BY_ID = 0,
+	AST_VM_SNAPSHOT_SORT_BY_TIME,
+};
+
+struct ast_vm_msg_snapshot {
+	AST_DECLARE_STRING_FIELDS(
+		AST_STRING_FIELD(msg_id);
+		AST_STRING_FIELD(callerid);
+		AST_STRING_FIELD(callerchan);
+		AST_STRING_FIELD(exten);
+		AST_STRING_FIELD(origdate);
+		AST_STRING_FIELD(origtime);
+		AST_STRING_FIELD(duration);
+		AST_STRING_FIELD(folder_name);
+		AST_STRING_FIELD(flag);
+	);
+	unsigned int msg_number;
+
+	AST_LIST_ENTRY(ast_vm_msg_snapshot) msg;
+};
+
+struct ast_vm_mailbox_snapshot {
+	int total_msg_num;
+	int folders;
+	/* Things are not quite as they seem here.  This points to an allocated array of lists. */
+	AST_LIST_HEAD_NOLOCK(, ast_vm_msg_snapshot) *snapshots;
+};
+
+/*!
+ * \brief Voicemail playback callback function definition
+ *
+ * \param channel to play the file back on.
+ * \param location of file on disk
+ * \param duration of file in seconds. This will be zero if msg is very short or
+ * has an unknown duration.
+ */
+typedef void (ast_vm_msg_play_cb)(struct ast_channel *chan, const char *playfile, int duration);
 
 /*!
  * \brief Set voicemail function callbacks
  * \param[in] has_voicemail_func set function pointer
- * \param[in] inboxcount2_func set function pointer
- * \param[in] sayname_func set function pointer
  * \param[in] inboxcount_func set function pointer
+ * \param[in] inboxcount2_func set function pointer
  * \param[in] messagecount_func set function pointer
+ * \param[in] sayname_func set function pointer
  * \version 1.6.1 Added inboxcount2_func, sayname_func
  */
 void ast_install_vm_functions(int (*has_voicemail_func)(const char *mailbox, const char *folder),
 			      int (*inboxcount_func)(const char *mailbox, int *newmsgs, int *oldmsgs),
 			      int (*inboxcount2_func)(const char *mailbox, int *urgentmsgs, int *newmsgs, int *oldmsgs),
 			      int (*messagecount_func)(const char *context, const char *mailbox, const char *folder),
-			      int (*sayname_func)(struct ast_channel *chan, const char *mailbox, const char *context));
+			      int (*sayname_func)(struct ast_channel *chan, const char *mailbox, const char *context),
+			      int (*copy_recording_to_vm_func)(struct ast_vm_recording_data *vm_rec_data),
+			      const char *vm_index_to_foldername(int id),
+			      struct ast_vm_mailbox_snapshot *(*vm_mailbox_snapshot_create)(const char *mailbox,
+				const char *context,
+				const char *folder,
+				int descending,
+				enum ast_vm_snapshot_sort_val sort_val,
+				int combine_INBOX_and_OLD),
+			      struct ast_vm_mailbox_snapshot *(*vm_mailbox_snapshot_destroy)(struct ast_vm_mailbox_snapshot *mailbox_snapshot),
+			      int (*vm_msg_move)(const char *mailbox,
+				const char *context,
+				size_t num_msgs,
+				const char *oldfolder,
+				const char *old_msg_ids[],
+				const char *newfolder),
+			      int (*vm_msg_remove)(const char *mailbox,
+				const char *context,
+				size_t num_msgs,
+				const char *folder,
+				const char *msgs[]),
+			      int (*vm_msg_forward)(const char *from_mailbox,
+				const char *from_context,
+				const char *from_folder,
+				const char *to_mailbox,
+				const char *to_context,
+				const char *to_folder,
+				size_t num_msgs,
+				const char *msg_ids[],
+				int delete_old),
+			      int (*vm_msg_play)(struct ast_channel *chan,
+				const char *mailbox,
+				const char *context,
+				const char *folder,
+				const char *msg_num,
+				ast_vm_msg_play_cb cb));
+
 
 void ast_uninstall_vm_functions(void);
+
+#ifdef TEST_FRAMEWORK
+void ast_install_vm_test_functions(int (*vm_test_destroy_user)(const char *context, const char *mailbox),
+				   int (*vm_test_create_user)(const char *context, const char *mailbox));
+
+void ast_uninstall_vm_test_functions(void);
+#endif
+
+/*!
+ * \brief
+ * param[in] vm_rec_data Contains data needed to make the recording.
+ * retval 0 voicemail successfully created from recording.
+ * retval -1 Failure
+ */
+int ast_app_copy_recording_to_vm(struct ast_vm_recording_data *vm_rec_data);
 
 /*!
  * \brief Determine if a given mailbox has any voicemail
@@ -205,6 +451,131 @@ int ast_app_sayname(struct ast_channel *chan, const char *mailbox, const char *c
  * \return Number of messages in the given context, mailbox, and folder.  If folder is NULL, folder "INBOX" is assumed.  If folder is "INBOX", includes number of messages in the "Urgent" folder.
  */
 int ast_app_messagecount(const char *context, const char *mailbox, const char *folder);
+
+/*!
+ * \brief Return name of folder, given an id
+ * \param[in] id Folder id
+ * \return Name of folder
+ */
+const char *ast_vm_index_to_foldername(int id);
+
+/*
+ * \brief Create a snapshot of a mailbox which contains information about every msg.
+ *
+ * \param mailbox, the mailbox to look for
+ * \param context, the context to look for the mailbox in
+ * \param folder, OPTIONAL.  When not NULL only msgs from the specified folder will be included.
+ * \param desending, list the msgs in descending order rather than ascending order.
+ * \param combine_INBOX_and_OLD, When this argument is set, The OLD folder will be represented
+ *        in the INBOX folder of the snapshot. This allows the snapshot to represent the
+ *        OLD and INBOX messages in sorted order merged together.
+ *
+ * \retval snapshot on success
+ * \retval NULL on failure
+ */
+struct ast_vm_mailbox_snapshot *ast_vm_mailbox_snapshot_create(const char *mailbox,
+	const char *context,
+	const char *folder,
+	int descending,
+	enum ast_vm_snapshot_sort_val sort_val,
+	int combine_INBOX_and_OLD);
+
+/*
+ * \brief destroy a snapshot
+ *
+ * \param mailbox_snapshot The snapshot to destroy.
+ * \retval NULL
+ */
+struct ast_vm_mailbox_snapshot *ast_vm_mailbox_snapshot_destroy(struct ast_vm_mailbox_snapshot *mailbox_snapshot);
+
+/*!
+ * \brief Move messages from one folder to another
+ *
+ * \param mailbox The mailbox to which the folders belong
+ * \param context The voicemail context for the mailbox
+ * \param num_msgs The number of messages to move
+ * \param oldfolder The folder from where messages should be moved
+ * \param old_msg_nums The message IDs of the messages to move
+ * \param newfolder The folder to which messages should be moved
+ * new folder. This array must be num_msgs sized.
+ *
+ * \retval -1 Failure
+ * \retval 0 Success
+ */
+int ast_vm_msg_move(const char *mailbox,
+	const char *context,
+	size_t num_msgs,
+	const char *oldfolder,
+	const char *old_msg_ids[],
+	const char *newfolder);
+
+/*!
+ * \brief Remove/delete messages from a mailbox folder.
+ *
+ * \param mailbox The mailbox from which to delete messages
+ * \param context The voicemail context for the mailbox
+ * \param num_msgs The number of messages to delete
+ * \param folder The folder from which to remove messages
+ * \param msgs The message IDs of the messages to delete
+ *
+ * \retval -1 Failure
+ * \retval 0 Success
+ */
+int ast_vm_msg_remove(const char *mailbox,
+	const char *context,
+	size_t num_msgs,
+	const char *folder,
+	const char *msgs[]);
+
+/*!
+ * \brief forward a message from one mailbox to another.
+ *
+ * \brief from_mailbox The original mailbox the message is being forwarded from
+ * \brief from_context The voicemail context of the from_mailbox
+ * \brief from_folder The folder from which the message is being forwarded
+ * \brief to_mailbox The mailbox to forward the message to
+ * \brief to_context The voicemail context of the to_mailbox
+ * \brief to_folder The folder to which the message is being forwarded
+ * \brief num_msgs The number of messages being forwarded
+ * \brief msg_ids The message IDs of the messages in from_mailbox to forward
+ * \brief delete_old If non-zero, the forwarded messages are also deleted from from_mailbox.
+ * Otherwise, the messages will remain in the from_mailbox.
+ *
+ * \retval -1 Failure
+ * \retval 0 Success
+ */
+int ast_vm_msg_forward(const char *from_mailbox,
+	const char *from_context,
+	const char *from_folder,
+	const char *to_mailbox,
+	const char *to_context,
+	const char *to_folder,
+	size_t num_msgs,
+	const char *msg_ids[],
+	int delete_old);
+
+/*!
+ * \brief Play a voicemail msg back on a channel.
+ *
+ * \param mailbox msg is in.
+ * \param context of mailbox.
+ * \param voicemail folder to look in.
+ * \param message number in the voicemailbox to playback to the channel.
+ *
+ * \retval 0 success
+ * \retval -1 failure
+ */
+int ast_vm_msg_play(struct ast_channel *chan,
+	const char *mailbox,
+	const char *context,
+	const char *folder,
+	const char *msg_num,
+	ast_vm_msg_play_cb cb);
+
+#ifdef TEST_FRAMEWORK
+int ast_vm_test_destroy_user(const char *context, const char *mailbox);
+int ast_vm_test_create_user(const char *context, const char *mailbox);
+#endif
 
 /*! \brief Safely spawn an external program while closing file descriptors
 	\note This replaces the \b system call in all Asterisk modules
@@ -266,6 +637,29 @@ int ast_linear_stream(struct ast_channel *chan, const char *filename, int fd, in
  * playback stopped.  Pass NULL if you don't care.
  */
 int ast_control_streamfile(struct ast_channel *chan, const char *file, const char *fwd, const char *rev, const char *stop, const char *pause, const char *restart, int skipms, long *offsetms);
+
+/*!
+ * \brief Stream a file with fast forward, pause, reverse, restart.
+ * \param chan
+ * \param file filename
+ * \param fwd, rev, stop, pause, restart, skipms, offsetms
+ * \param waitstream callback to invoke when fastforward or rewind occurrs.
+ *
+ * Before calling this function, set this to be the number
+ * of ms to start from the beginning of the file.  When the function
+ * returns, it will be the number of ms from the beginning where the
+ * playback stopped.  Pass NULL if you don't care.
+ */
+int ast_control_streamfile_w_cb(struct ast_channel *chan,
+	const char *file,
+	const char *fwd,
+	const char *rev,
+	const char *stop,
+	const char *pause,
+	const char *restart,
+	int skipms,
+	long *offsetms,
+	ast_waitstream_fr_cb cb);
 
 /*! \brief Play a stream and wait for a digit, returning the digit that was pressed */
 int ast_play_and_wait(struct ast_channel *chan, const char *fn);
@@ -432,7 +826,7 @@ int ast_app_group_list_unlock(void);
   ast_app_separate_args() will perform that function before parsing
   the arguments.
  */
-#define AST_DECLARE_APP_ARGS(name, arglist) AST_DEFINE_APP_ARGS_TYPE(, arglist) name
+#define AST_DECLARE_APP_ARGS(name, arglist) AST_DEFINE_APP_ARGS_TYPE(, arglist) name = { 0, }
 
 /*!
   \brief Define a structure type to hold an application's arguments.

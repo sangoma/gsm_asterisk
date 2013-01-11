@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <sys/socket.h>
 #include <netdb.h>
@@ -185,12 +185,12 @@ static int send_waveform_to_channel(struct ast_channel *chan, char *waveform, in
 	}
 
 	/* Answer if it's not already going */
-	if (chan->_state != AST_STATE_UP)
+	if (ast_channel_state(chan) != AST_STATE_UP)
 		ast_answer(chan);
 	ast_stopstream(chan);
 	ast_indicate(chan, -1);
 	
-	ast_format_copy(&owriteformat, &chan->writeformat);
+	ast_format_copy(&owriteformat, ast_channel_writeformat(chan));
 	res = ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR);
 	if (res < 0) {
 		ast_log(LOG_WARNING, "Unable to set write format to signed linear\n");
@@ -344,12 +344,12 @@ static int festival_exec(struct ast_channel *chan, const char *vdata)
 		const char *endcmd = "\" 'file)(quit)\n";
 
 		strln = strlen(startcmd) + strlen(args.text) + strlen(endcmd) + 1;
-		newfestivalcommand = alloca(strln);
+		newfestivalcommand = ast_alloca(strln);
 		snprintf(newfestivalcommand, strln, "%s%s%s", startcmd, args.text, endcmd);
 		festivalcommand = newfestivalcommand;
 	} else { /* This else parses the festivalcommand that we're sent from the config file for \n's, etc */
 		int x, j;
-		newfestivalcommand = alloca(strlen(festivalcommand) + strlen(args.text) + 1);
+		newfestivalcommand = ast_alloca(strlen(festivalcommand) + strlen(args.text) + 1);
 
 		for (x = 0, j = 0; x < strlen(festivalcommand); x++) {
 			if (festivalcommand[x] == '\\' && festivalcommand[x + 1] == 'n') {

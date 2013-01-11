@@ -35,29 +35,17 @@
 #if defined(HAVE_PRI_CCSS)
 /*! PRI debug message flags when normal PRI debugging is turned on at the command line. */
 #define SIG_PRI_DEBUG_NORMAL	\
-	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_DUMP | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE \
-	| PRI_DEBUG_CC)
-
-/*! PRI debug message flags when intense PRI debugging is turned on at the command line. */
-#define SIG_PRI_DEBUG_INTENSE	\
-	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_DUMP | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE \
-	| PRI_DEBUG_CC | PRI_DEBUG_Q921_RAW | PRI_DEBUG_Q921_DUMP)
-
+	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE | PRI_DEBUG_CC)
 #else
 
 /*! PRI debug message flags when normal PRI debugging is turned on at the command line. */
 #define SIG_PRI_DEBUG_NORMAL	\
-	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_DUMP | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE)
-
-/*! PRI debug message flags when intense PRI debugging is turned on at the command line. */
-#define SIG_PRI_DEBUG_INTENSE	\
-	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_DUMP | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE \
-	| PRI_DEBUG_Q921_RAW | PRI_DEBUG_Q921_DUMP)
+	(PRI_DEBUG_APDU | PRI_DEBUG_Q931_STATE | PRI_DEBUG_Q921_STATE)
 #endif	/* !defined(HAVE_PRI_CCSS) */
 
 #if 0
 /*! PRI debug message flags set on initial startup. */
-#define SIG_PRI_DEBUG_DEFAULT	SIG_PRI_DEBUG_NORMAL
+#define SIG_PRI_DEBUG_DEFAULT	(SIG_PRI_DEBUG_NORMAL | PRI_DEBUG_Q931_DUMP)
 #else
 /*! PRI debug message flags set on initial startup. */
 #define SIG_PRI_DEBUG_DEFAULT	0
@@ -156,8 +144,31 @@ enum sig_pri_call_level {
 	SIG_PRI_CALL_LEVEL_PROCEEDING,
 	/*! Called party is being alerted of the call. (ALERTING) */
 	SIG_PRI_CALL_LEVEL_ALERTING,
+	/*! Call is dialing 'w' deferred digits. (CONNECT) */
+	SIG_PRI_CALL_LEVEL_DEFER_DIAL,
 	/*! Call is connected/answered. (CONNECT) */
 	SIG_PRI_CALL_LEVEL_CONNECT,
+};
+
+enum sig_pri_reset_state {
+	/*! \brief The channel is not being RESTARTed. */
+	SIG_PRI_RESET_IDLE,
+	/*!
+	 * \brief The channel is being RESTARTed.
+	 * \note Waiting for a RESTART ACKNOWLEDGE from the peer.
+	 */
+	SIG_PRI_RESET_ACTIVE,
+	/*!
+	 * \brief Peer may not be sending the expected RESTART ACKNOWLEDGE.
+	 *
+	 * \details We have already received a SETUP on this channel.
+	 * If another SETUP comes in on this channel then the peer
+	 * considers this channel useable.  Assume that the peer is
+	 * never going to give us a RESTART ACKNOWLEDGE and assume that
+	 * we have received one.  This is not according to Q.931, but
+	 * some peers occasionally fail to send a RESTART ACKNOWLEDGE.
+	 */
+	SIG_PRI_RESET_NO_ACK,
 };
 
 struct sig_pri_span;
@@ -190,6 +201,7 @@ struct sig_pri_callback {
 	void (* const set_alarm)(void *pvt, int in_alarm);
 	void (* const set_dialing)(void *pvt, int is_dialing);
 	void (* const set_digital)(void *pvt, int is_digital);
+	void (* const set_outgoing)(void *pvt, int is_outgoing);
 	void (* const set_callerid)(void *pvt, const struct ast_party_caller *caller);
 	void (* const set_dnid)(void *pvt, const char *dnid);
 	void (* const set_rdnis)(void *pvt, const char *rdnis);
@@ -199,6 +211,7 @@ struct sig_pri_callback {
 	const char *(* const get_orig_dialstring)(void *pvt);
 	void (* const make_cc_dialstring)(void *pvt, char *buf, size_t buf_size);
 	void (* const update_span_devstate)(struct sig_pri_span *pri);
+	void (* const dial_digits)(void *pvt, const char *dial_string);
 
 	void (* const open_media)(void *pvt);
 
@@ -217,6 +230,9 @@ struct sig_pri_callback {
 	/*! Unreference the parent module. */
 	void (*module_unref)(void);
 };
+
+/*! Global sig_pri callbacks to the upper layer. */
+extern struct sig_pri_callback sig_pri_callbacks;
 
 #define SIG_PRI_NUM_DCHANS		4		/*!< No more than 4 d-channels */
 #define SIG_PRI_MAX_CHANNELS	672		/*!< No more than a DS3 per trunk group */
@@ -290,6 +306,8 @@ struct sig_pri_chan {
 	/*! \brief Keypad digits that came in with the SETUP message. */
 	char keypad_digits[AST_MAX_EXTENSION];
 #endif	/* defined(HAVE_PRI_SETUP_KEYPAD) */
+	/*! 'w' deferred dialing digits. */
+	char deferred_digits[AST_MAX_EXTENSION];
 	/*! Music class suggested with AST_CONTROL_HOLD. */
 	char moh_suggested[MAX_MUSICCLASS];
 	enum sig_pri_moh_state moh_state;
@@ -305,7 +323,6 @@ struct sig_pri_chan {
 	unsigned int alreadyhungup:1;	/*!< TRUE if the call has already gone/hungup */
 	unsigned int isidlecall:1;		/*!< TRUE if this is an idle call */
 	unsigned int progress:1;		/*!< TRUE if the call has seen inband-information progress through the network */
-	unsigned int resetting:1;		/*!< TRUE if this channel is being reset/restarted */
 
 	/*!
 	 * \brief TRUE when this channel is allocated.
@@ -334,6 +351,8 @@ struct sig_pri_chan {
 
 	/*! Call establishment life cycle level for simple comparisons. */
 	enum sig_pri_call_level call_level;
+	/*! \brief Channel reset/restart state. */
+	enum sig_pri_reset_state resetting;
 	int prioffset;					/*!< channel number in span */
 	int logicalspan;				/*!< logical span number within trunk group */
 	int mastertrunkgroup;			/*!< what trunk group is our master */
@@ -342,7 +361,6 @@ struct sig_pri_chan {
 	unsigned service_status;
 #endif	/* defined(HAVE_PRI_SERVICE_MESSAGES) */
 
-	struct sig_pri_callback *calls;
 	void *chan_pvt;					/*!< Private structure of the user of this module. */
 #if defined(HAVE_PRI_REVERSE_CHARGE)
 	/*!
@@ -397,6 +415,15 @@ struct sig_pri_mbox {
 };
 #endif	/* defined(HAVE_PRI_MWI) */
 
+enum sig_pri_colp_signaling {
+	/*! Block all connected line updates. */
+	SIG_PRI_COLP_BLOCK,
+	/*! Only send connected line information with the CONNECT message. */
+	SIG_PRI_COLP_CONNECT,
+	/*! Allow all connected line updates. */
+	SIG_PRI_COLP_UPDATE,
+};
+
 struct sig_pri_span {
 	/* Should be set by user */
 	struct ast_cc_config_params *cc_params;			/*!< CC config parameters for each new call. */
@@ -436,6 +463,8 @@ struct sig_pri_span {
 	/*! \brief TRUE if we will allow incoming ISDN call waiting calls. */
 	unsigned int allow_call_waiting_calls:1;
 #endif	/* defined(HAVE_PRI_CALL_WAITING) */
+	/*! TRUE if layer 1 alarm status is ignored */
+	unsigned int layer1_ignored:1;
 	/*!
 	 * TRUE if a new call's sig_pri_chan.user_tag[] has the MSN
 	 * appended to the initial_user_tag[].
@@ -458,6 +487,8 @@ struct sig_pri_span {
 	char privateprefix[20];					/*!< for private dialplans */
 	char unknownprefix[20];					/*!< for unknown dialplans */
 	enum sig_pri_moh_signaling moh_signaling;
+	/*! Send connected line signaling to peer option. */
+	enum sig_pri_colp_signaling colp_send;
 	long resetinterval;						/*!< Interval (in seconds) for resetting unused channels */
 #if defined(HAVE_PRI_DISPLAY_TEXT)
 	unsigned long display_flags_send;		/*!< PRI_DISPLAY_OPTION_xxx flags for display text sending */
@@ -554,7 +585,6 @@ struct sig_pri_span {
 	pthread_t master;							/*!< Thread of master */
 	ast_mutex_t lock;							/*!< libpri access Mutex */
 	time_t lastreset;							/*!< time when unused channels were last reset */
-	struct sig_pri_callback *calls;
 	/*!
 	 * \brief Congestion device state of the span.
 	 * \details
@@ -589,7 +619,7 @@ struct sig_pri_span {
 };
 
 void sig_pri_extract_called_num_subaddr(struct sig_pri_chan *p, const char *rdest, char *called, size_t called_buff_size);
-int sig_pri_call(struct sig_pri_chan *p, struct ast_channel *ast, char *rdest, int timeout, int layer1);
+int sig_pri_call(struct sig_pri_chan *p, struct ast_channel *ast, const char *rdest, int timeout, int layer1);
 
 int sig_pri_hangup(struct sig_pri_chan *p, struct ast_channel *ast);
 
@@ -605,6 +635,7 @@ void sig_pri_init_pri(struct sig_pri_span *pri);
 /* If return 0, it means this function was able to handle it (pre setup digits).  If non zero, the user of this
  * functions should handle it normally (generate inband DTMF) */
 int sig_pri_digit_begin(struct sig_pri_chan *pvt, struct ast_channel *ast, char digit);
+void sig_pri_dial_complete(struct sig_pri_chan *pvt, struct ast_channel *ast);
 
 void sig_pri_stop_pri(struct sig_pri_span *pri);
 int sig_pri_start_pri(struct sig_pri_span *pri);
@@ -612,13 +643,13 @@ int sig_pri_start_pri(struct sig_pri_span *pri);
 void sig_pri_set_alarm(struct sig_pri_chan *p, int in_alarm);
 void sig_pri_chan_alarm_notify(struct sig_pri_chan *p, int noalarm);
 
+int sig_pri_is_alarm_ignored(struct sig_pri_span *pri);
 void pri_event_alarm(struct sig_pri_span *pri, int index, int before_start_pri);
-
 void pri_event_noalarm(struct sig_pri_span *pri, int index, int before_start_pri);
 
 struct ast_channel *sig_pri_request(struct sig_pri_chan *p, enum sig_pri_law law, const struct ast_channel *requestor, int transfercapability);
 
-struct sig_pri_chan *sig_pri_chan_new(void *pvt_data, struct sig_pri_callback *callback, struct sig_pri_span *pri, int logicalspan, int channo, int trunkgroup);
+struct sig_pri_chan *sig_pri_chan_new(void *pvt_data, struct sig_pri_span *pri, int logicalspan, int channo, int trunkgroup);
 void sig_pri_chan_delete(struct sig_pri_chan *doomed);
 
 int pri_is_up(struct sig_pri_span *pri);

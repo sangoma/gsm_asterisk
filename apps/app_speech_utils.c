@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362817 $");
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -53,6 +53,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 			<para>This application creates information to be used by all the other applications.
 			It must be called before doing any speech recognition activities such as activating a grammar.
 			It takes the engine name to use as the argument, if not specified the default engine will be used.</para>
+			<para>Sets the ERROR channel variable to 1 if the engine cannot be used.</para>
 		</description>
 	</application>
 	<application name="SpeechActivateGrammar" language="en_US">
@@ -66,6 +67,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 			<para>This activates the specified grammar to be recognized by the engine.
 			A grammar tells the speech recognition engine what to recognize, and how to portray it back to you
 			in the dialplan. The grammar name is the only argument to this application.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechStart" language="en_US">
@@ -76,6 +78,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 		<description>
 			<para>Tell the speech recognition engine that it should start trying to get results from audio being
 			fed to it.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechBackground" language="en_US">
@@ -104,6 +107,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 			<para>The first text and score are ${SPEECH_TEXT(0)} AND ${SPEECH_SCORE(0)} while the second are ${SPEECH_TEXT(1)}
 			and ${SPEECH_SCORE(1)}.</para>
 			<para>The first argument is the sound file and the second is the timeout integer in seconds.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 			
 		</description>
 	</application>
@@ -118,6 +122,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 		</syntax>
 		<description>
 			<para>This deactivates the specified grammar so that it is no longer recognized.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechProcessingSound" language="en_US">
@@ -130,6 +135,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 		<description>
 			<para>This changes the processing sound that SpeechBackground plays back when the speech recognition engine is
 			processing and working to get results.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechDestroy" language="en_US">
@@ -141,6 +147,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 			<para>This destroys the information used by all the other speech recognition applications.
 			If you call this application but end up wanting to recognize more speech, you must call SpeechCreate()
 			again before calling any other application.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechLoadGrammar" language="en_US">
@@ -153,6 +160,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 		</syntax>
 		<description>
 			<para>Load a grammar only on the channel, not globally.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<application name="SpeechUnloadGrammar" language="en_US">
@@ -164,6 +172,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
 		</syntax>
 		<description>
 			<para>Unload a grammar.</para>
+			<para>Hangs up the channel on failure. If this is not desired, use TryExec.</para>
 		</description>
 	</application>
 	<function name="SPEECH_SCORE" language="en_US">
@@ -491,7 +500,7 @@ static int speech_create(struct ast_channel *chan, const char *data)
 	struct ast_datastore *datastore = NULL;
 
 	/* Request a speech object */
-	speech = ast_speech_new(data, chan->nativeformats);
+	speech = ast_speech_new(data, ast_channel_nativeformats(chan));
 	if (speech == NULL) {
 		/* Not available */
 		pbx_builtin_setvar_helper(chan, "ERROR", "1");
@@ -672,13 +681,13 @@ static int speech_background(struct ast_channel *chan, const char *data)
 	}
 
 	/* If channel is not already answered, then answer it */
-	if (chan->_state != AST_STATE_UP && !ast_test_flag(&options, SB_OPT_NOANSWER)
+	if (ast_channel_state(chan) != AST_STATE_UP && !ast_test_flag(&options, SB_OPT_NOANSWER)
 		&& ast_answer(chan)) {
 			return -1;
 	}
 
 	/* Record old read format */
-	ast_format_copy(&oldreadformat, &chan->readformat);
+	ast_format_copy(&oldreadformat, ast_channel_readformat(chan));
 
 	/* Change read format to be signed linear */
 	if (ast_set_read_format(chan, &speech->format))
@@ -721,18 +730,18 @@ static int speech_background(struct ast_channel *chan, const char *data)
 	/* Okay it's streaming so go into a loop grabbing frames! */
 	while (done == 0) {
 		/* If the filename is null and stream is not running, start up a new sound file */
-		if (!quieted && (chan->streamid == -1 && chan->timingfunc == NULL) && (filename = strsep(&filename_tmp, "&"))) {
+		if (!quieted && (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) && (filename = strsep(&filename_tmp, "&"))) {
 			/* Discard old stream information */
 			ast_stopstream(chan);
 			/* Start new stream */
-			speech_streamfile(chan, filename, chan->language);
+			speech_streamfile(chan, filename, ast_channel_language(chan));
 		}
 
 		/* Run scheduled stuff */
-		ast_sched_runq(chan->sched);
+		ast_sched_runq(ast_channel_sched(chan));
 
 		/* Yay scheduling */
-		res = ast_sched_wait(chan->sched);
+		res = ast_sched_wait(ast_channel_sched(chan));
 		if (res < 0)
 			res = 1000;
 
@@ -760,7 +769,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 		/* Do checks on speech structure to see if it's changed */
 		ast_mutex_lock(&speech->lock);
 		if (ast_test_flag(speech, AST_SPEECH_QUIET)) {
-			if (chan->stream)
+			if (ast_channel_stream(chan))
 				ast_stopstream(chan);
 			ast_clear_flag(speech, AST_SPEECH_QUIET);
 			quieted = 1;
@@ -769,9 +778,9 @@ static int speech_background(struct ast_channel *chan, const char *data)
 		switch (speech->state) {
 		case AST_SPEECH_STATE_READY:
 			/* If audio playback has stopped do a check for timeout purposes */
-			if (chan->streamid == -1 && chan->timingfunc == NULL)
+			if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL)
 				ast_stopstream(chan);
-			if (!quieted && chan->stream == NULL && timeout && started == 0 && !filename_tmp) {
+			if (!quieted && ast_channel_stream(chan) == NULL && timeout && started == 0 && !filename_tmp) {
 				if (timeout == -1) {
 					done = 1;
 					if (f)
@@ -789,17 +798,17 @@ static int speech_background(struct ast_channel *chan, const char *data)
 		case AST_SPEECH_STATE_WAIT:
 			/* Cue up waiting sound if not already playing */
 			if (!strlen(dtmf)) {
-				if (chan->stream == NULL) {
+				if (ast_channel_stream(chan) == NULL) {
 					if (speech->processing_sound != NULL) {
 						if (strlen(speech->processing_sound) > 0 && strcasecmp(speech->processing_sound, "none")) {
-							speech_streamfile(chan, speech->processing_sound, chan->language);
+							speech_streamfile(chan, speech->processing_sound, ast_channel_language(chan));
 						}
 					}
-				} else if (chan->streamid == -1 && chan->timingfunc == NULL) {
+				} else if (ast_channel_streamid(chan) == -1 && ast_channel_timingfunc(chan) == NULL) {
 					ast_stopstream(chan);
 					if (speech->processing_sound != NULL) {
 						if (strlen(speech->processing_sound) > 0 && strcasecmp(speech->processing_sound, "none")) {
-							speech_streamfile(chan, speech->processing_sound, chan->language);
+							speech_streamfile(chan, speech->processing_sound, ast_channel_language(chan));
 						}
 					}
 				}
@@ -814,7 +823,7 @@ static int speech_background(struct ast_channel *chan, const char *data)
 				/* Break out of our background too */
 				done = 1;
 				/* Stop audio playback */
-				if (chan->stream != NULL) {
+				if (ast_channel_stream(chan) != NULL) {
 					ast_stopstream(chan);
 				}
 			}
@@ -833,12 +842,12 @@ static int speech_background(struct ast_channel *chan, const char *data)
 					done = 1;
 				} else {
 					quieted = 1;
-					if (chan->stream != NULL) {
+					if (ast_channel_stream(chan) != NULL) {
 						ast_stopstream(chan);
 					}
 					if (!started) {
 						/* Change timeout to be 5 seconds for DTMF input */
-						timeout = (chan->pbx && chan->pbx->dtimeoutms) ? chan->pbx->dtimeoutms : 5000;
+						timeout = (ast_channel_pbx(chan) && ast_channel_pbx(chan)->dtimeoutms) ? ast_channel_pbx(chan)->dtimeoutms : 5000;
 						started = 1;
 					}
 					start = ast_tvnow();

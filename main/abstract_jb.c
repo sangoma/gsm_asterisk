@@ -29,9 +29,13 @@
  *
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 314509 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370387 $")
 
 #include "asterisk/frame.h"
 #include "asterisk/channel.h"
@@ -52,7 +56,7 @@ enum {
 
 /* Implementation functions */
 /* fixed */
-static void *jb_create_fixed(struct ast_jb_conf *general_config, long resynch_threshold);
+static void *jb_create_fixed(struct ast_jb_conf *general_config);
 static void jb_destroy_fixed(void *jb);
 static int jb_put_first_fixed(void *jb, struct ast_frame *fin, long now);
 static int jb_put_fixed(void *jb, struct ast_frame *fin, long now);
@@ -62,7 +66,7 @@ static int jb_remove_fixed(void *jb, struct ast_frame **fout);
 static void jb_force_resynch_fixed(void *jb);
 static void jb_empty_and_reset_fixed(void *jb);
 /* adaptive */
-static void * jb_create_adaptive(struct ast_jb_conf *general_config, long resynch_threshold);
+static void * jb_create_adaptive(struct ast_jb_conf *general_config);
 static void jb_destroy_adaptive(void *jb);
 static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now);
 static int jb_put_adaptive(void *jb, struct ast_frame *fin, long now);
@@ -134,7 +138,7 @@ static long get_now(struct ast_jb *jb, struct timeval *tv);
 
 static void jb_choose_impl(struct ast_channel *chan)
 {
-	struct ast_jb *jb = &chan->jb;
+	struct ast_jb *jb = ast_channel_jb(chan);
 	struct ast_jb_conf *jbconf = &jb->conf;
 	const struct ast_jb_impl *test_impl;
 	int i, avail_impl_count = ARRAY_LEN(avail_impl);
@@ -156,18 +160,18 @@ static void jb_choose_impl(struct ast_channel *chan)
 
 int ast_jb_do_usecheck(struct ast_channel *c0, struct ast_channel *c1)
 {
-	struct ast_jb *jb0 = &c0->jb;
-	struct ast_jb *jb1 = &c1->jb;
+	struct ast_jb *jb0 = ast_channel_jb(c0);
+	struct ast_jb *jb1 = ast_channel_jb(c1);
 	struct ast_jb_conf *conf0 = &jb0->conf;
 	struct ast_jb_conf *conf1 = &jb1->conf;
-	int c0_wants_jitter = c0->tech->properties & AST_CHAN_TP_WANTSJITTER;
-	int c0_creates_jitter = c0->tech->properties & AST_CHAN_TP_CREATESJITTER;
+	int c0_wants_jitter = ast_channel_tech(c0)->properties & AST_CHAN_TP_WANTSJITTER;
+	int c0_creates_jitter = ast_channel_tech(c0)->properties & AST_CHAN_TP_CREATESJITTER;
 	int c0_jb_enabled = ast_test_flag(conf0, AST_JB_ENABLED);
 	int c0_force_jb = ast_test_flag(conf0, AST_JB_FORCED);
 	int c0_jb_timebase_initialized = ast_test_flag(jb0, JB_TIMEBASE_INITIALIZED);
 	int c0_jb_created = ast_test_flag(jb0, JB_CREATED);
-	int c1_wants_jitter = c1->tech->properties & AST_CHAN_TP_WANTSJITTER;
-	int c1_creates_jitter = c1->tech->properties & AST_CHAN_TP_CREATESJITTER;
+	int c1_wants_jitter = ast_channel_tech(c1)->properties & AST_CHAN_TP_WANTSJITTER;
+	int c1_creates_jitter = ast_channel_tech(c1)->properties & AST_CHAN_TP_CREATESJITTER;
 	int c1_jb_enabled = ast_test_flag(conf1, AST_JB_ENABLED);
 	int c1_force_jb = ast_test_flag(conf1, AST_JB_FORCED);
 	int c1_jb_timebase_initialized = ast_test_flag(jb1, JB_TIMEBASE_INITIALIZED);
@@ -217,8 +221,8 @@ int ast_jb_do_usecheck(struct ast_channel *c0, struct ast_channel *c1)
 
 int ast_jb_get_when_to_wakeup(struct ast_channel *c0, struct ast_channel *c1, int time_left)
 {
-	struct ast_jb *jb0 = &c0->jb;
-	struct ast_jb *jb1 = &c1->jb;
+	struct ast_jb *jb0 = ast_channel_jb(c0);
+	struct ast_jb *jb1 = ast_channel_jb(c1);
 	int c0_use_jb = ast_test_flag(jb0, JB_USE);
 	int c0_jb_is_created = ast_test_flag(jb0, JB_CREATED);
 	int c1_use_jb = ast_test_flag(jb1, JB_USE);
@@ -257,7 +261,7 @@ int ast_jb_get_when_to_wakeup(struct ast_channel *c0, struct ast_channel *c1, in
 
 int ast_jb_put(struct ast_channel *chan, struct ast_frame *f)
 {
-	struct ast_jb *jb = &chan->jb;
+	struct ast_jb *jb = ast_channel_jb(chan);
 	const struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *frr;
@@ -279,14 +283,14 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f)
 	if (!ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO) || f->len < 2 || f->ts < 0) {
 		ast_log(LOG_WARNING, "%s received frame with invalid timing info: "
 			"has_timing_info=%d, len=%ld, ts=%ld, src=%s\n",
-			chan->name, ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO), f->len, f->ts, f->src);
+			ast_channel_name(chan), ast_test_flag(f, AST_FRFLAG_HAS_TIMING_INFO), f->len, f->ts, f->src);
 		return -1;
 	}
 
 	frr = ast_frdup(f);
 
 	if (!frr) {
-		ast_log(LOG_ERROR, "Failed to isolate frame for the jitterbuffer on channel '%s'\n", chan->name);
+		ast_log(LOG_ERROR, "Failed to isolate frame for the jitterbuffer on channel '%s'\n", ast_channel_name(chan));
 		return -1;
 	}
 
@@ -322,8 +326,8 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f)
 
 void ast_jb_get_and_deliver(struct ast_channel *c0, struct ast_channel *c1)
 {
-	struct ast_jb *jb0 = &c0->jb;
-	struct ast_jb *jb1 = &c1->jb;
+	struct ast_jb *jb0 = ast_channel_jb(c0);
+	struct ast_jb *jb1 = ast_channel_jb(c1);
 	int c0_use_jb = ast_test_flag(jb0, JB_USE);
 	int c0_jb_is_created = ast_test_flag(jb0, JB_CREATED);
 	int c1_use_jb = ast_test_flag(jb1, JB_USE);
@@ -339,7 +343,7 @@ void ast_jb_get_and_deliver(struct ast_channel *c0, struct ast_channel *c1)
 
 static void jb_get_and_deliver(struct ast_channel *chan)
 {
-	struct ast_jb *jb = &chan->jb;
+	struct ast_jb *jb = ast_channel_jb(chan);
 	const struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *f, finterp = { .frametype = AST_FRAME_VOICE, };
@@ -399,7 +403,7 @@ static void jb_get_and_deliver(struct ast_channel *chan)
 
 static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 {
-	struct ast_jb *jb = &chan->jb;
+	struct ast_jb *jb = ast_channel_jb(chan);
 	struct ast_jb_conf *jbconf = &jb->conf;
 	const struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj;
@@ -409,9 +413,9 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 	char name1[AST_CHANNEL_NAME], name2[AST_CHANNEL_NAME], *tmp;
 	int res;
 
-	jbobj = jb->jbobj = jbimpl->create(jbconf, jbconf->resync_threshold);
+	jbobj = jb->jbobj = jbimpl->create(jbconf);
 	if (!jbobj) {
-		ast_log(LOG_WARNING, "Failed to create jitterbuffer on channel '%s'\n", chan->name);
+		ast_log(LOG_WARNING, "Failed to create jitterbuffer on channel '%s'\n", ast_channel_name(chan));
 		return -1;
 	}
 
@@ -421,7 +425,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 	/* The result of putting the first frame should not differ from OK. However, its possible
 	   some implementations (i.e. adaptive's when resynch_threshold is specified) to drop it. */
 	if (res != AST_JB_IMPL_OK) {
-		ast_log(LOG_WARNING, "Failed to put first frame in the jitterbuffer on channel '%s'\n", chan->name);
+		ast_log(LOG_WARNING, "Failed to put first frame in the jitterbuffer on channel '%s'\n", ast_channel_name(chan));
 		/*
 		jbimpl->destroy(jbobj);
 		return -1;
@@ -438,7 +442,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 	if (ast_test_flag(jbconf, AST_JB_LOG)) {
 		char safe_logfile[30] = "/tmp/logfile-XXXXXX";
 		int safe_fd;
-		snprintf(name2, sizeof(name2), "%s", chan->name);
+		snprintf(name2, sizeof(name2), "%s", ast_channel_name(chan));
 		if ((tmp = strchr(name2, '/'))) {
 			*tmp = '#';
 		}
@@ -447,7 +451,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 		/* We should always have bridged chan if a jitterbuffer is in use */
 		ast_assert(bridged != NULL);
 
-		snprintf(name1, sizeof(name1), "%s", bridged->name);
+		snprintf(name1, sizeof(name1), "%s", ast_channel_name(bridged));
 		if ((tmp = strchr(name1, '/'))) {
 			*tmp = '#';
 		}
@@ -473,7 +477,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 		}
 	}
 
-	ast_verb(3, "%s jitterbuffer created on channel %s\n", jbimpl->name, chan->name);
+	ast_verb(3, "%s jitterbuffer created on channel %s\n", jbimpl->name, ast_channel_name(chan));
 
 	/* Free the frame if it has not been queued in the jb */
 	if (res != AST_JB_IMPL_OK) {
@@ -486,7 +490,7 @@ static int create_jb(struct ast_channel *chan, struct ast_frame *frr)
 
 void ast_jb_destroy(struct ast_channel *chan)
 {
-	struct ast_jb *jb = &chan->jb;
+	struct ast_jb *jb = ast_channel_jb(chan);
 	const struct ast_jb_impl *jbimpl = jb->impl;
 	void *jbobj = jb->jbobj;
 	struct ast_frame *f;
@@ -507,7 +511,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 
 		ast_clear_flag(jb, JB_CREATED);
 
-		ast_verb(3, "%s jitterbuffer destroyed on channel %s\n", jbimpl->name, chan->name);
+		ast_verb(3, "%s jitterbuffer destroyed on channel %s\n", jbimpl->name, ast_channel_name(chan));
 	}
 }
 
@@ -566,19 +570,19 @@ int ast_jb_read_conf(struct ast_jb_conf *conf, const char *varname, const char *
 
 void ast_jb_configure(struct ast_channel *chan, const struct ast_jb_conf *conf)
 {
-	memcpy(&chan->jb.conf, conf, sizeof(*conf));
+	memcpy(&ast_channel_jb(chan)->conf, conf, sizeof(*conf));
 }
 
 
 void ast_jb_get_config(const struct ast_channel *chan, struct ast_jb_conf *conf)
 {
-	memcpy(conf, &chan->jb.conf, sizeof(*conf));
+	memcpy(conf, &ast_channel_jb((struct ast_channel *) chan)->conf, sizeof(*conf));
 }
 
 void ast_jb_empty_and_reset(struct ast_channel *c0, struct ast_channel *c1)
 {
-	struct ast_jb *jb0 = &c0->jb;
-	struct ast_jb *jb1 = &c1->jb;
+	struct ast_jb *jb0 = ast_channel_jb(c0);
+	struct ast_jb *jb1 = ast_channel_jb(c1);
 	int c0_use_jb = ast_test_flag(jb0, JB_USE);
 	int c0_jb_is_created = ast_test_flag(jb0, JB_CREATED);
 	int c1_use_jb = ast_test_flag(jb1, JB_USE);
@@ -596,12 +600,12 @@ void ast_jb_empty_and_reset(struct ast_channel *c0, struct ast_channel *c1)
 /* Implementation functions */
 
 /* fixed */
-static void * jb_create_fixed(struct ast_jb_conf *general_config, long resynch_threshold)
+static void * jb_create_fixed(struct ast_jb_conf *general_config)
 {
 	struct fixed_jb_conf conf;
 
 	conf.jbsize = general_config->max_size;
-	conf.resync_threshold = resynch_threshold;
+	conf.resync_threshold = general_config->resync_threshold;
 
 	return fixed_jb_new(&conf);
 }
@@ -609,6 +613,9 @@ static void * jb_create_fixed(struct ast_jb_conf *general_config, long resynch_t
 static void jb_destroy_fixed(void *jb)
 {
 	struct fixed_jb *fixedjb = (struct fixed_jb *) jb;
+
+	/* Ensure the fixed jb is empty - otherwise it will raise an ASSERT */
+	jb_empty_and_reset_fixed(jb);
 
 	/* destroy the jb */
 	fixed_jb_destroy(fixedjb);
@@ -690,7 +697,7 @@ static void jb_empty_and_reset_fixed(void *jb)
 
 /* adaptive */
 
-static void *jb_create_adaptive(struct ast_jb_conf *general_config, long resynch_threshold)
+static void *jb_create_adaptive(struct ast_jb_conf *general_config)
 {
 	jb_conf jbconf;
 	jitterbuf *adaptivejb;
@@ -718,11 +725,6 @@ static void jb_destroy_adaptive(void *jb)
 
 static int jb_put_first_adaptive(void *jb, struct ast_frame *fin, long now)
 {
-	jitterbuf *adaptivejb = (jitterbuf *) jb;
-
-	/* Initialize the offset to that of the first frame's timestamp */
-	adaptivejb->info.resync_offset = fin->ts;
-
 	return jb_put_adaptive(jb, fin, now);
 }
 

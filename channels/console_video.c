@@ -30,14 +30,18 @@
  * thus not compiling in AST_DEVMODE, or don't have swscale, in which case
  * you can try to compile #defining OLD_FFMPEG here.
  *
- * $Revision: 284598 $
+ * $Revision: 369013 $
  */
 
 //#define DROP_PACKETS 5       /* if set, drop this % of video packets */
 //#define OLD_FFMPEG	1	/* set for old ffmpeg with no swscale */
 
+/*** MODULEINFO
+	<support_level>extended</support_level>
+ ***/
+
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284598 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 #include <sys/ioctl.h>
 #include "asterisk/cli.h"
 #include "asterisk/file.h"
@@ -657,7 +661,7 @@ static void my_scale(struct fbuf_t *in, AVPicture *p_in,
 			eff_w, eff_h, out->pix_fmt,
 			SWS_BICUBIC, NULL, NULL, NULL);
 		if (convert_ctx == NULL) {
-			ast_log(LOG_ERROR, "FFMPEG::convert_cmodel : swscale context initialization failed");
+			ast_log(LOG_ERROR, "FFMPEG::convert_cmodel : swscale context initialization failed\n");
 			return;
 		}
 		if (0)
@@ -972,26 +976,24 @@ static void *video_thread(void *arg)
 			}
 			continue;
 		}
-		fd = chan->alertpipe[1];
 		ast_channel_lock(chan);
 
 		/* AST_LIST_INSERT_TAIL is only good for one frame, cannot use here */
-		if (chan->readq.first == NULL) {
-			chan->readq.first = f;
+		if (ast_channel_readq(chan).first == NULL) {
+			ast_channel_readq(chan).first = f;
 		} else {
-			chan->readq.last->frame_list.next = f;
+			ast_channel_readq(chan).last->frame_list.next = f;
 		}
-		chan->readq.last = p;
+		ast_channel_readq(chan).last = p;
 		/*
 		 * more or less same as ast_queue_frame, but extra
 		 * write on the alertpipe to signal frames.
 		 */
-		if (fd > -1) {
-			int blah = 1, l = sizeof(blah);
+		if (ast_channel_alertable(chan)) {
 			for (p = f; p; p = AST_LIST_NEXT(p, frame_list)) {
-				if (write(fd, &blah, l) != l)
+				if (ast_channel_alert(chan)) {
 					ast_log(LOG_WARNING, "Unable to write to alert pipe on %s, frametype/subclass %d/%d: %s!\n",
-						chan->name, f->frametype, f->subclass, strerror(errno));
+						ast_channel_name(chan), f->frametype, f->subclass, strerror(errno));
 			}
 		}
 		ast_channel_unlock(chan);

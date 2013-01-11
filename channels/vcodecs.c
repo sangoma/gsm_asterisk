@@ -16,8 +16,12 @@
 
 /*
  * Video codecs support for console_video.c
- * $Revision: 196072 $
+ * $Revision: 369013 $
  */
+
+/*** MODULEINFO
+	<support_level>extended</support_level>
+ ***/
 
 #include "asterisk.h"
 #include "console_video.h"
@@ -1131,8 +1135,9 @@ static enum CodecID map_video_format(uint32_t ast_format, int rw)
 	struct _cm *i;
 
 	for (i = video_formats; i->ast_format != 0; i++)
-		if (ast_format & i->ast_format && rw & i->rw && rw & i->rw)
+		if (ast_format & i->ast_format && rw & i->rw) {
 			return i->codec;
+		}
 	return CODEC_ID_NONE;
 }
 

@@ -37,7 +37,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369142 $")
 
 #include <signal.h>
 
@@ -97,7 +97,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 static const char app[] = "ExternalIVR";
 
 /* XXX the parser in gcc 2.95 gets confused if you don't put a space between 'name' and the comma */
-#define ast_chan_log(level, channel, format, ...) ast_log(level, "%s: " format, channel->name , ## __VA_ARGS__)
+#define ast_chan_log(level, channel, format, ...) ast_log(level, "%s: " format, ast_channel_name(channel) , ## __VA_ARGS__)
 
 /* Commands */
 #define EIVR_CMD_APND 'A' /* append to prompt queue */
@@ -105,6 +105,7 @@ static const char app[] = "ExternalIVR";
 #define EIVR_CMD_EXIT 'E' /* exit */
 #define EIVR_CMD_GET  'G' /* get channel varable(s) */
 #define EIVR_CMD_HGUP 'H' /* hangup */
+#define EIVR_CMD_IRPT 'I' /* interrupt */
 #define EIVR_CMD_LOG  'L' /* log message */
 #define EIVR_CMD_OPT  'O' /* option */
 #define EIVR_CMD_PARM 'P' /* return supplied params */
@@ -112,6 +113,8 @@ static const char app[] = "ExternalIVR";
 #define EIVR_CMD_ANS  'T' /* answer channel */
 #define EIVR_CMD_SVAR 'V' /* set channel varable(s) */
 #define EIVR_CMD_XIT  'X' /* exit **depricated** */
+
+#define EXTERNALIVR_PORT 2949
 
 enum options_flags {
 	noanswer = (1 << 0),
@@ -152,8 +155,6 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
 	int *eivr_events_fd, int *eivr_commands_fd, int *eivr_errors_fd, 
 	const struct ast_str *args, const struct ast_flags flags);
 
-int eivr_connect_socket(struct ast_channel *chan, const char *host, int port);
-
 static void send_eivr_event(FILE *handle, const char event, const char *data,
 	const struct ast_channel *chan)
 {
@@ -188,7 +189,7 @@ static void gen_closestream(struct gen_state *state)
 		return;
 
 	ast_closestream(state->stream);
-	state->u->chan->stream = NULL;
+	ast_channel_stream_set(state->u->chan, NULL);
 	state->stream = NULL;
 }
 
@@ -219,7 +220,7 @@ static int gen_nextfile(struct gen_state *state)
 			u->playing_silence = 1;
 		}
 
-		if (!(state->stream = ast_openstream_full(u->chan, file_to_stream, u->chan->language, 1))) {
+		if (!(state->stream = ast_openstream_full(u->chan, file_to_stream, ast_channel_language(u->chan), 1))) {
 			ast_chan_log(LOG_WARNING, u->chan, "File '%s' could not be opened: %s\n", file_to_stream, strerror(errno));
 			AST_LIST_LOCK(&u->playlist);
 			AST_LIST_REMOVE_HEAD(&u->playlist, list);
@@ -293,9 +294,9 @@ static int gen_generate(struct ast_channel *chan, void *data, int len, int sampl
 
 static struct ast_generator gen =
 {
-	alloc: gen_alloc,
-	release: gen_release,
-	generate: gen_generate,
+	.alloc = gen_alloc,
+	.release = gen_release,
+	.generate = gen_generate,
 };
 
 static void ast_eivr_getvariable(struct ast_channel *chan, char *data, char *outbuf, int outbuflen)
@@ -397,9 +398,6 @@ static int app_exec(struct ast_channel *chan, const char *data)
 	int res = -1;
 	int pid;
 
-	char hostname[1024];
-	char *port_str = NULL;
-	int port = 0;
 	struct ast_tcptls_session_instance *ser = NULL;
 
 	struct ivr_localuser foo = {
@@ -477,7 +475,7 @@ static int app_exec(struct ast_channel *chan, const char *data)
 	
 	if (!(ast_test_flag(&flags, noanswer))) {
 		ast_verb(3, "Answering channel and starting generator\n");
-		if (chan->_state != AST_STATE_UP) {
+		if (ast_channel_state(chan) != AST_STATE_UP) {
 			if (ast_test_flag(&flags, run_dead)) {
 				ast_chan_log(LOG_ERROR, chan, "Running ExternalIVR with 'd'ead flag on non-hungup channel isn't supported\n");
 				goto exit;
@@ -492,34 +490,40 @@ static int app_exec(struct ast_channel *chan, const char *data)
 		}
 	}
 
-	if (!strncmp(app_args[0], "ivr://", 6)) {
+	if (!strncmp(app_args[0], "ivr://", sizeof("ivr://") - 1)) {
 		struct ast_tcptls_session_args ivr_desc = {
 			.accept_fd = -1,
 			.name = "IVR",
 		};
-		struct ast_hostent hp;
-		struct sockaddr_in remote_address_tmp;
+		struct ast_sockaddr *addrs;
+		int num_addrs = 0, i = 0;
+		char *host = app_args[0] + sizeof("ivr://") - 1;
 
-		/*communicate through socket to server*/
-		ast_debug(1, "Parsing hostname:port for socket connect from \"%s\"\n", app_args[0]);
-		ast_copy_string(hostname, app_args[0] + 6, sizeof(hostname));
-		if ((port_str = strchr(hostname, ':')) != NULL) {
-			port_str[0] = 0;
-			port_str += 1;
-			port = atoi(port_str);
-		}
-		if (!port) {
-			port = 2949;  /* default port, if one is not provided */
-		}
+		/* Communicate through socket to server */
+		ast_debug(1, "Parsing hostname/port for socket connect from \"%s\"\n", host);
 
-		ast_gethostbyname(hostname, &hp);
-		remote_address_tmp.sin_family = AF_INET;
-		remote_address_tmp.sin_port = htons(port);
-		memcpy(&remote_address_tmp.sin_addr.s_addr, hp.hp.h_addr, sizeof(hp.hp.h_addr));
-		ast_sockaddr_from_sin(&ivr_desc.remote_address, &remote_address_tmp);
-		if (!(ser = ast_tcptls_client_create(&ivr_desc)) || !(ser = ast_tcptls_client_start(ser))) {
+		if (!(num_addrs = ast_sockaddr_resolve(&addrs, host, 0, AST_AF_UNSPEC))) {
+			ast_chan_log(LOG_ERROR, chan, "Unable to locate host '%s'\n", host);
 			goto exit;
 		}
+
+		for (i = 0; i < num_addrs; i++) {
+			if (!ast_sockaddr_port(&addrs[i])) {
+				/* Default port if not specified */
+				ast_sockaddr_set_port(&addrs[i], EXTERNALIVR_PORT);
+			}
+			ast_sockaddr_copy(&ivr_desc.remote_address, &addrs[i]);
+			if (!(ser = ast_tcptls_client_create(&ivr_desc)) || !(ser = ast_tcptls_client_start(ser))) {
+				continue;
+			}
+			break;
+		}
+
+		if (i == num_addrs) {
+			ast_chan_log(LOG_ERROR, chan, "Could not connect to any host.  ExternalIVR failed.\n");
+			goto exit;
+		}
+
 		res = eivr_comm(chan, u, &ser->fd, &ser->fd, NULL, comma_delim_args, flags);
 
 	} else {
@@ -640,7 +644,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
 	}
 
  	while (1) {
- 		if (ast_test_flag(chan, AST_FLAG_ZOMBIE)) {
+ 		if (ast_test_flag(ast_channel_flags(chan), AST_FLAG_ZOMBIE)) {
  			ast_chan_log(LOG_ERROR, chan, "Is a zombie\n");
  			break;
  		}
@@ -663,7 +667,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
  
  		rchan = ast_waitfor_nandfds(&chan, 1, waitfds, (eivr_errors_fd) ? 2 : 1, &exception, &ready_fd, &ms);
  
- 		if (chan->_state == AST_STATE_UP && !AST_LIST_EMPTY(&u->finishlist)) {
+ 		if (ast_channel_state(chan) == AST_STATE_UP && !AST_LIST_EMPTY(&u->finishlist)) {
  			AST_LIST_LOCK(&u->finishlist);
  			while ((entry = AST_LIST_REMOVE_HEAD(&u->finishlist, list))) {
  				send_eivr_event(eivr_events, 'F', entry->filename, chan);
@@ -672,7 +676,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
  			AST_LIST_UNLOCK(&u->finishlist);
  		}
  
- 		if (chan->_state == AST_STATE_UP && !(ast_check_hangup(chan)) && rchan) {
+ 		if (ast_channel_state(chan) == AST_STATE_UP && !(ast_check_hangup(chan)) && rchan) {
  			/* the channel has something */
  			f = ast_read(chan);
  			if (!f) {
@@ -683,13 +687,14 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
  			if (f->frametype == AST_FRAME_DTMF) {
  				send_eivr_event(eivr_events, f->subclass.integer, NULL, chan);
  				if (u->option_autoclear) {
+  					AST_LIST_LOCK(&u->playlist);
   					if (!u->abort_current_sound && !u->playing_silence) {
 						/* send interrupted file as T data */
- 						entry = AST_LIST_REMOVE_HEAD(&u->playlist, list);
- 						send_eivr_event(eivr_events, 'T', entry->filename, chan);
-						ast_free(entry);
+ 						if ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
+	 						send_eivr_event(eivr_events, 'T', entry->filename, chan);
+							ast_free(entry);
+						}
 					}
-  					AST_LIST_LOCK(&u->playlist);
   					while ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
  						send_eivr_event(eivr_events, 'D', entry->filename, chan);
   						ast_free(entry);
@@ -702,7 +707,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
  				ast_verb(3, "Got AST_CONTROL_HANGUP\n");
  				send_eivr_event(eivr_events, 'H', NULL, chan);
 				if (f->data.uint32) {
-					chan->hangupcause = f->data.uint32;
+					ast_channel_hangupcause_set(chan, f->data.uint32);
 				}
  				ast_frfree(f);
  				break;
@@ -735,7 +740,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
 				ast_eivr_senddtmf(chan, &input[2]);
 			} else if (input[0] == EIVR_CMD_ANS) {
 				ast_verb(3, "Answering channel if needed and starting generator\n");
-				if (chan->_state != AST_STATE_UP) {
+				if (ast_channel_state(chan) != AST_STATE_UP) {
 					if (ast_test_flag(&flags, run_dead)) {
 						ast_chan_log(LOG_WARNING, chan, "Running ExternalIVR with 'd'ead flag on non-hungup channel isn't supported\n");
 						send_eivr_event(eivr_events, 'Z', "ANSWER_FAILURE", chan);
@@ -755,22 +760,45 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
 						u->gen_active = 1;
 					}
 				}
+			} else if (input[0] == EIVR_CMD_IRPT) {
+				if (ast_channel_state(chan) != AST_STATE_UP || ast_check_hangup(chan)) {
+					ast_chan_log(LOG_WARNING, chan, "Queue 'I'nterrupt called on unanswered channel\n");
+					send_eivr_event(eivr_events, 'Z', NULL, chan);
+					continue;
+				}
+				AST_LIST_LOCK(&u->playlist);
+				if (!u->abort_current_sound && !u->playing_silence) {
+					/* send interrupted file as T data */
+					if ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
+						send_eivr_event(eivr_events, 'T', entry->filename, chan);
+						ast_free(entry);
+					}
+				}
+				while ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
+					send_eivr_event(eivr_events, 'D', entry->filename, chan);
+					ast_free(entry);
+				}
+				if (!u->playing_silence) {
+					u->abort_current_sound = 1;
+				}
+				AST_LIST_UNLOCK(&u->playlist);
  			} else if (input[0] == EIVR_CMD_SQUE) {
-				if (chan->_state != AST_STATE_UP || ast_check_hangup(chan)) {
+				if (ast_channel_state(chan) != AST_STATE_UP || ast_check_hangup(chan)) {
 					ast_chan_log(LOG_WARNING, chan, "Queue re'S'et called on unanswered channel\n");
 					send_eivr_event(eivr_events, 'Z', NULL, chan);
 					continue;
 				}
- 				if (!ast_fileexists(&input[2], NULL, u->chan->language)) {
+ 				if (!ast_fileexists(&input[2], NULL, ast_channel_language(u->chan))) {
  					ast_chan_log(LOG_WARNING, chan, "Unknown file requested '%s'\n", &input[2]);
  					send_eivr_event(eivr_events, 'Z', &input[2], chan);
  				} else {
  					AST_LIST_LOCK(&u->playlist);
 	 				if (!u->abort_current_sound && !u->playing_silence) {
 						/* send interrupted file as T data */
- 						entry = AST_LIST_REMOVE_HEAD(&u->playlist, list);
- 						send_eivr_event(eivr_events, 'T', entry->filename, chan);
-						ast_free(entry);
+ 						if ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
+	 						send_eivr_event(eivr_events, 'T', entry->filename, chan);
+							ast_free(entry);
+						}
 					}
  					while ((entry = AST_LIST_REMOVE_HEAD(&u->playlist, list))) {
  						send_eivr_event(eivr_events, 'D', entry->filename, chan);
@@ -786,12 +814,12 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
 	 				AST_LIST_UNLOCK(&u->playlist);
 				}
  			} else if (input[0] == EIVR_CMD_APND) {
-				if (chan->_state != AST_STATE_UP || ast_check_hangup(chan)) {
+				if (ast_channel_state(chan) != AST_STATE_UP || ast_check_hangup(chan)) {
 					ast_chan_log(LOG_WARNING, chan, "Queue 'A'ppend called on unanswered channel\n");
 					send_eivr_event(eivr_events, 'Z', NULL, chan);
 					continue;
 				}
- 				if (!ast_fileexists(&input[2], NULL, u->chan->language)) {
+ 				if (!ast_fileexists(&input[2], NULL, ast_channel_language(u->chan))) {
  					ast_chan_log(LOG_WARNING, chan, "Unknown file requested '%s'\n", &input[2]);
  					send_eivr_event(eivr_events, 'Z', &input[2], chan);
  				} else {
@@ -827,7 +855,7 @@ static int eivr_comm(struct ast_channel *chan, struct ivr_localuser *u,
  				send_eivr_event(eivr_events, 'H', NULL, chan);
  				break;
  			} else if (input[0] == EIVR_CMD_OPT) {
-				if (chan->_state != AST_STATE_UP || ast_check_hangup(chan)) {
+				if (ast_channel_state(chan) != AST_STATE_UP || ast_check_hangup(chan)) {
 					ast_chan_log(LOG_WARNING, chan, "Option called on unanswered channel\n");
 					send_eivr_event(eivr_events, 'Z', NULL, chan);
 					continue;

@@ -23,6 +23,10 @@
  * \author Kevin P. Fleming <kpfleming@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 #include "asterisk/_private.h"
 
@@ -34,7 +38,7 @@ void threadstorage_init(void)
 
 #else /* !defined(DEBUG_THREADLOCALS) */
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 198558 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include "asterisk/strings.h"
 #include "asterisk/utils.h"
@@ -211,7 +215,7 @@ static char *handle_cli_threadstorage_show_summary(struct ast_cli_entry *e, int 
 		}
 
 		if (!file) {
-			file = alloca(sizeof(*file));
+			file = ast_alloca(sizeof(*file));
 			memset(file, 0, sizeof(*file));
 			file->name = fn ? to->function : to->file;
 			AST_LIST_INSERT_TAIL(&file_summary, file, entry);

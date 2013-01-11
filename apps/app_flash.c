@@ -32,7 +32,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357721 $")
 
 #include <dahdi/user.h>
 
@@ -79,30 +79,30 @@ static int flash_exec(struct ast_channel *chan, const char *data)
 	int x;
 	struct dahdi_params dahdip;
 
-	if (strcasecmp(chan->tech->type, "DAHDI")) {
-		ast_log(LOG_WARNING, "%s is not a DAHDI channel\n", chan->name);
+	if (strcasecmp(ast_channel_tech(chan)->type, "DAHDI")) {
+		ast_log(LOG_WARNING, "%s is not a DAHDI channel\n", ast_channel_name(chan));
 		return -1;
 	}
 	
 	memset(&dahdip, 0, sizeof(dahdip));
-	res = ioctl(chan->fds[0], DAHDI_GET_PARAMS, &dahdip);
+	res = ioctl(ast_channel_fd(chan, 0), DAHDI_GET_PARAMS, &dahdip);
 	if (!res) {
 		if (dahdip.sigtype & __DAHDI_SIG_FXS) {
 			x = DAHDI_FLASH;
-			res = ioctl(chan->fds[0], DAHDI_HOOK, &x);
+			res = ioctl(ast_channel_fd(chan, 0), DAHDI_HOOK, &x);
 			if (!res || (errno == EINPROGRESS)) {
 				if (res) {
 					/* Wait for the event to finish */
-					dahdi_wait_event(chan->fds[0]);
+					dahdi_wait_event(ast_channel_fd(chan, 0));
 				}
 				res = ast_safe_sleep(chan, 1000);
-				ast_verb(3, "Flashed channel %s\n", chan->name);
+				ast_verb(3, "Flashed channel %s\n", ast_channel_name(chan));
 			} else
-				ast_log(LOG_WARNING, "Unable to flash channel %s: %s\n", chan->name, strerror(errno));
+				ast_log(LOG_WARNING, "Unable to flash channel %s: %s\n", ast_channel_name(chan), strerror(errno));
 		} else
-			ast_log(LOG_WARNING, "%s is not an FXO Channel\n", chan->name);
+			ast_log(LOG_WARNING, "%s is not an FXO Channel\n", ast_channel_name(chan));
 	} else
-		ast_log(LOG_WARNING, "Unable to get parameters of %s: %s\n", chan->name, strerror(errno));
+		ast_log(LOG_WARNING, "Unable to get parameters of %s: %s\n", ast_channel_name(chan), strerror(errno));
 
 	return res;
 }

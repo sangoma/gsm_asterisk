@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 378347 $")
 
 #include <time.h>
 #include <sys/time.h>
@@ -251,7 +251,7 @@ static int static_callback(struct ast_tcptls_session_instance *ser,
 		goto out403;
 	}
 
-	path = alloca(len);
+	path = ast_alloca(len);
 	sprintf(path, "%s/static-http/%s", ast_config_AST_DATA_DIR, uri);
 	if (stat(path, &st)) {
 		goto out404;
@@ -581,12 +581,12 @@ void ast_http_uri_unlink_all_with_key(const char *key)
 	AST_RWLIST_TRAVERSE_SAFE_BEGIN(&uris, urih, entry) {
 		if (!strcmp(urih->key, key)) {
 			AST_RWLIST_REMOVE_CURRENT(entry);
-		}
-		if (urih->dmallocd) {
-			ast_free(urih->data);
-		}
-		if (urih->mallocd) {
-			ast_free(urih);
+			if (urih->dmallocd) {
+				ast_free(urih->data);
+			}
+			if (urih->mallocd) {
+				ast_free(urih);
+			}
 		}
 	}
 	AST_RWLIST_TRAVERSE_SAFE_END;
@@ -603,6 +603,7 @@ struct ast_variable *ast_http_get_post_vars(
 	int content_length = 0;
 	struct ast_variable *v, *post_vars=NULL, *prev = NULL;
 	char *buf, *var, *val;
+	int res;
 
 	for (v = headers; v; v = v->next) {
 		if (!strcasecmp(v->name, "Content-Type")) {
@@ -615,21 +616,27 @@ struct ast_variable *ast_http_get_post_vars(
 
 	for (v = headers; v; v = v->next) {
 		if (!strcasecmp(v->name, "Content-Length")) {
-			content_length = atoi(v->value) + 1;
+			content_length = atoi(v->value);
 			break;
 		}
 	}
 
-	if (!content_length) {
+	if (content_length <= 0) {
 		return NULL;
 	}
 
-	if (!(buf = alloca(content_length))) {
+	buf = ast_malloc(content_length + 1);
+	if (!buf) {
 		return NULL;
 	}
-	if (!fgets(buf, content_length, ser->f)) {
-		return NULL;
+
+	res = fread(buf, 1, content_length, ser->f);
+	if (res < content_length) {
+		/* Error, distinguishable by ferror() or feof(), but neither
+		 * is good. */
+		goto done;
 	}
+	buf[content_length] = '\0';
 
 	while ((val = strsep(&buf, "&"))) {
 		var = strsep(&val, "=");
@@ -648,6 +655,9 @@ struct ast_variable *ast_http_get_post_vars(
 			prev = v;
 		}
 	}
+	
+done:
+	ast_free(buf);
 	return post_vars;
 }
 
@@ -767,7 +777,7 @@ cleanup:
 static HOOK_T ssl_write(void *cookie, const char *buf, LEN_T len)
 {
 #if 0
-	char *s = alloca(len+1);
+	char *s = ast_alloca(len+1);
 	strncpy(s, buf, len);
 	s[len] = '\0';
 	ast_verbose("ssl write size %d <%s>\n", (int)len, s);
@@ -1005,13 +1015,15 @@ static int __ast_http_load(int reload)
 	uint32_t bindport = DEFAULT_PORT;
 	struct ast_sockaddr *addrs = NULL;
 	int num_addrs = 0;
+	int http_tls_was_enabled = 0;
 
 	cfg = ast_config_load2("http.conf", "http", config_flags);
 	if (cfg == CONFIG_STATUS_FILEMISSING || cfg == CONFIG_STATUS_FILEUNCHANGED || cfg == CONFIG_STATUS_FILEINVALID) {
 		return 0;
 	}
 
-	/* default values */
+	http_tls_was_enabled = (reload && http_tls_cfg.enabled);
+
 	http_tls_cfg.enabled = 0;
 	if (http_tls_cfg.certfile) {
 		ast_free(http_tls_cfg.certfile);
@@ -1034,6 +1046,8 @@ static int __ast_http_load(int reload)
 	}
 	AST_RWLIST_UNLOCK(&uri_redirects);
 
+	ast_sockaddr_setnull(&https_desc.local_address);
+
 	if (cfg) {
 		v = ast_variable_browse(cfg, "general");
 		for (; v; v = v->next) {
@@ -1054,8 +1068,6 @@ static int __ast_http_load(int reload)
 			} else if (!strcasecmp(v->name, "bindaddr")) {
 				if (!(num_addrs = ast_sockaddr_resolve(&addrs, v->value, 0, AST_AF_UNSPEC))) {
 					ast_log(LOG_WARNING, "Invalid bind address %s\n", v->value);
-				} else {
-					ast_log(LOG_WARNING, "Got %d addresses\n", num_addrs);
 				}
 			} else if (!strcasecmp(v->name, "prefix")) {
 				if (!ast_strlen_zero(v->value)) {
@@ -1113,8 +1125,9 @@ static int __ast_http_load(int reload)
 			ast_sockaddr_set_port(&https_desc.local_address, DEFAULT_TLS_PORT);
 		}
 	}
-
-	if (enabled && !ast_sockaddr_isnull(&https_desc.local_address)) {
+	if (http_tls_was_enabled && !http_tls_cfg.enabled) {
+		ast_tcptls_server_stop(&https_desc);
+	} else if (http_tls_cfg.enabled && !ast_sockaddr_isnull(&https_desc.local_address)) {
 		/* We can get here either because a TLS-specific address was specified
 		 * or because we copied the non-TLS address here. In the case where
 		 * we read an explicit address from the config, there may have been

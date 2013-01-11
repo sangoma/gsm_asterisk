@@ -21,13 +21,17 @@
  *
  * \brief Automatic channel service routines
  *
- * \author Mark Spencer <markster@digium.com> 
+ * \author Mark Spencer <markster@digium.com>
  * \author Russell Bryant <russell@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 278272 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369493 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -52,7 +56,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 278272 $")
 struct asent {
 	struct ast_channel *chan;
 	/*! This gets incremented each time autoservice gets started on the same
-	 *  channel.  It will ensure that it doesn't actually get stopped until 
+	 *  channel.  It will ensure that it doesn't actually get stopped until
 	 *  it gets stopped for the last time. */
 	unsigned int use_count;
 	unsigned int orig_end_dtmf_flag:1;
@@ -86,6 +90,7 @@ static void *autoservice_run(void *ign)
 		int i, x = 0, ms = 50;
 		struct ast_frame *f = NULL;
 		struct ast_frame *defer_frame = NULL;
+		struct ast_callid *callid = NULL;
 
 		AST_LIST_LOCK(&aslist);
 
@@ -124,6 +129,10 @@ static void *autoservice_run(void *ign)
 			continue;
 		}
 
+		if ((callid = ast_channel_callid(chan))) {
+			ast_callid_threadassoc_add(callid);
+		}
+
 		f = ast_read(chan);
 
 		if (!f) {
@@ -141,11 +150,11 @@ static void *autoservice_run(void *ign)
 		if (defer_frame) {
 			for (i = 0; i < x; i++) {
 				struct ast_frame *dup_f;
-				
+
 				if (mons[i] != chan) {
 					continue;
 				}
-				
+
 				if (defer_frame != f) {
 					if ((dup_f = ast_frdup(defer_frame))) {
 						AST_LIST_INSERT_HEAD(&ents[i]->deferred_frames, dup_f, frame_list);
@@ -158,11 +167,16 @@ static void *autoservice_run(void *ign)
 						AST_LIST_INSERT_HEAD(&ents[i]->deferred_frames, dup_f, frame_list);
 					}
 				}
-				
+
 				break;
 			}
 		} else if (f) {
 			ast_frfree(f);
+		}
+
+		if (callid) {
+			ast_callid_threadassoc_remove();
+			callid = ast_callid_unref(callid);
 		}
 	}
 
@@ -192,15 +206,15 @@ int ast_autoservice_start(struct ast_channel *chan)
 
 	if (!(as = ast_calloc(1, sizeof(*as))))
 		return -1;
-	
+
 	/* New entry created */
 	as->chan = chan;
 	as->use_count = 1;
 
 	ast_channel_lock(chan);
-	as->orig_end_dtmf_flag = ast_test_flag(chan, AST_FLAG_END_DTMF_ONLY) ? 1 : 0;
+	as->orig_end_dtmf_flag = ast_test_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY) ? 1 : 0;
 	if (!as->orig_end_dtmf_flag)
-		ast_set_flag(chan, AST_FLAG_END_DTMF_ONLY);
+		ast_set_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 	ast_channel_unlock(chan);
 
 	AST_LIST_LOCK(&aslist);
@@ -247,7 +261,7 @@ int ast_autoservice_stop(struct ast_channel *chan)
 
 	/* Find the entry, but do not free it because it still can be in the
 	   autoservice thread array */
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&aslist, as, list) {	
+	AST_LIST_TRAVERSE_SAFE_BEGIN(&aslist, as, list) {
 		if (as->chan == chan) {
 			as->use_count--;
 			if (as->use_count < 1) {
@@ -277,12 +291,12 @@ int ast_autoservice_stop(struct ast_channel *chan)
 	/* Now autoservice thread should have no references to our entry
 	   and we can safely destroy it */
 
-	if (!chan->_softhangup) {
+	if (!ast_channel_softhangup_internal_flag(chan)) {
 		res = 0;
 	}
 
 	if (!as->orig_end_dtmf_flag) {
-		ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+		ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 	}
 
 	ast_channel_lock(chan);
@@ -297,6 +311,16 @@ int ast_autoservice_stop(struct ast_channel *chan)
 	free(as);
 
 	return res;
+}
+
+void ast_autoservice_chan_hangup_peer(struct ast_channel *chan, struct ast_channel *peer)
+{
+	if (chan && !ast_autoservice_start(chan)) {
+		ast_hangup(peer);
+		ast_autoservice_stop(chan);
+	} else {
+		ast_hangup(peer);
+	}
 }
 
 int ast_autoservice_ignore(struct ast_channel *chan, enum ast_frame_type ftype)

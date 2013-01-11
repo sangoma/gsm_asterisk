@@ -23,9 +23,13 @@
  * \author David Vossel <dvossel@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 327116 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370055 $")
 
 #include "asterisk/module.h"
 #include "asterisk/format.h"
@@ -42,6 +46,36 @@ struct silk_attr {
 	unsigned int fec;
 	unsigned int packetloss_percentage;
 };
+
+static int silk_sdp_parse(struct ast_format_attr *format_attr, const char *attributes)
+{
+	struct silk_attr *attr = (struct silk_attr *) format_attr;
+	unsigned int val;
+
+	if (sscanf(attributes, "maxaveragebitrate=%30u", &val) == 1) {
+		attr->maxbitrate = val;
+	}
+	if (sscanf(attributes, "usedtx=%30u", &val) == 1) {
+		attr->dtx = val;
+	}
+	if (sscanf(attributes, "useinbandfec=%30u", &val) == 1) {
+		attr->fec = val;
+	}
+
+	return 0;
+}
+
+static void silk_sdp_generate(const struct ast_format_attr *format_attr, unsigned int payload, struct ast_str **str)
+{
+	struct silk_attr *attr = (struct silk_attr *) format_attr;
+
+	if ((attr->maxbitrate > 5000) && (attr->maxbitrate < 40000)) { 
+		ast_str_append(str, 0, "a=fmtp:%d maxaveragebitrate=%d\r\n", payload, attr->maxbitrate);
+	}
+
+	ast_str_append(str, 0, "a=fmtp:%d usedtx=%d\r\n", payload, attr->dtx);
+	ast_str_append(str, 0, "a=fmtp:%d useinbandfec=%d\r\n", payload, attr->fec);
+}
 
 static enum ast_format_cmp_res silk_cmp(const struct ast_format_attr *fattr1, const struct ast_format_attr *fattr2)
 {
@@ -76,8 +110,8 @@ static int silk_get_val(const struct ast_format_attr *fattr, int key, void *resu
 		*val = attr->packetloss_percentage;
 		break;
 	default:
-		return -1;
 		ast_log(LOG_WARNING, "unknown attribute type %d\n", key);
+		return -1;
 	}
 	return 0;
 }
@@ -118,8 +152,8 @@ static int silk_isset(const struct ast_format_attr *fattr, va_list ap)
 			}
 			break;
 		default:
-			return -1;
 			ast_log(LOG_WARNING, "unknown attribute type %d\n", key);
+			return -1;
 		}
 	}
 	return 0;
@@ -191,6 +225,8 @@ static struct ast_format_attr_interface silk_interface = {
 	.format_attr_set = silk_set,
 	.format_attr_isset = silk_isset,
 	.format_attr_get_val = silk_get_val,
+	.format_attr_sdp_parse = silk_sdp_parse,
+	.format_attr_sdp_generate = silk_sdp_generate,
 };
 
 static int load_module(void)

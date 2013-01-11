@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 356042 $")
 
 #include "asterisk/module.h"
 #include "asterisk/app.h"
@@ -103,19 +103,19 @@ static int verbose_exec(struct ast_channel *chan, const char *data)
 	if (option_verbose >= vsize) {
 		switch (vsize) {
 		case 0:
-			ast_verbose("%s\n", args.msg);
+			ast_verb(0, "%s\n", args.msg);
 			break;
 		case 1:
-			ast_verbose(VERBOSE_PREFIX_1 "%s\n", args.msg);
+			ast_verb(1, "%s\n", args.msg);
 			break;
 		case 2:
-			ast_verbose(VERBOSE_PREFIX_2 "%s\n", args.msg);
+			ast_verb(2, "%s\n", args.msg);
 			break;
 		case 3:
-			ast_verbose(VERBOSE_PREFIX_3 "%s\n", args.msg);
+			ast_verb(3, "%s\n", args.msg);
 			break;
 		default:
-			ast_verbose(VERBOSE_PREFIX_4 "%s\n", args.msg);
+			ast_verb(4, "%s\n", args.msg);
 		}
 	}
 
@@ -155,10 +155,10 @@ static int log_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if (lnum > -1) {
-		snprintf(context, sizeof(context), "@ %s", chan->context);
-		snprintf(extension, sizeof(extension), "Ext. %s", chan->exten);
+		snprintf(context, sizeof(context), "@ %s", ast_channel_context(chan));
+		snprintf(extension, sizeof(extension), "Ext. %s", ast_channel_exten(chan));
 
-		ast_log(lnum, extension, chan->priority, context, "%s\n", args.msg);
+		ast_log(lnum, extension, ast_channel_priority(chan), context, "%s\n", args.msg);
 	}
 
 	return 0;

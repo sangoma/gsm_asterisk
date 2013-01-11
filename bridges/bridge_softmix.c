@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 375895 $")
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,7 +297,11 @@ static void softmix_translate_helper_cleanup(struct softmix_translate_helper *tr
 static void softmix_bridge_data_destroy(void *obj)
 {
 	struct softmix_bridge_data *softmix_data = obj;
-	ast_timer_close(softmix_data->timer);
+
+	if (softmix_data->timer) {
+		ast_timer_close(softmix_data->timer);
+		softmix_data->timer = NULL;
+	}
 }
 
 /*! \brief Function called when a bridge is created */
@@ -336,7 +340,7 @@ static int softmix_bridge_destroy(struct ast_bridge *bridge)
 static void set_softmix_bridge_data(int rate, int interval, struct ast_bridge_channel *bridge_channel, int reset)
 {
 	struct softmix_channel *sc = bridge_channel->bridge_pvt;
-	unsigned int channel_read_rate = ast_format_rate(&bridge_channel->chan->rawreadformat);
+	unsigned int channel_read_rate = ast_format_rate(ast_channel_rawreadformat(bridge_channel->chan));
 
 	ast_mutex_lock(&sc->lock);
 	if (reset) {
@@ -614,8 +618,8 @@ static void gather_softmix_stats(struct softmix_stats *stats,
 	int channel_native_rate;
 	int i;
 	/* Gather stats about channel sample rates. */
-	channel_native_rate = MAX(ast_format_rate(&bridge_channel->chan->rawwriteformat),
-		ast_format_rate(&bridge_channel->chan->rawreadformat));
+	channel_native_rate = MAX(ast_format_rate(ast_channel_rawwriteformat(bridge_channel->chan)),
+		ast_format_rate(ast_channel_rawreadformat(bridge_channel->chan)));
 
 	if (channel_native_rate > stats->highest_supported_rate) {
 		stats->highest_supported_rate = channel_native_rate;
@@ -859,7 +863,7 @@ static int softmix_bridge_thread(struct ast_bridge *bridge)
 			memcpy(sc->final_buf, buf, softmix_datalen);
 
 			/* process the softmix channel's new write audio */
-			softmix_process_write_audio(&trans_helper, &bridge_channel->chan->rawwriteformat, sc);
+			softmix_process_write_audio(&trans_helper, ast_channel_rawwriteformat(bridge_channel->chan), sc);
 
 			/* The frame is now ready for use... */
 			sc->have_frame = 1;
@@ -882,7 +886,11 @@ static int softmix_bridge_thread(struct ast_bridge *bridge)
 		softmix_translate_helper_cleanup(&trans_helper);
 		/* Wait for the timing source to tell us to wake up and get things done */
 		ast_waitfor_n_fd(&timingfd, 1, &timeout, NULL);
-		ast_timer_ack(timer, 1);
+		if (ast_timer_ack(timer, 1) < 0) {
+			ast_log(LOG_ERROR, "Failed to acknowledge timer in softmix bridge\n");
+			ao2_lock(bridge);
+			goto softmix_cleanup;
+		}
 		ao2_lock(bridge);
 
 		/* make sure to detect mixing interval changes if they occur. */

@@ -27,7 +27,7 @@
  ***/
 
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 359118 $")
 #include "asterisk.h"
 
 #include <newt.h>
@@ -155,12 +155,11 @@ static void __attribute__((format(printf, 2, 3))) fdprintf(int fd, char *fmt, ..
 {
 	char stuff[4096];
 	va_list ap;
-	int res;
 
 	va_start(ap, fmt);
 	vsnprintf(stuff, sizeof(stuff), fmt, ap);
 	va_end(ap);
-	if ((res = write(fd, stuff, strlen(stuff))) < 0) {
+	if (write(fd, stuff, strlen(stuff)) < 0) {
 		fprintf(stderr, "write() failed: %s\n", strerror(errno));
 	}
 }
@@ -387,7 +386,7 @@ static int input_check(struct ast_mansession *s, struct message **mout)
 				}
 				if (process_message(s, &m))
 					break;
-				memset(&m, 0, sizeof(&m));
+				memset(&m, 0, sizeof(m));
 			} else if (m.hdrcount < MAX_HEADERS - 1)
 				m.hdrcount++;
 		} else if (res < 0) {

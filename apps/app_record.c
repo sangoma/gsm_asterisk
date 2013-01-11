@@ -31,7 +31,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 366917 $")
 
 #include "asterisk/file.h"
 #include "asterisk/pbx.h"
@@ -254,13 +254,13 @@ static int record_exec(struct ast_channel *chan, const char *data)
 				ast_copy_string(tmp + tmplen, &(fname.piece[idx][1]), sizeof(tmp) - tmplen);
 			}
 			count++;
-		} while (ast_fileexists(tmp, ext, chan->language) > 0);
+		} while (ast_fileexists(tmp, ext, ast_channel_language(chan)) > 0);
 		pbx_builtin_setvar_helper(chan, "RECORDED_FILE", tmp);
 	} else
 		ast_copy_string(tmp, args.filename, sizeof(tmp));
 	/* end of routine mentioned */
 
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if (ast_test_flag(&flags, OPTION_SKIP)) {
 			/* At the user's option, skip if the line is not up */
 			pbx_builtin_setvar_helper(chan, "RECORD_STATUS", "SKIP");
@@ -272,18 +272,18 @@ static int record_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if (res) {
-		ast_log(LOG_WARNING, "Could not answer channel '%s'\n", chan->name);
+		ast_log(LOG_WARNING, "Could not answer channel '%s'\n", ast_channel_name(chan));
 		pbx_builtin_setvar_helper(chan, "RECORD_STATUS", "ERROR");
 		goto out;
 	}
 
 	if (!ast_test_flag(&flags, OPTION_QUIET)) {
 		/* Some code to play a nice little beep to signify the start of the record operation */
-		res = ast_streamfile(chan, "beep", chan->language);
+		res = ast_streamfile(chan, "beep", ast_channel_language(chan));
 		if (!res) {
 			res = ast_waitstream(chan, "");
 		} else {
-			ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", chan->name);
+			ast_log(LOG_WARNING, "ast_streamfile failed on %s\n", ast_channel_name(chan));
 		}
 		ast_stopstream(chan);
 	}
@@ -291,7 +291,7 @@ static int record_exec(struct ast_channel *chan, const char *data)
 	/* The end of beep code.  Now the recording starts */
 
 	if (silence > 0) {
-		ast_format_copy(&rfmt, &chan->readformat);
+		ast_format_copy(&rfmt, ast_channel_readformat(chan));
 		res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
 		if (res < 0) {
 			ast_log(LOG_WARNING, "Unable to set to linear mode, giving up\n");
@@ -415,12 +415,14 @@ static int record_exec(struct ast_channel *chan, const char *data)
 out:
 	if ((silence > 0) && rfmt.id) {
 		res = ast_set_read_format(chan, &rfmt);
-		if (res)
-			ast_log(LOG_WARNING, "Unable to restore read format on '%s'\n", chan->name);
-		if (sildet)
-			ast_dsp_free(sildet);
+		if (res) {
+			ast_log(LOG_WARNING, "Unable to restore read format on '%s'\n", ast_channel_name(chan));
+		}
 	}
 
+	if (sildet) {
+		ast_dsp_free(sildet);
+	}
 	return res;
 }
 

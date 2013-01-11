@@ -23,8 +23,12 @@
  * \author David Vossel <dvossel@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 299005 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $");
 
 #include "asterisk/aoc.h"
 #include "asterisk/utils.h"
@@ -1288,8 +1292,8 @@ static void aoc_amount_str(struct ast_str **msg, const char *prefix, unsigned in
 static void aoc_request_event(const struct ast_aoc_decoded *decoded, struct ast_channel *chan, struct ast_str **msg)
 {
 	if (chan) {
-		ast_str_append(msg, 0, "Channel: %s\r\n", chan->name);
-		ast_str_append(msg, 0, "UniqueID: %s\r\n", chan->uniqueid);
+		ast_str_append(msg, 0, "Channel: %s\r\n", ast_channel_name(chan));
+		ast_str_append(msg, 0, "UniqueID: %s\r\n", ast_channel_uniqueid(chan));
 	}
 
 	if (decoded->request_flag) {
@@ -1317,8 +1321,8 @@ static void aoc_s_event(const struct ast_aoc_decoded *decoded, struct ast_channe
 	int idx;
 
 	if (owner) {
-		ast_str_append(msg, 0, "Channel: %s\r\n", owner->name);
-		ast_str_append(msg, 0, "UniqueID: %s\r\n", owner->uniqueid);
+		ast_str_append(msg, 0, "Channel: %s\r\n", ast_channel_name(owner));
+		ast_str_append(msg, 0, "UniqueID: %s\r\n", ast_channel_uniqueid(owner));
 	}
 
 	ast_str_append(msg, 0, "NumberRates: %d\r\n", decoded->aoc_s_count);
@@ -1390,8 +1394,8 @@ static void aoc_d_event(const struct ast_aoc_decoded *decoded, struct ast_channe
 	char prefix[32];
 
 	if (chan) {
-		ast_str_append(msg, 0, "Channel: %s\r\n", chan->name);
-		ast_str_append(msg, 0, "UniqueID: %s\r\n", chan->uniqueid);
+		ast_str_append(msg, 0, "Channel: %s\r\n", ast_channel_name(chan));
+		ast_str_append(msg, 0, "UniqueID: %s\r\n", ast_channel_uniqueid(chan));
 	}
 
 	charge_str = aoc_charge_type_str(decoded->charge_type);
@@ -1444,8 +1448,8 @@ static void aoc_e_event(const struct ast_aoc_decoded *decoded, struct ast_channe
 	char prefix[32];
 
 	if (chan) {
-		ast_str_append(msg, 0, "Channel: %s\r\n", chan->name);
-		ast_str_append(msg, 0, "UniqueID: %s\r\n", chan->uniqueid);
+		ast_str_append(msg, 0, "Channel: %s\r\n", ast_channel_name(chan));
+		ast_str_append(msg, 0, "UniqueID: %s\r\n", ast_channel_uniqueid(chan));
 	}
 
 	charge_str = "ChargingAssociation";
@@ -1585,7 +1589,7 @@ static void aoc_display_decoded_debug(const struct ast_aoc_decoded *decoded, int
 		ast_str_append(&msg, 0, "---- ENCODED AOC MSG ----\r\n");
 	}
 	if (chan) {
-		ast_str_append(&msg, 0, "CHANNEL: %s\r\n", chan->name);
+		ast_str_append(&msg, 0, "CHANNEL: %s\r\n", ast_channel_name(chan));
 	}
 
 	if (ast_aoc_decoded2str(decoded, &msg)) {

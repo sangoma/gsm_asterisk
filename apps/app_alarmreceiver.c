@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362635 $")
 
 #include <math.h>
 #include <sys/wait.h>
@@ -210,8 +210,8 @@ static int send_tone_burst(struct ast_channel *chan, float freq, int duration, i
 				break;
 			}
 			if (ast_write(chan, &wf)) {
-				ast_verb(4, "AlarmReceiver: Failed to write frame on %s\n", chan->name);
-				ast_log(LOG_WARNING, "AlarmReceiver Failed to write frame on %s\n",chan->name);
+				ast_verb(4, "AlarmReceiver: Failed to write frame on %s\n", ast_channel_name(chan));
+				ast_log(LOG_WARNING, "AlarmReceiver Failed to write frame on %s\n",ast_channel_name(chan));
 				res = -1;
 				ast_frfree(f);
 				break;
@@ -245,13 +245,13 @@ static int receive_dtmf_digits(struct ast_channel *chan, char *digit_string, int
 	for (;;) {
 		/* if outa time, leave */
 		if (ast_tvdiff_ms(ast_tvnow(), lastdigittime) > ((i > 0) ? sdto : fdto)) {
-			ast_verb(4, "AlarmReceiver: DTMF Digit Timeout on %s\n", chan->name);
-			ast_debug(1,"AlarmReceiver: DTMF timeout on chan %s\n",chan->name);
+			ast_verb(4, "AlarmReceiver: DTMF Digit Timeout on %s\n", ast_channel_name(chan));
+			ast_debug(1,"AlarmReceiver: DTMF timeout on chan %s\n",ast_channel_name(chan));
 			res = 1;
 			break;
 		}
 
-		if ((r = ast_waitfor(chan, -1) < 0)) {
+		if ((r = ast_waitfor(chan, -1)) < 0) {
 			ast_debug(1, "Waitfor returned %d\n", r);
 			continue;
 		}
@@ -266,7 +266,7 @@ static int receive_dtmf_digits(struct ast_channel *chan, char *digit_string, int
 		/* If they hung up, leave */
 		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass.integer == AST_CONTROL_HANGUP)) {
 			if (f->data.uint32) {
-				chan->hangupcause = f->data.uint32;
+				ast_channel_hangupcause_set(chan, f->data.uint32);
 			}
 			ast_frfree(f);
 			res = -1;
@@ -309,7 +309,7 @@ static int write_metadata( FILE *logfile, char *signalling_type, struct ast_chan
 	
 	/* Extract the caller ID location */
 	ast_copy_string(workstring,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, ""),
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
 		sizeof(workstring));
 	ast_shrink_phone_number(workstring);
 	if (ast_strlen_zero(workstring)) {
@@ -317,7 +317,7 @@ static int write_metadata( FILE *logfile, char *signalling_type, struct ast_chan
 	} else {
 		cl = workstring;
 	}
-	cn = S_COR(chan->caller.id.name.valid, chan->caller.id.name.str, "<unknown>");
+	cn = S_COR(ast_channel_caller(chan)->id.name.valid, ast_channel_caller(chan)->id.name.str, "<unknown>");
 
 	/* Get the current time */
 	t = ast_tvnow();
@@ -583,12 +583,12 @@ static int alarmreceiver_exec(struct ast_channel *chan, const char *data)
 	ast_verb(4, "AlarmReceiver: Setting read and write formats to ULAW\n");
 
 	if (ast_set_write_format_by_id(chan,AST_FORMAT_ULAW)) {
-		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set write format to Mu-law on %s\n",chan->name);
+		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set write format to Mu-law on %s\n",ast_channel_name(chan));
 		return -1;
 	}
 
 	if (ast_set_read_format_by_id(chan,AST_FORMAT_ULAW)) {
-		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set read format to Mu-law on %s\n",chan->name);
+		ast_log(LOG_WARNING, "AlarmReceiver: Unable to set read format to Mu-law on %s\n",ast_channel_name(chan));
 		return -1;
 	}
 
@@ -597,7 +597,7 @@ static int alarmreceiver_exec(struct ast_channel *chan, const char *data)
 
 	/* Answer the channel if it is not already */
 	ast_verb(4, "AlarmReceiver: Answering channel\n");
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if ((res = ast_answer(chan)))
 			return -1;
 	}
@@ -663,7 +663,6 @@ static int load_config(void)
 		p = ast_variable_retrieve(cfg, "general", "eventcmd");
 		if (p) {
 			ast_copy_string(event_app, p, sizeof(event_app));
-			event_app[sizeof(event_app) - 1] = '\0';
 		}
 		p = ast_variable_retrieve(cfg, "general", "loudness");
 		if (p) {
@@ -698,19 +697,16 @@ static int load_config(void)
 		p = ast_variable_retrieve(cfg, "general", "eventspooldir");
 		if (p) {
 			ast_copy_string(event_spool_dir, p, sizeof(event_spool_dir));
-			event_spool_dir[sizeof(event_spool_dir) - 1] = '\0';
 		}
 
 		p = ast_variable_retrieve(cfg, "general", "timestampformat");
 		if (p) {
 			ast_copy_string(time_stamp_format, p, sizeof(time_stamp_format));
-			time_stamp_format[sizeof(time_stamp_format) - 1] = '\0';
 		}
 
 		p = ast_variable_retrieve(cfg, "general", "db-family");
 		if (p) {
 			ast_copy_string(db_family, p, sizeof(db_family));
-			db_family[sizeof(db_family) - 1] = '\0';
 		}
 		ast_config_destroy(cfg);
 	}

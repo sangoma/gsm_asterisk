@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335015 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 358812 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -97,20 +97,20 @@ static int isexten_function_read(struct ast_channel *chan, const char *cmd, char
 		if (sscanf(args.priority, "%30d", &priority_num) == 1 && priority_num > 0) {
 			int res;
 			res = ast_exists_extension(chan, args.context, args.exten, priority_num, 
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+				S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL));
 			if (res)
 				strcpy(buf, "1");
 		} else {
 			int res;
 			res = ast_findlabel_extension(chan, args.context, args.exten, args.priority,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+				S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL));
 			if (res > 0)
 				strcpy(buf, "1");
 		}
 	} else if (!ast_strlen_zero(args.exten)) {
 		int res;
 		res = ast_exists_extension(chan, args.context, args.exten, 1, 
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL));
+			S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL));
 		if (res)
 			strcpy(buf, "1");
 	} else if (!ast_strlen_zero(args.context)) {
@@ -136,7 +136,7 @@ static int acf_isexten_exec(struct ast_channel *chan, const char *cmd, char *par
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	if (ast_strlen_zero(args.context)) {
-		args.context = chan->context;
+		args.context = ast_strdupa(ast_channel_context(chan));
 	}
 
 	if (ast_strlen_zero(args.extension)) {
@@ -151,7 +151,7 @@ static int acf_isexten_exec(struct ast_channel *chan, const char *cmd, char *par
 	}
 
 	if (ast_exists_extension(chan, args.context, args.extension, priority_int,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 	    ast_copy_string(buffer, "1", buflen);
 	} else {
 	    ast_copy_string(buffer, "0", buflen);
@@ -185,4 +185,8 @@ static int load_module(void)
 	return res;
 }
 
-AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Dialplan Context/Extension/Priority Checking Functions");
+AST_MODULE_INFO(ASTERISK_GPL_KEY, AST_MODFLAG_LOAD_ORDER, "Dialplan Context/Extension/Priority Checking Functions",
+	.load = load_module,
+	.unload = unload_module,
+	.load_pri = AST_MODPRI_APP_DEPEND,
+	);

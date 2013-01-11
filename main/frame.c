@@ -20,12 +20,16 @@
  *
  * \brief Frame and codec manipulation routines
  *
- * \author Mark Spencer <markster@digium.com> 
+ * \author Mark Spencer <markster@digium.com>
  */
+
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 334574 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370431 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/lock.h"
@@ -46,15 +50,15 @@ static void frame_cache_cleanup(void *data);
 /*! \brief A per-thread cache of frame headers */
 AST_THREADSTORAGE_CUSTOM(frame_cache, NULL, frame_cache_cleanup);
 
-/*! 
+/*!
  * \brief Maximum ast_frame cache size
  *
  * In most cases where the frame header cache will be useful, the size
  * of the cache will stay very small.  However, it is not always the case that
  * the same thread that allocates the frame will be the one freeing them, so
  * sometimes a thread will never have any frames in its cache, or the cache
- * will never be pulled from.  For the latter case, we limit the maximum size. 
- */ 
+ * will never be pulled from.  For the latter case, we limit the maximum size.
+ */
 #define FRAME_CACHE_MAX_SIZE	10
 
 /*! \brief This is just so ast_frames, a list head struct for holding a list of
@@ -285,7 +289,7 @@ static struct ast_frame *ast_frame_header_new(void)
 #endif
 
 	f->mallocd_hdr_len = sizeof(*f);
-	
+
 	return f;
 }
 
@@ -297,7 +301,7 @@ static void frame_cache_cleanup(void *data)
 
 	while ((f = AST_LIST_REMOVE_HEAD(&frames->list, frame_list)))
 		ast_free(f);
-	
+
 	ast_free(frames);
 }
 #endif
@@ -309,7 +313,7 @@ static void __frame_free(struct ast_frame *fr, int cache)
 
 #if !defined(LOW_MEMORY)
 	if (cache && fr->mallocd == AST_MALLOCD_HDR) {
-		/* Cool, only the header is malloc'd, let's just cache those for now 
+		/* Cool, only the header is malloc'd, let's just cache those for now
 		 * to keep things simple... */
 		struct ast_frame_cache *frames;
 
@@ -321,9 +325,9 @@ static void __frame_free(struct ast_frame *fr, int cache)
 		}
 	}
 #endif
-	
+
 	if (fr->mallocd & AST_MALLOCD_DATA) {
-		if (fr->data.ptr) 
+		if (fr->data.ptr)
 			ast_free(fr->data.ptr - fr->offset);
 	}
 	if (fr->mallocd & AST_MALLOCD_SRC) {
@@ -390,7 +394,7 @@ struct ast_frame *ast_frisolate(struct ast_frame *fr)
 	} else {
 		out = fr;
 	}
-	
+
 	if (!(fr->mallocd & AST_MALLOCD_SRC) && fr->src) {
 		if (!(out->src = ast_strdup(fr->src))) {
 			if (out != fr) {
@@ -403,7 +407,7 @@ struct ast_frame *ast_frisolate(struct ast_frame *fr)
 		fr->src = NULL;
 		fr->mallocd &= ~AST_MALLOCD_SRC;
 	}
-	
+
 	if (!(fr->mallocd & AST_MALLOCD_DATA))  {
 		if (!fr->datalen) {
 			out->data.uint32 = fr->data.uint32;
@@ -431,7 +435,7 @@ struct ast_frame *ast_frisolate(struct ast_frame *fr)
 	}
 
 	out->mallocd = AST_MALLOCD_HDR | AST_MALLOCD_SRC | AST_MALLOCD_DATA;
-	
+
 	return out;
 }
 
@@ -456,7 +460,7 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 		srclen = strlen(f->src);
 	if (srclen > 0)
 		len += srclen + 1;
-	
+
 #if !defined(LOW_MEMORY)
 	if ((frames = ast_threadstorage_get(&frame_cache, sizeof(*frames)))) {
 		AST_LIST_TRAVERSE_SAFE_BEGIN(&frames->list, out, frame_list) {
@@ -487,13 +491,18 @@ struct ast_frame *ast_frdup(const struct ast_frame *f)
 	out->datalen = f->datalen;
 	out->samples = f->samples;
 	out->delivery = f->delivery;
-	/* Set us as having malloc'd header only, so it will eventually
-	   get freed. */
+	/* Even though this new frame was allocated from the heap, we can't mark it
+	 * with AST_MALLOCD_HDR, AST_MALLOCD_DATA and AST_MALLOCD_SRC, because that
+	 * would cause ast_frfree() to attempt to individually free each of those
+	 * under the assumption that they were separately allocated. Since this frame
+	 * was allocated in a single allocation, we'll only mark it as if the header
+	 * was heap-allocated; this will result in the entire frame being properly freed.
+	 */
 	out->mallocd = AST_MALLOCD_HDR;
 	out->offset = AST_FRIENDLY_OFFSET;
 	if (out->datalen) {
 		out->data.ptr = buf + sizeof(*out) + AST_FRIENDLY_OFFSET;
-		memcpy(out->data.ptr, f->data.ptr, out->datalen);	
+		memcpy(out->data.ptr, f->data.ptr, out->datalen);
 	} else {
 		out->data.uint32 = f->data.uint32;
 	}
@@ -522,96 +531,70 @@ void ast_swapcopy_samples(void *dst, const void *src, int samples)
 		dst_s[i] = (src_s[i]<<8) | (src_s[i]>>8);
 }
 
-/*! Dump a frame for debugging purposes */
-void ast_frame_dump(const char *name, struct ast_frame *f, char *prefix)
+void ast_frame_subclass2str(struct ast_frame *f, char *subclass, size_t slen, char *moreinfo, size_t mlen)
 {
-	const char noname[] = "unknown";
-	char ftype[40] = "Unknown Frametype";
-	char cft[80];
-	char subclass[40] = "Unknown Subclass";
-	char csub[80];
-	char moreinfo[40] = "";
-	char cn[60];
-	char cp[40];
-	char cmn[40];
-	const char *message = "Unknown";
-
-	if (!name)
-		name = noname;
-
-
-	if (!f) {
-		ast_verbose("%s [ %s (NULL) ] [%s]\n", 
-			term_color(cp, prefix, COLOR_BRMAGENTA, COLOR_BLACK, sizeof(cp)),
-			term_color(cft, "HANGUP", COLOR_BRRED, COLOR_BLACK, sizeof(cft)), 
-			term_color(cn, name, COLOR_YELLOW, COLOR_BLACK, sizeof(cn)));
-		return;
-	}
-	/* XXX We should probably print one each of voice and video when the format changes XXX */
-	if (f->frametype == AST_FRAME_VOICE)
-		return;
-	if (f->frametype == AST_FRAME_VIDEO)
-		return;
 	switch(f->frametype) {
 	case AST_FRAME_DTMF_BEGIN:
-		strcpy(ftype, "DTMF Begin");
-		subclass[0] = f->subclass.integer;
-		subclass[1] = '\0';
+		if (slen > 1) {
+			subclass[0] = f->subclass.integer;
+			subclass[1] = '\0';
+		}
 		break;
 	case AST_FRAME_DTMF_END:
-		strcpy(ftype, "DTMF End");
-		subclass[0] = f->subclass.integer;
-		subclass[1] = '\0';
+		if (slen > 1) {
+			subclass[0] = f->subclass.integer;
+			subclass[1] = '\0';
+		}
 		break;
 	case AST_FRAME_CONTROL:
-		strcpy(ftype, "Control");
 		switch (f->subclass.integer) {
 		case AST_CONTROL_HANGUP:
-			strcpy(subclass, "Hangup");
+			ast_copy_string(subclass, "Hangup", slen);
 			break;
 		case AST_CONTROL_RING:
-			strcpy(subclass, "Ring");
+			ast_copy_string(subclass, "Ring", slen);
 			break;
 		case AST_CONTROL_RINGING:
-			strcpy(subclass, "Ringing");
+			ast_copy_string(subclass, "Ringing", slen);
 			break;
 		case AST_CONTROL_ANSWER:
-			strcpy(subclass, "Answer");
+			ast_copy_string(subclass, "Answer", slen);
 			break;
 		case AST_CONTROL_BUSY:
-			strcpy(subclass, "Busy");
+			ast_copy_string(subclass, "Busy", slen);
 			break;
 		case AST_CONTROL_TAKEOFFHOOK:
-			strcpy(subclass, "Take Off Hook");
+			ast_copy_string(subclass, "Take Off Hook", slen);
 			break;
 		case AST_CONTROL_OFFHOOK:
-			strcpy(subclass, "Line Off Hook");
+			ast_copy_string(subclass, "Line Off Hook", slen);
 			break;
 		case AST_CONTROL_CONGESTION:
-			strcpy(subclass, "Congestion");
+			ast_copy_string(subclass, "Congestion", slen);
 			break;
 		case AST_CONTROL_FLASH:
-			strcpy(subclass, "Flash");
+			ast_copy_string(subclass, "Flash", slen);
 			break;
 		case AST_CONTROL_WINK:
-			strcpy(subclass, "Wink");
+			ast_copy_string(subclass, "Wink", slen);
 			break;
 		case AST_CONTROL_OPTION:
-			strcpy(subclass, "Option");
+			ast_copy_string(subclass, "Option", slen);
 			break;
 		case AST_CONTROL_RADIO_KEY:
-			strcpy(subclass, "Key Radio");
+			ast_copy_string(subclass, "Key Radio", slen);
 			break;
 		case AST_CONTROL_RADIO_UNKEY:
-			strcpy(subclass, "Unkey Radio");
+			ast_copy_string(subclass, "Unkey Radio", slen);
 			break;
 		case AST_CONTROL_HOLD:
-			strcpy(subclass, "Hold");
+			ast_copy_string(subclass, "Hold", slen);
 			break;
 		case AST_CONTROL_UNHOLD:
-			strcpy(subclass, "Unhold");
+			ast_copy_string(subclass, "Unhold", slen);
 			break;
-		case AST_CONTROL_T38_PARAMETERS:
+		case AST_CONTROL_T38_PARAMETERS: {
+			char *message = "Unknown";
 			if (f->datalen != sizeof(struct ast_control_t38_parameters)) {
 				message = "Invalid";
 			} else {
@@ -628,107 +611,187 @@ void ast_frame_dump(const char *name, struct ast_frame *f, char *prefix)
 				else if (state == AST_T38_REFUSED)
 					message = "Refused";
 			}
-			snprintf(subclass, sizeof(subclass), "T38_Parameters/%s", message);
+			snprintf(subclass, slen, "T38_Parameters/%s", message);
 			break;
+		}
 		case -1:
-			strcpy(subclass, "Stop generators");
+			ast_copy_string(subclass, "Stop generators", slen);
 			break;
 		default:
-			snprintf(subclass, sizeof(subclass), "Unknown control '%d'", f->subclass.integer);
+			snprintf(subclass, slen, "Unknown control '%d'", f->subclass.integer);
 		}
 		break;
 	case AST_FRAME_NULL:
-		strcpy(ftype, "Null Frame");
-		strcpy(subclass, "N/A");
+		ast_copy_string(subclass, "N/A", slen);
 		break;
 	case AST_FRAME_IAX:
 		/* Should never happen */
-		strcpy(ftype, "IAX Specific");
-		snprintf(subclass, sizeof(subclass), "IAX Frametype %d", f->subclass.integer);
+		snprintf(subclass, slen, "IAX Frametype %d", f->subclass.integer);
 		break;
 	case AST_FRAME_TEXT:
-		strcpy(ftype, "Text");
-		strcpy(subclass, "N/A");
-		ast_copy_string(moreinfo, f->data.ptr, sizeof(moreinfo));
+		ast_copy_string(subclass, "N/A", slen);
+		if (moreinfo) {
+			ast_copy_string(moreinfo, f->data.ptr, mlen);
+		}
 		break;
 	case AST_FRAME_IMAGE:
-		strcpy(ftype, "Image");
-		snprintf(subclass, sizeof(subclass), "Image format %s\n", ast_getformatname(&f->subclass.format));
+		snprintf(subclass, slen, "Image format %s\n", ast_getformatname(&f->subclass.format));
 		break;
 	case AST_FRAME_HTML:
-		strcpy(ftype, "HTML");
 		switch (f->subclass.integer) {
 		case AST_HTML_URL:
-			strcpy(subclass, "URL");
-			ast_copy_string(moreinfo, f->data.ptr, sizeof(moreinfo));
+			ast_copy_string(subclass, "URL", slen);
+			if (moreinfo) {
+				ast_copy_string(moreinfo, f->data.ptr, mlen);
+			}
 			break;
 		case AST_HTML_DATA:
-			strcpy(subclass, "Data");
+			ast_copy_string(subclass, "Data", slen);
 			break;
 		case AST_HTML_BEGIN:
-			strcpy(subclass, "Begin");
+			ast_copy_string(subclass, "Begin", slen);
 			break;
 		case AST_HTML_END:
-			strcpy(subclass, "End");
+			ast_copy_string(subclass, "End", slen);
 			break;
 		case AST_HTML_LDCOMPLETE:
-			strcpy(subclass, "Load Complete");
+			ast_copy_string(subclass, "Load Complete", slen);
 			break;
 		case AST_HTML_NOSUPPORT:
-			strcpy(subclass, "No Support");
+			ast_copy_string(subclass, "No Support", slen);
 			break;
 		case AST_HTML_LINKURL:
-			strcpy(subclass, "Link URL");
-			ast_copy_string(moreinfo, f->data.ptr, sizeof(moreinfo));
+			ast_copy_string(subclass, "Link URL", slen);
+			if (moreinfo) {
+				ast_copy_string(moreinfo, f->data.ptr, mlen);
+			}
 			break;
 		case AST_HTML_UNLINK:
-			strcpy(subclass, "Unlink");
+			ast_copy_string(subclass, "Unlink", slen);
 			break;
 		case AST_HTML_LINKREJECT:
-			strcpy(subclass, "Link Reject");
+			ast_copy_string(subclass, "Link Reject", slen);
 			break;
 		default:
-			snprintf(subclass, sizeof(subclass), "Unknown HTML frame '%d'\n", f->subclass.integer);
+			snprintf(subclass, slen, "Unknown HTML frame '%d'\n", f->subclass.integer);
 			break;
 		}
 		break;
 	case AST_FRAME_MODEM:
-		strcpy(ftype, "Modem");
 		switch (f->subclass.integer) {
 		case AST_MODEM_T38:
-			strcpy(subclass, "T.38");
+			ast_copy_string(subclass, "T.38", slen);
 			break;
 		case AST_MODEM_V150:
-			strcpy(subclass, "V.150");
+			ast_copy_string(subclass, "V.150", slen);
 			break;
 		default:
-			snprintf(subclass, sizeof(subclass), "Unknown MODEM frame '%d'\n", f->subclass.integer);
+			snprintf(subclass, slen, "Unknown MODEM frame '%d'\n", f->subclass.integer);
 			break;
 		}
 		break;
 	default:
-		snprintf(ftype, sizeof(ftype), "Unknown Frametype '%d'", f->frametype);
+		ast_copy_string(subclass, "Unknown Subclass", slen);
 	}
+}
+
+void ast_frame_type2str(enum ast_frame_type frame_type, char *ftype, size_t len)
+{
+	switch (frame_type) {
+	case AST_FRAME_DTMF_BEGIN:
+		ast_copy_string(ftype, "DTMF Begin", len);
+		break;
+	case AST_FRAME_DTMF_END:
+		ast_copy_string(ftype, "DTMF End", len);
+		break;
+	case AST_FRAME_CONTROL:
+		ast_copy_string(ftype, "Control", len);
+		break;
+	case AST_FRAME_NULL:
+		ast_copy_string(ftype, "Null Frame", len);
+		break;
+	case AST_FRAME_IAX:
+		/* Should never happen */
+		ast_copy_string(ftype, "IAX Specific", len);
+		break;
+	case AST_FRAME_TEXT:
+		ast_copy_string(ftype, "Text", len);
+		break;
+	case AST_FRAME_IMAGE:
+		ast_copy_string(ftype, "Image", len);
+		break;
+	case AST_FRAME_HTML:
+		ast_copy_string(ftype, "HTML", len);
+		break;
+	case AST_FRAME_MODEM:
+		ast_copy_string(ftype, "Modem", len);
+		break;
+	case AST_FRAME_VOICE:
+		ast_copy_string(ftype, "Voice", len);
+		break;
+	case AST_FRAME_VIDEO:
+		ast_copy_string(ftype, "Video", len);
+		break;
+	default:
+		snprintf(ftype, len, "Unknown Frametype '%d'", frame_type);
+	}
+}
+
+/*! Dump a frame for debugging purposes */
+void ast_frame_dump(const char *name, struct ast_frame *f, char *prefix)
+{
+	const char noname[] = "unknown";
+	char ftype[40] = "Unknown Frametype";
+	char cft[80];
+	char subclass[40] = "Unknown Subclass";
+	char csub[80];
+	char moreinfo[40] = "";
+	char cn[60];
+	char cp[40];
+	char cmn[40];
+
+	if (!name) {
+		name = noname;
+	}
+
+	if (!f) {
+		ast_verb(-1, "%s [ %s (NULL) ] [%s]\n",
+			term_color(cp, prefix, COLOR_BRMAGENTA, COLOR_BLACK, sizeof(cp)),
+			term_color(cft, "HANGUP", COLOR_BRRED, COLOR_BLACK, sizeof(cft)),
+			term_color(cn, name, COLOR_YELLOW, COLOR_BLACK, sizeof(cn)));
+		return;
+	}
+	/* XXX We should probably print one each of voice and video when the format changes XXX */
+	if (f->frametype == AST_FRAME_VOICE) {
+		return;
+	}
+	if (f->frametype == AST_FRAME_VIDEO) {
+		return;
+	}
+
+	ast_frame_type2str(f->frametype, ftype, sizeof(ftype));
+	ast_frame_subclass2str(f, subclass, sizeof(subclass), moreinfo, sizeof(moreinfo));
+
 	if (!ast_strlen_zero(moreinfo))
-		ast_verbose("%s [ TYPE: %s (%d) SUBCLASS: %s (%d) '%s' ] [%s]\n",  
+		ast_verb(-1, "%s [ TYPE: %s (%d) SUBCLASS: %s (%d) '%s' ] [%s]\n",
 			    term_color(cp, prefix, COLOR_BRMAGENTA, COLOR_BLACK, sizeof(cp)),
 			    term_color(cft, ftype, COLOR_BRRED, COLOR_BLACK, sizeof(cft)),
-			    f->frametype, 
+			    f->frametype,
 			    term_color(csub, subclass, COLOR_BRCYAN, COLOR_BLACK, sizeof(csub)),
-			    f->subclass.integer, 
+			    f->subclass.integer,
 			    term_color(cmn, moreinfo, COLOR_BRGREEN, COLOR_BLACK, sizeof(cmn)),
 			    term_color(cn, name, COLOR_YELLOW, COLOR_BLACK, sizeof(cn)));
 	else
-		ast_verbose("%s [ TYPE: %s (%d) SUBCLASS: %s (%d) ] [%s]\n",  
+		ast_verb(-1, "%s [ TYPE: %s (%d) SUBCLASS: %s (%d) ] [%s]\n",
 			    term_color(cp, prefix, COLOR_BRMAGENTA, COLOR_BLACK, sizeof(cp)),
 			    term_color(cft, ftype, COLOR_BRRED, COLOR_BLACK, sizeof(cft)),
-			    f->frametype, 
+			    f->frametype,
 			    term_color(csub, subclass, COLOR_BRCYAN, COLOR_BLACK, sizeof(csub)),
-			    f->subclass.integer, 
+			    f->subclass.integer,
 			    term_color(cn, name, COLOR_YELLOW, COLOR_BLACK, sizeof(cn)));
 }
 
-int ast_parse_allow_disallow(struct ast_codec_pref *pref, struct ast_format_cap *cap, const char *list, int allowing) 
+int ast_parse_allow_disallow(struct ast_codec_pref *pref, struct ast_format_cap *cap, const char *list, int allowing)
 {
 	int errors = 0, framems = 0, all = 0, iter_allowing;
 	char *parse = NULL, *this = NULL, *psize = NULL;
@@ -835,7 +898,7 @@ static unsigned char get_n_bits_at(unsigned char *data, int n, int bit)
 	int byte = bit / 8;       /* byte containing first bit */
 	int rem = 8 - (bit % 8);  /* remaining bits in first byte */
 	unsigned char ret = 0;
-	
+
 	if (n <= 0 || n > 8)
 		return 0;
 
@@ -858,17 +921,17 @@ static int speex_get_wb_sz_at(unsigned char *data, int len, int bit)
 	unsigned char c;
 
 	/* skip up to two wideband frames */
-	if (((len * 8 - off) >= 5) && 
+	if (((len * 8 - off) >= 5) &&
 		get_n_bits_at(data, 1, off)) {
 		c = get_n_bits_at(data, 3, off + 1);
 		off += SpeexWBSubModeSz[c];
 
-		if (((len * 8 - off) >= 5) && 
+		if (((len * 8 - off) >= 5) &&
 			get_n_bits_at(data, 1, off)) {
 			c = get_n_bits_at(data, 3, off + 1);
 			off += SpeexWBSubModeSz[c];
 
-			if (((len * 8 - off) >= 5) && 
+			if (((len * 8 - off) >= 5) &&
 				get_n_bits_at(data, 1, off)) {
 				ast_log(LOG_WARNING, "Encountered corrupt speex frame; too many wideband frames in a row.\n");
 				return -1;
@@ -883,10 +946,10 @@ static int speex_samples(unsigned char *data, int len)
 {
 	static const int SpeexSubModeSz[] = {
 		5, 43, 119, 160,
-		220, 300, 364, 492, 
+		220, 300, 364, 492,
 		79, 0, 0, 0,
 		0, 0, 0, 0 };
-	static const int SpeexInBandSz[] = { 
+	static const int SpeexInBandSz[] = {
 		1, 1, 4, 4,
 		4, 4, 4, 4,
 		8, 8, 16, 16,
@@ -912,9 +975,9 @@ static int speex_samples(unsigned char *data, int len)
 		c = get_n_bits_at(data, 5, bit);
 		bit += 5;
 
-		if (c == 15) { 
+		if (c == 15) {
 			/* terminator */
-			break; 
+			break;
 		} else if (c == 14) {
 			/* in-band signal; next 4 bits contain signal id */
 			c = get_n_bits_at(data, 4, bit);
@@ -1030,7 +1093,7 @@ int ast_codec_get_len(struct ast_format *format, int samples)
 {
 	int len = 0;
 
-	/* XXX Still need speex, and lpc10 XXX */	
+	/* XXX Still need speex, and lpc10 XXX */
 	switch(format->id) {
 	case AST_FORMAT_G723_1:
 		len = (samples / 240) * 20;

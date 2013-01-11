@@ -2,7 +2,7 @@
  * Asterisk -- A telephony toolkit for Linux.
  *
  * UDPTL support for T.38
- * 
+ *
  * Copyright (C) 2005, Steve Underwood, partly based on RTP code which is
  * Copyright (C) 1999-2009, Digium, Inc.
  *
@@ -23,16 +23,16 @@
  * this code.
  */
 
-/*! 
- * \file 
+/*!
+ * \file
  *
  * \brief UDPTL support for T.38 faxing
- * 
+ *
  *
  * \author Mark Spencer <markster@digium.com>
  * \author Steve Underwood <steveu@coppice.org>
  * \author Kevin P. Fleming <kpfleming@digium.com>
- * 
+ *
  * \page T38fax_udptl T.38 support :: UDPTL
  *
  * Asterisk supports T.38 fax passthrough, origination and termination. It does
@@ -41,17 +41,20 @@
  *
  * UDPTL is handled very much like RTP. It can be reinvited to go directly between
  * the endpoints, without involving Asterisk in the media stream.
- * 
+ *
  * \b References:
  * - chan_sip.c
  * - udptl.c
  * - app_fax.c
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339627 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 374196 $")
 
 #include <sys/time.h>
 #include <signal.h>
@@ -61,10 +64,10 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339627 $")
 #include "asterisk/frame.h"
 #include "asterisk/channel.h"
 #include "asterisk/acl.h"
-#include "asterisk/config.h"
+#include "asterisk/config_options.h"
 #include "asterisk/lock.h"
 #include "asterisk/utils.h"
-#include "asterisk/netsock.h"
+#include "asterisk/netsock2.h"
 #include "asterisk/cli.h"
 #include "asterisk/unaligned.h"
 
@@ -79,16 +82,11 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339627 $")
 
 #define LOG_TAG(u) S_OR(u->tag, "no tag")
 
-static int udptlstart = 4500;
-static int udptlend = 4599;
+#define DEFAULT_UDPTLSTART 4000
+#define DEFAULT_UDPTLEND 4999
+
 static int udptldebug;	                    /*!< Are we debugging? */
 static struct ast_sockaddr udptldebugaddr;   /*!< Debug packets to/from this host */
-#ifdef SO_NO_CHECK
-static int nochecksums;
-#endif
-static int udptlfecentries;
-static int udptlfecspan;
-static int use_even_ports;
 
 #define LOCAL_FAX_MAX_DATAGRAM      1400
 #define DEFAULT_FAX_MAX_DATAGRAM    400
@@ -178,6 +176,43 @@ struct ast_udptl {
 };
 
 static AST_RWLIST_HEAD_STATIC(protos, ast_udptl_protocol);
+
+struct udptl_global_options {
+	unsigned int start; /*< The UDPTL start port */
+	unsigned int end;   /*< The UDPTL end port */
+	unsigned int fecentries;
+	unsigned int fecspan;
+	unsigned int nochecksums;
+	unsigned int use_even_ports;
+};
+
+static AO2_GLOBAL_OBJ_STATIC(globals);
+
+struct udptl_config {
+	struct udptl_global_options *general;
+};
+
+static void *udptl_snapshot_alloc(void);
+static int udptl_pre_apply_config(void);
+
+static struct aco_type general_option = {
+	.type = ACO_GLOBAL,
+	.category_match = ACO_WHITELIST,
+	.item_offset = offsetof(struct udptl_config, general),
+	.category = "^general$",
+};
+
+static struct aco_type *general_options[] = ACO_TYPES(&general_option);
+
+static struct aco_file udptl_conf = {
+	.filename = "udptl.conf",
+	.types = ACO_TYPES(&general_option),
+};
+
+CONFIG_INFO_STANDARD(cfg_info, globals, udptl_snapshot_alloc,
+	.files = ACO_FILES(&udptl_conf),
+	.pre_apply_config = udptl_pre_apply_config,
+);
 
 static inline int udptl_debug_test_addr(const struct ast_sockaddr *addr)
 {
@@ -309,16 +344,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 	int stat1;
 	int stat2;
 	int i;
-	int j;
-	int k;
-	int l;
-	int m;
-	int x;
-	int limit;
-	int which;
-	unsigned int ptr;
-	unsigned int count;
-	int total_count;
+	unsigned int ptr;	/* an index that keeps track of how much of the UDPTL packet has been processed */
 	int seq_no;
 	const uint8_t *ifp = NULL;
 	const uint8_t *data = NULL;
@@ -351,13 +377,21 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 		if (seq_no > s->rx_seq_no) {
 			/* We received a later packet than we expected, so we need to check if we can fill in the gap from the
 			   secondary packets. */
-			total_count = 0;
+			int total_count = 0;
 			do {
+				unsigned int count;
 				if ((stat2 = decode_length(buf, len, &ptr, &count)) < 0)
 					return -1;
 				for (i = 0; i < count && total_count + i < ARRAY_LEN(bufs); i++) {
-					if ((stat1 = decode_open_type(buf, len, &ptr, &bufs[total_count + i], &lengths[total_count + i])) != 0)
+					if ((stat1 = decode_open_type(buf, len, &ptr, &bufs[total_count + i], &lengths[total_count + i])) != 0) {
 						return -1;
+					}
+					/* valid secondaries can contain zero-length packets that should be ignored */
+					if (!bufs[total_count + i] || !lengths[total_count + i]) {
+						/* drop the count of items to process and reuse the buffers that were just set */
+						i--;
+						count--;
+					}
 				}
 				total_count += i;
 			}
@@ -367,7 +401,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 				if (seq_no - i >= s->rx_seq_no) {
 					/* This one wasn't seen before */
 					/* Decode the secondary IFP packet */
-					//fprintf(stderr, "Secondary %d, len %d\n", seq_no - i, lengths[i - 1]);
+					ast_debug(3, "Recovering lost packet via secondary %d, len %d\n", seq_no - i, lengths[i - 1]);
 					s->f[ifp_no].frametype = AST_FRAME_MODEM;
 					s->f[ifp_no].subclass.integer = AST_MODEM_T38;
 
@@ -387,6 +421,9 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 	}
 	else
 	{
+		int j;
+		int l;
+		int x;
 		/* FEC mode for error recovery */
 		/* Our buffers cannot tolerate overlength IFP packets in FEC mode */
 		if (ifp_len > LOCAL_FAX_MAX_DATAGRAM)
@@ -449,10 +486,13 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 		/* See if we can reconstruct anything which is missing */
 		/* TODO: this does not comprehensively hunt back and repair everything that is possible */
 		for (l = x; l != ((x - (16 - span*entries)) & UDPTL_BUF_MASK); l = (l - 1) & UDPTL_BUF_MASK) {
+			int m;
 			if (s->rx[l].fec_len[0] <= 0)
 				continue;
 			for (m = 0; m < s->rx[l].fec_entries; m++) {
-				limit = (l + m) & UDPTL_BUF_MASK;
+				int k;
+				int which;
+				int limit = (l + m) & UDPTL_BUF_MASK;
 				for (which = -1, k = (limit - s->rx[l].fec_span * s->rx[l].fec_entries) & UDPTL_BUF_MASK; k != limit; k = (k + s->rx[l].fec_entries) & UDPTL_BUF_MASK) {
 					if (s->rx[k].buf_len <= 0)
 						which = (which == -1) ? k : -2;
@@ -475,7 +515,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 				//fprintf(stderr, "Fixed packet %d, len %d\n", j, l);
 				s->f[ifp_no].frametype = AST_FRAME_MODEM;
 				s->f[ifp_no].subclass.integer = AST_MODEM_T38;
-			
+
 				s->f[ifp_no].mallocd = 0;
 				s->f[ifp_no].seqno = j;
 				s->f[ifp_no].datalen = s->rx[l].buf_len;
@@ -496,7 +536,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 		/* Decode the primary IFP packet */
 		s->f[ifp_no].frametype = AST_FRAME_MODEM;
 		s->f[ifp_no].subclass.integer = AST_MODEM_T38;
-		
+
 		s->f[ifp_no].mallocd = 0;
 		s->f[ifp_no].seqno = seq_no;
 		s->f[ifp_no].datalen = ifp_len;
@@ -517,7 +557,7 @@ static int udptl_rx_packet(struct ast_udptl *s, uint8_t *buf, unsigned int len)
 
 static int udptl_build_packet(struct ast_udptl *s, uint8_t *buf, unsigned int buflen, uint8_t *ifp, unsigned int ifp_len)
 {
-	uint8_t fec[LOCAL_FAX_MAX_DATAGRAM * 2];
+	uint8_t fec[LOCAL_FAX_MAX_DATAGRAM * 2] = { 0, };
 	int i;
 	int j;
 	int seq;
@@ -538,7 +578,7 @@ static int udptl_build_packet(struct ast_udptl *s, uint8_t *buf, unsigned int bu
 	   redundancy sets later on. */
 	s->tx[entry].buf_len = ifp_len;
 	memcpy(s->tx[entry].buf, ifp, ifp_len);
-	
+
 	/* Build the UDPTLPacket */
 
 	len = 0;
@@ -919,13 +959,20 @@ struct ast_udptl *ast_udptl_new_with_bindaddr(struct ast_sched_context *sched, s
 	int startplace;
 	int i;
 	long int flags;
+	RAII_VAR(struct udptl_config *, cfg, ao2_global_obj_ref(globals), ao2_cleanup);
 
-	if (!(udptl = ast_calloc(1, sizeof(*udptl))))
+	if (!cfg || !cfg->general) {
+		ast_log(LOG_ERROR, "Could not access global udptl options!\n");
 		return NULL;
+	}
 
-	udptl->error_correction_span = udptlfecspan;
-	udptl->error_correction_entries = udptlfecentries;
-	
+	if (!(udptl = ast_calloc(1, sizeof(*udptl)))) {
+		return NULL;
+	}
+
+	udptl->error_correction_span = cfg->general->fecspan;
+	udptl->error_correction_entries = cfg->general->fecentries;
+
 	udptl->far_max_datagram = -1;
 	udptl->far_max_ifp = -1;
 	udptl->local_max_ifp = -1;
@@ -944,13 +991,15 @@ struct ast_udptl *ast_udptl_new_with_bindaddr(struct ast_sched_context *sched, s
 	}
 	flags = fcntl(udptl->fd, F_GETFL);
 	fcntl(udptl->fd, F_SETFL, flags | O_NONBLOCK);
+
 #ifdef SO_NO_CHECK
-	if (nochecksums)
-		setsockopt(udptl->fd, SOL_SOCKET, SO_NO_CHECK, &nochecksums, sizeof(nochecksums));
+	if (cfg->general->nochecksums)
+		setsockopt(udptl->fd, SOL_SOCKET, SO_NO_CHECK, &cfg->general->nochecksums, sizeof(cfg->general->nochecksums));
 #endif
+
 	/* Find us a place */
-	x = (udptlstart == udptlend) ? udptlstart : (ast_random() % (udptlend - udptlstart)) + udptlstart;
-	if (use_even_ports && (x & 1)) {
+	x = (cfg->general->start == cfg->general->end) ? cfg->general->start : (ast_random() % (cfg->general->end - cfg->general->start)) + cfg->general->start;
+	if (cfg->general->use_even_ports && (x & 1)) {
 		++x;
 	}
 	startplace = x;
@@ -966,13 +1015,13 @@ struct ast_udptl *ast_udptl_new_with_bindaddr(struct ast_sched_context *sched, s
 			ast_free(udptl);
 			return NULL;
 		}
-		if (use_even_ports) {
+		if (cfg->general->use_even_ports) {
 			x += 2;
 		} else {
 			++x;
 		}
-		if (x > udptlend)
-			x = udptlstart;
+		if (x > cfg->general->end)
+			x = cfg->general->start;
 		if (x == startplace) {
 			ast_log(LOG_WARNING, "No UDPTL ports remaining\n");
 			close(udptl->fd);
@@ -986,6 +1035,7 @@ struct ast_udptl *ast_udptl_new_with_bindaddr(struct ast_sched_context *sched, s
 		udptl->io = io;
 		udptl->ioid = ast_io_add(udptl->io, udptl->fd, udptlread, AST_IO_IN, udptl);
 	}
+
 	return udptl;
 }
 
@@ -1004,7 +1054,7 @@ void ast_udptl_set_tag(struct ast_udptl *udptl, const char *format, ...)
 
 int ast_udptl_setqos(struct ast_udptl *udptl, unsigned int tos, unsigned int cos)
 {
-	return ast_netsock_set_qos(udptl->fd, tos, cos, "UDPTL");
+	return ast_set_qos(udptl->fd, tos, cos, "UDPTL");
 }
 
 void ast_udptl_set_peer(struct ast_udptl *udptl, const struct ast_sockaddr *them)
@@ -1042,7 +1092,6 @@ int ast_udptl_write(struct ast_udptl *s, struct ast_frame *f)
 {
 	unsigned int seq;
 	unsigned int len = f->datalen;
-	int res;
 	/* if no max datagram size is provided, use default value */
 	const int bufsize = (s->far_max_datagram > 0) ? s->far_max_datagram : DEFAULT_FAX_MAX_DATAGRAM;
 	uint8_t buf[bufsize];
@@ -1057,7 +1106,7 @@ int ast_udptl_write(struct ast_udptl *s, struct ast_frame *f)
 	/* If there is no data length, return immediately */
 	if (f->datalen == 0)
 		return 0;
-	
+
 	if ((f->frametype != AST_FRAME_MODEM) ||
 	    (f->subclass.integer != AST_MODEM_T38)) {
 		ast_log(LOG_WARNING, "UDPTL (%s): UDPTL can only send T.38 data.\n",
@@ -1080,14 +1129,16 @@ int ast_udptl_write(struct ast_udptl *s, struct ast_frame *f)
 	len = udptl_build_packet(s, buf, sizeof(buf), f->data.ptr, len);
 
 	if ((signed int) len > 0 && !ast_sockaddr_isnull(&s->them)) {
-		if ((res = ast_sendto(s->fd, buf, len, 0, &s->them)) < 0)
+		if (ast_sendto(s->fd, buf, len, 0, &s->them) < 0) {
 			ast_log(LOG_NOTICE, "UDPTL (%s): Transmission error to %s: %s\n",
 				LOG_TAG(s), ast_sockaddr_stringify(&s->them), strerror(errno));
-		if (udptl_debug_test_addr(&s->them))
+		}
+		if (udptl_debug_test_addr(&s->them)) {
 			ast_verb(1, "UDPTL (%s): packet to %s (seq %d, len %d)\n",
 				LOG_TAG(s), ast_sockaddr_stringify(&s->them), seq, len);
+		}
 	}
-		
+
 	return 0;
 }
 
@@ -1121,7 +1172,7 @@ static struct ast_udptl_protocol *get_proto(struct ast_channel *chan)
 
 	AST_RWLIST_RDLOCK(&protos);
 	AST_RWLIST_TRAVERSE(&protos, cur, list) {
-		if (cur->type == chan->tech->type)
+		if (cur->type == ast_channel_tech(chan)->type)
 			break;
 	}
 	AST_RWLIST_UNLOCK(&protos);
@@ -1145,7 +1196,7 @@ int ast_udptl_bridge(struct ast_channel *c0, struct ast_channel *c1, int flags, 
 	void *pvt0;
 	void *pvt1;
 	int to;
-	
+
 	ast_channel_lock(c0);
 	while (ast_channel_trylock(c1)) {
 		ast_channel_unlock(c0);
@@ -1155,19 +1206,19 @@ int ast_udptl_bridge(struct ast_channel *c0, struct ast_channel *c1, int flags, 
 	pr0 = get_proto(c0);
 	pr1 = get_proto(c1);
 	if (!pr0) {
-		ast_log(LOG_WARNING, "Can't find native functions for channel '%s'\n", c0->name);
+		ast_log(LOG_WARNING, "Can't find native functions for channel '%s'\n", ast_channel_name(c0));
 		ast_channel_unlock(c0);
 		ast_channel_unlock(c1);
 		return -1;
 	}
 	if (!pr1) {
-		ast_log(LOG_WARNING, "Can't find native functions for channel '%s'\n", c1->name);
+		ast_log(LOG_WARNING, "Can't find native functions for channel '%s'\n", ast_channel_name(c1));
 		ast_channel_unlock(c0);
 		ast_channel_unlock(c1);
 		return -1;
 	}
-	pvt0 = c0->tech_pvt;
-	pvt1 = c1->tech_pvt;
+	pvt0 = ast_channel_tech_pvt(c0);
+	pvt1 = ast_channel_tech_pvt(c1);
 	p0 = pr0->get_udptl_info(c0);
 	p1 = pr1->get_udptl_info(c1);
 	if (!p0 || !p1) {
@@ -1177,14 +1228,14 @@ int ast_udptl_bridge(struct ast_channel *c0, struct ast_channel *c1, int flags, 
 		return -2;
 	}
 	if (pr0->set_udptl_peer(c0, p1)) {
-		ast_log(LOG_WARNING, "Channel '%s' failed to talk to '%s'\n", c0->name, c1->name);
+		ast_log(LOG_WARNING, "Channel '%s' failed to talk to '%s'\n", ast_channel_name(c0), ast_channel_name(c1));
 		memset(&ac1, 0, sizeof(ac1));
 	} else {
 		/* Store UDPTL peer */
 		ast_udptl_get_peer(p1, &ac1);
 	}
 	if (pr1->set_udptl_peer(c1, p0)) {
-		ast_log(LOG_WARNING, "Channel '%s' failed to talk back to '%s'\n", c1->name, c0->name);
+		ast_log(LOG_WARNING, "Channel '%s' failed to talk back to '%s'\n", ast_channel_name(c1), ast_channel_name(c0));
 		memset(&ac0, 0, sizeof(ac0));
 	} else {
 		/* Store UDPTL peer */
@@ -1196,9 +1247,9 @@ int ast_udptl_bridge(struct ast_channel *c0, struct ast_channel *c1, int flags, 
 	cs[1] = c1;
 	cs[2] = NULL;
 	for (;;) {
-		if ((c0->tech_pvt != pvt0) ||
-			(c1->tech_pvt != pvt1) ||
-			(c0->masq || c0->masqr || c1->masq || c1->masqr)) {
+		if ((ast_channel_tech_pvt(c0) != pvt0) ||
+			(ast_channel_tech_pvt(c1) != pvt1) ||
+			(ast_channel_masq(c0) || ast_channel_masqr(c0) || ast_channel_masq(c1) || ast_channel_masqr(c1))) {
 				ast_debug(1, "Oooh, something is weird, backing out\n");
 				/* Tell it to try again later */
 				return -3;
@@ -1207,17 +1258,17 @@ int ast_udptl_bridge(struct ast_channel *c0, struct ast_channel *c1, int flags, 
 		ast_udptl_get_peer(p1, &t1);
 		ast_udptl_get_peer(p0, &t0);
 		if (ast_sockaddr_cmp(&t1, &ac1)) {
-			ast_debug(1, "Oooh, '%s' changed end address to %s\n", 
-				c1->name, ast_sockaddr_stringify(&t1));
-			ast_debug(1, "Oooh, '%s' was %s\n", 
-				c1->name, ast_sockaddr_stringify(&ac1));
+			ast_debug(1, "Oooh, '%s' changed end address to %s\n",
+				ast_channel_name(c1), ast_sockaddr_stringify(&t1));
+			ast_debug(1, "Oooh, '%s' was %s\n",
+				ast_channel_name(c1), ast_sockaddr_stringify(&ac1));
 			ast_sockaddr_copy(&ac1, &t1);
 		}
 		if (ast_sockaddr_cmp(&t0, &ac0)) {
-			ast_debug(1, "Oooh, '%s' changed end address to %s\n", 
-				c0->name, ast_sockaddr_stringify(&t0));
-			ast_debug(1, "Oooh, '%s' was %s\n", 
-				c0->name, ast_sockaddr_stringify(&ac0));
+			ast_debug(1, "Oooh, '%s' changed end address to %s\n",
+				ast_channel_name(c0), ast_sockaddr_stringify(&t0));
+			ast_debug(1, "Oooh, '%s' was %s\n",
+				ast_channel_name(c0), ast_sockaddr_stringify(&ac0));
 			ast_sockaddr_copy(&ac0, &t0);
 		}
 		who = ast_waitfor_n(cs, 2, &to);
@@ -1259,7 +1310,7 @@ static char *handle_cli_udptl_set_debug(struct ast_cli_entry *e, int cmd, struct
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "udptl set debug {on|off|ip}";
-		e->usage = 
+		e->usage =
 			"Usage: udptl set debug {on|off|ip host[:port]}\n"
 			"       Enable or disable dumping of UDPTL packets.\n"
 			"       If ip is specified, limit the dumped packets to those to and from\n"
@@ -1299,109 +1350,110 @@ static char *handle_cli_udptl_set_debug(struct ast_cli_entry *e, int cmd, struct
 	return CLI_SUCCESS;
 }
 
+static char *handle_cli_show_config(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	RAII_VAR(struct udptl_config *, cfg, NULL, ao2_cleanup);
+
+	switch (cmd) {
+	case CLI_INIT:
+		e->command = "udptl show config";
+		e->usage =
+			"Usage: udptl show config\n"
+			"       Display UDPTL configuration options\n";
+		return NULL;
+	case CLI_GENERATE:
+		return NULL;
+	}
+
+	if (!(cfg = ao2_global_obj_ref(globals))) {
+		return CLI_FAILURE;
+	}
+
+	ast_cli(a->fd, "UDPTL Global options\n");
+	ast_cli(a->fd, "--------------------\n");
+	ast_cli(a->fd, "udptlstart:      %u\n", cfg->general->start);
+	ast_cli(a->fd, "udptlend:        %u\n", cfg->general->end);
+	ast_cli(a->fd, "udptlfecentries: %u\n", cfg->general->fecentries);
+	ast_cli(a->fd, "udptlfecspan:    %u\n", cfg->general->fecspan);
+	ast_cli(a->fd, "use_even_ports:  %s\n", AST_CLI_YESNO(cfg->general->use_even_ports));
+	ast_cli(a->fd, "udptlchecksums: %s\n", AST_CLI_YESNO(!cfg->general->nochecksums));
+
+	return CLI_SUCCESS;
+}
 
 static struct ast_cli_entry cli_udptl[] = {
-	AST_CLI_DEFINE(handle_cli_udptl_set_debug, "Enable/Disable UDPTL debugging")
+	AST_CLI_DEFINE(handle_cli_udptl_set_debug, "Enable/Disable UDPTL debugging"),
+	AST_CLI_DEFINE(handle_cli_show_config, "Show UDPTL config options"),
 };
+
+static void udptl_config_destructor(void *obj)
+{
+	struct udptl_config *cfg = obj;
+	ao2_cleanup(cfg->general);
+}
+
+static void *udptl_snapshot_alloc(void)
+{
+	struct udptl_config *cfg;
+
+	if (!(cfg = ao2_alloc(sizeof(*cfg), udptl_config_destructor))) {
+		return NULL;
+	}
+	if (!(cfg->general = ao2_alloc(sizeof(*cfg->general), NULL))) {
+		ao2_ref(cfg, -1);
+		return NULL;
+	}
+
+	return cfg;
+}
+
+static int removed_options_handler(const struct aco_option *opt, struct ast_variable *var, void *obj)
+{
+	if (!strcasecmp(var->name, "t38faxudpec")) {
+		ast_log(LOG_WARNING, "t38faxudpec in udptl.conf is no longer supported; use the t38pt_udptl configuration option in sip.conf instead.\n");
+	} else if (!strcasecmp(var->name, "t38faxmaxdatagram")) {
+		ast_log(LOG_WARNING, "t38faxmaxdatagram in udptl.conf is no longer supported; value is now supplied by T.38 applications.\n");
+	}
+	return 0;
+}
 
 static void __ast_udptl_reload(int reload)
 {
-	struct ast_config *cfg;
-	const char *s;
-	struct ast_flags config_flags = { reload ? CONFIG_FLAG_FILEUNCHANGED : 0 };
+	if (aco_process_config(&cfg_info, reload) == ACO_PROCESS_ERROR) {
+		ast_log(LOG_WARNING, "Could not reload udptl config\n");
+	}
+}
 
-	cfg = ast_config_load2("udptl.conf", "udptl", config_flags);
-	if (cfg == CONFIG_STATUS_FILEMISSING || cfg == CONFIG_STATUS_FILEUNCHANGED || cfg == CONFIG_STATUS_FILEINVALID) {
-		return;
+static int udptl_pre_apply_config(void) {
+	struct udptl_config *cfg = aco_pending_config(&cfg_info);
+
+	if (!cfg->general) {
+		return -1;
 	}
 
-	udptlstart = 4500;
-	udptlend = 4999;
-	udptlfecentries = 0;
-	udptlfecspan = 0;
-	use_even_ports = 0;
-
-	if (cfg) {
-		if ((s = ast_variable_retrieve(cfg, "general", "udptlstart"))) {
-			udptlstart = atoi(s);
-			if (udptlstart < 1024) {
-				ast_log(LOG_WARNING, "Ports under 1024 are not allowed for T.38.\n");
-				udptlstart = 1024;
-			}
-			if (udptlstart > 65535) {
-				ast_log(LOG_WARNING, "Ports over 65535 are invalid.\n");
-				udptlstart = 65535;
-			}
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "udptlend"))) {
-			udptlend = atoi(s);
-			if (udptlend < 1024) {
-				ast_log(LOG_WARNING, "Ports under 1024 are not allowed for T.38.\n");
-				udptlend = 1024;
-			}
-			if (udptlend > 65535) {
-				ast_log(LOG_WARNING, "Ports over 65535 are invalid.\n");
-				udptlend = 65535;
-			}
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "udptlchecksums"))) {
-#ifdef SO_NO_CHECK
-			if (ast_false(s))
-				nochecksums = 1;
-			else
-				nochecksums = 0;
-#else
-			if (ast_false(s))
-				ast_log(LOG_WARNING, "Disabling UDPTL checksums is not supported on this operating system!\n");
+#ifndef SO_NO_CHECK
+	if (cfg->general->nochecksums) {
+		ast_log(LOG_WARNING, "Disabling UDPTL checksums is not supported on this operating system!\n");
+		cfg->general->nochecksums = 0;
+	}
 #endif
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "T38FaxUdpEC"))) {
-			ast_log(LOG_WARNING, "T38FaxUdpEC in udptl.conf is no longer supported; use the t38pt_udptl configuration option in sip.conf instead.\n");
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "T38FaxMaxDatagram"))) {
-			ast_log(LOG_WARNING, "T38FaxMaxDatagram in udptl.conf is no longer supported; value is now supplied by T.38 applications.\n");
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "UDPTLFECEntries"))) {
-			udptlfecentries = atoi(s);
-			if (udptlfecentries < 1) {
-				ast_log(LOG_WARNING, "Too small UDPTLFECEntries value.  Defaulting to 1.\n");
-				udptlfecentries = 1;
-			}
-			if (udptlfecentries > MAX_FEC_ENTRIES) {
-				ast_log(LOG_WARNING, "Too large UDPTLFECEntries value.  Defaulting to %d.\n", MAX_FEC_ENTRIES);
-				udptlfecentries = MAX_FEC_ENTRIES;
-			}
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "UDPTLFECSpan"))) {
-			udptlfecspan = atoi(s);
-			if (udptlfecspan < 1) {
-				ast_log(LOG_WARNING, "Too small UDPTLFECSpan value.  Defaulting to 1.\n");
-				udptlfecspan = 1;
-			}
-			if (udptlfecspan > MAX_FEC_SPAN) {
-				ast_log(LOG_WARNING, "Too large UDPTLFECSpan value.  Defaulting to %d.\n", MAX_FEC_SPAN);
-				udptlfecspan = MAX_FEC_SPAN;
-			}
-		}
-		if ((s = ast_variable_retrieve(cfg, "general", "use_even_ports"))) {
-			use_even_ports = ast_true(s);
-		}
-		ast_config_destroy(cfg);
+
+	/* Fix up any global config values that we can handle before replacing the config */
+	if (cfg->general->use_even_ports && (cfg->general->start & 1)) {
+		++cfg->general->start;
+		ast_log(LOG_NOTICE, "Odd numbered udptlstart specified but use_even_ports enabled. udptlstart is now %d\n", cfg->general->start);
 	}
-	if (udptlstart >= udptlend) {
-		ast_log(LOG_WARNING, "Unreasonable values for UDPTL start/end ports; defaulting to 4500-4999.\n");
-		udptlstart = 4500;
-		udptlend = 4999;
+	if (cfg->general->start > cfg->general->end) {
+		ast_log(LOG_WARNING, "Unreasonable values for UDPTL start/end ports; defaulting to %s-%s.\n", __stringify(DEFAULT_UDPTLSTART), __stringify(DEFAULT_UDPTLEND));
+		cfg->general->start = DEFAULT_UDPTLSTART;
+		cfg->general->end = DEFAULT_UDPTLEND;
 	}
-	if (use_even_ports && (udptlstart & 1)) {
-		++udptlstart;
-		ast_log(LOG_NOTICE, "Odd numbered udptlstart specified but use_even_ports enabled. udptlstart is now %d\n", udptlstart);
+	if (cfg->general->use_even_ports && (cfg->general->end & 1)) {
+		--cfg->general->end;
+		ast_log(LOG_NOTICE, "Odd numbered udptlend specified but use_even_ports enabled. udptlend is now %d\n", cfg->general->end);
 	}
-	if (use_even_ports && (udptlend & 1)) {
-		--udptlend;
-		ast_log(LOG_NOTICE, "Odd numbered udptlend specified but use_event_ports enabled. udptlend is now %d\n", udptlend);
-	}
-	ast_verb(2, "UDPTL allocating from port range %d -> %d\n", udptlstart, udptlend);
+
+	return 0;
 }
 
 int ast_udptl_reload(void)
@@ -1410,8 +1462,47 @@ int ast_udptl_reload(void)
 	return 0;
 }
 
+/*! \internal \brief Clean up resources on Asterisk shutdown */
+static void udptl_shutdown(void)
+{
+	ao2_t_global_obj_release(globals, "Unref udptl global container in shutdown");
+	aco_info_destroy(&cfg_info);
+}
+
 void ast_udptl_init(void)
 {
+	if (aco_info_init(&cfg_info)) {
+		return;
+	}
+
+	aco_option_register(&cfg_info, "udptlstart", ACO_EXACT, general_options, __stringify(DEFAULT_UDPTLSTART),
+		OPT_UINT_T, PARSE_IN_RANGE | PARSE_DEFAULT,
+		FLDSET(struct udptl_global_options, start), DEFAULT_UDPTLSTART, 1024, 65535);
+
+	aco_option_register(&cfg_info, "udptlend", ACO_EXACT, general_options, __stringify(DEFAULT_UDPTLEND),
+		OPT_UINT_T, PARSE_IN_RANGE | PARSE_DEFAULT,
+		FLDSET(struct udptl_global_options, end), DEFAULT_UDPTLEND, 1024, 65535);
+
+	aco_option_register(&cfg_info, "udptlfecentries", ACO_EXACT, general_options, NULL,
+		OPT_UINT_T, PARSE_IN_RANGE | PARSE_RANGE_DEFAULTS,
+		FLDSET(struct udptl_global_options, fecentries), 1, MAX_FEC_ENTRIES);
+
+	aco_option_register(&cfg_info, "udptlfecspan", ACO_EXACT, general_options, NULL,
+		OPT_UINT_T, PARSE_IN_RANGE | PARSE_RANGE_DEFAULTS,
+		FLDSET(struct udptl_global_options, fecspan), 1, MAX_FEC_SPAN);
+
+	aco_option_register(&cfg_info, "udptlchecksums", ACO_EXACT, general_options, "yes",
+		OPT_BOOL_T, 0, FLDSET(struct udptl_global_options, nochecksums));
+
+	aco_option_register(&cfg_info, "use_even_ports", ACO_EXACT, general_options, "no",
+		OPT_BOOL_T, 1, FLDSET(struct udptl_global_options, use_even_ports));
+
+	aco_option_register_custom(&cfg_info, "t38faxudpec", ACO_EXACT, general_options, NULL, removed_options_handler, 0);
+	aco_option_register_custom(&cfg_info, "t38faxmaxdatagram", ACO_EXACT, general_options, NULL, removed_options_handler, 0);
+
 	ast_cli_register_multiple(cli_udptl, ARRAY_LEN(cli_udptl));
+
 	__ast_udptl_reload(0);
+
+	ast_register_atexit(udptl_shutdown);
 }

@@ -16,8 +16,12 @@
 
 /*! \file
  *
- * \brief Compatibility functions for strsep and strtoq missing on Solaris 
+ * \brief Compatibility functions for strsep and strtoq missing on Solaris
  */
+
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
 
 #include "asterisk.h"
 
@@ -64,11 +68,11 @@ int setenv(const char *name, const char *value, int overwrite)
 	unsigned char *buf;
 	int buflen;
 
-	buflen = strlen(name) + strlen(value) + 2;
-	buf = alloca(buflen);
-
 	if (!overwrite && getenv(name))
 		return 0;
+
+	buflen = strlen(name) + strlen(value) + 2;
+	buf = ast_alloca(buflen);
 
 	snprintf(buf, buflen, "%s=%s", name, value);
 
@@ -101,23 +105,19 @@ static char *upper(const char *orig, char *buf, int bufsize)
 char *strcasestr(const char *haystack, const char *needle)
 {
 	char *u1, *u2;
+	char *offset;
 	int u1len = strlen(haystack) + 1, u2len = strlen(needle) + 1;
 
-	u1 = alloca(u1len);
-	u2 = alloca(u2len);
-	if (u1 && u2) {
-		char *offset;
-		if (u2len > u1len) {
-			/* Needle bigger than haystack */
-			return NULL;
-		}
-		offset = strstr(upper(haystack, u1, u1len), upper(needle, u2, u2len));
-		if (offset) {
-			/* Return the offset into the original string */
-			return ((char *)((unsigned long)haystack + (unsigned long)(offset - u1)));
-		} else {
-			return NULL;
-		}
+	if (u2len > u1len) {
+		/* Needle bigger than haystack */
+		return NULL;
+	}
+	u1 = ast_alloca(u1len);
+	u2 = ast_alloca(u2len);
+	offset = strstr(upper(haystack, u1, u1len), upper(needle, u2, u2len));
+	if (offset) {
+		/* Return the offset into the original string */
+		return ((char *)((unsigned long)haystack + (unsigned long)(offset - u1)));
 	} else {
 		return NULL;
 	}
@@ -203,7 +203,7 @@ void timersub(struct timeval *tvend, struct timeval *tvstart, struct timeval *tv
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#if !defined(HAVE_ASPRINTF) && !defined(__AST_DEBUG_MALLOC) 
+#if !defined(HAVE_ASPRINTF) && !defined(__AST_DEBUG_MALLOC)
 int asprintf(char **str, const char *fmt, ...)
 {
 	va_list ap;

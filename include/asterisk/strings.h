@@ -252,11 +252,26 @@ int ast_build_string(char **buffer, size_t *space, const char *fmt, ...) __attri
 */
 int ast_build_string_va(char **buffer, size_t *space, const char *fmt, va_list ap) __attribute__((format(printf, 3, 0)));
 
-/*! 
+/*!
+ * \brief Given a string regex_string in the form of "/regex/", convert it into the form of "regex"
+ *
+ * This function will trim one leading / and one trailing / from a given input string
+ * ast_str regex_pattern must be preallocated before calling this function
+ *
+ * \return 0 on success, non-zero on failure.
+ * \return 1 if we only stripped a leading /
+ * \return 2 if we only stripped a trailing /
+ * \return 3 if we did not strip any / characters
+ * \param regex_string  the string containing /regex/
+ * \param regex_pattern the destination ast_str which will contain "regex" after execution
+ */
+int ast_regex_string_to_regex_pattern(const char *regex_string, struct ast_str **regex_pattern);
+
+/*!
  * \brief Make sure something is true.
  * Determine if a string containing a boolean value is "true".
- * This function checks to see whether a string passed to it is an indication of an "true" value.  
- * It checks to see if the string is "yes", "true", "y", "t", "on" or "1".  
+ * This function checks to see whether a string passed to it is an indication of an "true" value.
+ * It checks to see if the string is "yes", "true", "y", "t", "on" or "1".
  *
  * \retval 0 if val is a NULL pointer.
  * \retval -1 if "true".
@@ -357,7 +372,7 @@ int ast_get_timeval(const char *src, struct timeval *tv, struct timeval _default
 /*! \brief The descriptor of a dynamic string
  *  XXX storage will be optimized later if needed
  * We use the ts field to indicate the type of storage.
- * Three special constants indicate malloc, alloca() or static
+ * Three special constants indicate malloc, ast_alloca() or static
  * variables, all other values indicate a
  * struct ast_threadstorage pointer.
  */
@@ -498,14 +513,20 @@ char * attribute_pure ast_str_buffer(const struct ast_str *buf),
 
 /*!\brief Truncates the enclosed string to the given length.
  * \param buf A pointer to the ast_str structure.
- * \param len Maximum length of the string.
+ * \param len Maximum length of the string. If len is larger than the
+ *        current maximum length, things will explode. If it is negative
+ *        at most -len characters will be trimmed off the end.
  * \retval A pointer to the resulting string.
  */
 AST_INLINE_API(
 char *ast_str_truncate(struct ast_str *buf, ssize_t len),
 {
 	if (len < 0) {
-		buf->__AST_STR_USED += ((ssize_t) abs(len)) > (ssize_t) buf->__AST_STR_USED ? -buf->__AST_STR_USED : len;
+		if ((typeof(buf->__AST_STR_USED)) -len >= buf->__AST_STR_USED) {
+			buf->__AST_STR_USED = 0;
+		} else {
+			buf->__AST_STR_USED += len;
+		}
 	} else {
 		buf->__AST_STR_USED = len;
 	}
@@ -602,7 +623,7 @@ int ast_str_copy_string(struct ast_str **dst, struct ast_str *src),
 #define ast_str_alloca(init_len)			\
 	({						\
 		struct ast_str *__ast_str_buf;			\
-		__ast_str_buf = alloca(sizeof(*__ast_str_buf) + init_len);	\
+		__ast_str_buf = ast_alloca(sizeof(*__ast_str_buf) + init_len);	\
 		__ast_str_buf->__AST_STR_LEN = init_len;			\
 		__ast_str_buf->__AST_STR_USED = 0;				\
 		__ast_str_buf->__AST_STR_TS = DS_ALLOCA;			\
@@ -772,6 +793,12 @@ char *__ast_str_helper2(struct ast_str **buf, ssize_t max_len,
  *      ...
  * }
  * \endcode
+ *
+ * \note Care should be taken when using this function. The function can
+ * result in reallocating the ast_str. If a pointer to the ast_str is passed
+ * by value to a function that calls ast_str_set_va(), then the original ast_str
+ * pointer may be invalidated due to a reallocation.
+ *
  */
 AST_INLINE_API(int __attribute__((format(printf, 3, 0))) ast_str_set_va(struct ast_str **buf, ssize_t max_len, const char *fmt, va_list ap),
 {
@@ -783,6 +810,12 @@ AST_INLINE_API(int __attribute__((format(printf, 3, 0))) ast_str_set_va(struct a
  * \brief Append to a dynamic string using a va_list
  *
  * Same as ast_str_set_va(), but append to the current content.
+ *
+ * \note Care should be taken when using this function. The function can
+ * result in reallocating the ast_str. If a pointer to the ast_str is passed
+ * by value to a function that calls ast_str_append_va(), then the original ast_str
+ * pointer may be invalidated due to a reallocation.
+ *
  */
 AST_INLINE_API(int __attribute__((format(printf, 3, 0))) ast_str_append_va(struct ast_str **buf, ssize_t max_len, const char *fmt, va_list ap),
 {
@@ -821,6 +854,11 @@ AST_INLINE_API(char *ast_str_append_escapecommas(struct ast_str **buf, ssize_t m
 /*!
  * \brief Set a dynamic string using variable arguments
  *
+ * \note Care should be taken when using this function. The function can
+ * result in reallocating the ast_str. If a pointer to the ast_str is passed
+ * by value to a function that calls ast_str_set(), then the original ast_str
+ * pointer may be invalidated due to a reallocation.
+ *
  * \param buf This is the address of a pointer to a struct ast_str which should
  *      have been retrieved using ast_str_thread_get.  It will need to
  *      be updated in the case that the buffer has to be reallocated to
@@ -852,6 +890,11 @@ int __attribute__((format(printf, 3, 4))) ast_str_set(
 
 /*!
  * \brief Append to a thread local dynamic string
+ *
+ * \note Care should be taken when using this function. The function can
+ * result in reallocating the ast_str. If a pointer to the ast_str is passed
+ * by value to a function that calls ast_str_append(), then the original ast_str
+ * pointer may be invalidated due to a reallocation.
  *
  * The arguments, return values, and usage of this function are the same as
  * ast_str_set(), but the new data is appended to the current value.
@@ -887,6 +930,26 @@ int ast_check_digits(const char *arg),
 		arg++;
 	}
 	return 1;
+}
+)
+
+/*!
+ * \brief Convert the tech portion of a device string to upper case
+ *
+ * \retval dev_str Returns the char* passed in for convenience
+ */
+AST_INLINE_API(
+char *ast_tech_to_upper(char *dev_str),
+{
+	char *pos;
+	if (!dev_str || !strchr(dev_str, '/')) {
+		return dev_str;
+	}
+
+	for (pos = dev_str; *pos && *pos != '/'; pos++) {
+		*pos = toupper(*pos);
+	}
+	return dev_str;
 }
 )
 

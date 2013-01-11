@@ -40,7 +40,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371592 $")
 
 #include <ctype.h>		/* isalnum() used here */
 #include <math.h>
@@ -308,7 +308,7 @@ static char *oss_active;	 /*!< the active device */
 /*! \brief return the pointer to the video descriptor */
 struct video_desc *get_video_desc(struct ast_channel *c)
 {
-	struct chan_oss_pvt *o = c ? c->tech_pvt : find_desc(oss_active);
+	struct chan_oss_pvt *o = c ? ast_channel_tech_pvt(c) : find_desc(oss_active);
 	return o ? o->env : NULL;
 }
 static struct chan_oss_pvt oss_default = {
@@ -329,14 +329,14 @@ static struct chan_oss_pvt oss_default = {
 static int setformat(struct chan_oss_pvt *o, int mode);
 
 static struct ast_channel *oss_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor,
-									   void *data, int *cause);
+									   const char *data, int *cause);
 static int oss_digit_begin(struct ast_channel *c, char digit);
 static int oss_digit_end(struct ast_channel *c, char digit, unsigned int duration);
 static int oss_text(struct ast_channel *c, const char *text);
 static int oss_hangup(struct ast_channel *c);
 static int oss_answer(struct ast_channel *c);
 static struct ast_frame *oss_read(struct ast_channel *chan);
-static int oss_call(struct ast_channel *c, char *dest, int timeout);
+static int oss_call(struct ast_channel *c, const char *dest, int timeout);
 static int oss_write(struct ast_channel *chan, struct ast_frame *f);
 static int oss_indicate(struct ast_channel *chan, int cond, const void *data, size_t datalen);
 static int oss_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
@@ -531,7 +531,7 @@ static int setformat(struct chan_oss_pvt *o, int mode)
 	res = ioctl(fd, SNDCTL_DSP_SPEED, &fmt);
 
 	if (res < 0) {
-		ast_log(LOG_WARNING, "Failed to set audio device to mono\n");
+		ast_log(LOG_WARNING, "Failed to set sample rate to %d\n", desired);
 		return -1;
 	}
 	if (fmt != desired) {
@@ -590,9 +590,9 @@ static int oss_text(struct ast_channel *c, const char *text)
 /*!
  * \brief handler for incoming calls. Either autoanswer, or start ringing
  */
-static int oss_call(struct ast_channel *c, char *dest, int timeout)
+static int oss_call(struct ast_channel *c, const char *dest, int timeout)
 {
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 	struct ast_frame f = { AST_FRAME_CONTROL, };
 	AST_DECLARE_APP_ARGS(args,
 		AST_APP_ARG(name);
@@ -604,10 +604,10 @@ static int oss_call(struct ast_channel *c, char *dest, int timeout)
 
 	ast_verbose(" << Call to device '%s' dnid '%s' rdnis '%s' on console from '%s' <%s> >>\n",
 		dest,
-		S_OR(c->dialed.number.str, ""),
-		S_COR(c->redirecting.from.number.valid, c->redirecting.from.number.str, ""),
-		S_COR(c->caller.id.name.valid, c->caller.id.name.str, ""),
-		S_COR(c->caller.id.number.valid, c->caller.id.number.str, ""));
+		S_OR(ast_channel_dialed(c)->number.str, ""),
+		S_COR(ast_channel_redirecting(c)->from.number.valid, ast_channel_redirecting(c)->from.number.str, ""),
+		S_COR(ast_channel_caller(c)->id.name.valid, ast_channel_caller(c)->id.name.str, ""),
+		S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, ""));
 	if (!ast_strlen_zero(args.flags) && strcasecmp(args.flags, "answer") == 0) {
 		f.subclass.integer = AST_CONTROL_ANSWER;
 		ast_queue_frame(c, &f);
@@ -634,7 +634,7 @@ static int oss_call(struct ast_channel *c, char *dest, int timeout)
  */
 static int oss_answer(struct ast_channel *c)
 {
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 	ast_verbose(" << Console call has been answered >> \n");
 	ast_setstate(c, AST_STATE_UP);
 	o->hookstate = 1;
@@ -643,9 +643,9 @@ static int oss_answer(struct ast_channel *c)
 
 static int oss_hangup(struct ast_channel *c)
 {
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 
-	c->tech_pvt = NULL;
+	ast_channel_tech_pvt_set(c, NULL);
 	o->owner = NULL;
 	ast_verbose(" << Hangup on console >> \n");
 	console_video_uninit(o->env);
@@ -664,7 +664,7 @@ static int oss_hangup(struct ast_channel *c)
 static int oss_write(struct ast_channel *c, struct ast_frame *f)
 {
 	int src;
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 
 	/*
 	 * we could receive a block which is not a multiple of our
@@ -695,7 +695,7 @@ static int oss_write(struct ast_channel *c, struct ast_frame *f)
 static struct ast_frame *oss_read(struct ast_channel *c)
 {
 	int res;
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 	struct ast_frame *f = &o->read_f;
 
 	/* XXX can be simplified returning &ast_null_frame */
@@ -716,7 +716,7 @@ static struct ast_frame *oss_read(struct ast_channel *c)
 		return f;
 
 	o->readpos = AST_FRIENDLY_OFFSET;	/* reset read pointer for next frame */
-	if (c->_state != AST_STATE_UP)	/* drop data if frame is not up */
+	if (ast_channel_state(c) != AST_STATE_UP)	/* drop data if frame is not up */
 		return f;
 	/* ok we can build and deliver the frame to the caller */
 	f->frametype = AST_FRAME_VOICE;
@@ -743,14 +743,14 @@ static struct ast_frame *oss_read(struct ast_channel *c)
 
 static int oss_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 {
-	struct chan_oss_pvt *o = newchan->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(newchan);
 	o->owner = newchan;
 	return 0;
 }
 
 static int oss_indicate(struct ast_channel *c, int cond, const void *data, size_t datalen)
 {
-	struct chan_oss_pvt *o = c->tech_pvt;
+	struct chan_oss_pvt *o = ast_channel_tech_pvt(c);
 	int res = 0;
 
 	switch (cond) {
@@ -758,6 +758,7 @@ static int oss_indicate(struct ast_channel *c, int cond, const void *data, size_
 	case AST_CONTROL_BUSY:
 	case AST_CONTROL_CONGESTION:
 	case AST_CONTROL_RINGING:
+	case AST_CONTROL_PVT_CAUSE_CODE:
 	case -1:
 		res = -1;
 		break;
@@ -775,7 +776,7 @@ static int oss_indicate(struct ast_channel *c, int cond, const void *data, size_
 		ast_moh_stop(c);
 		break;
 	default:
-		ast_log(LOG_WARNING, "Don't know how to display condition %d on %s\n", cond, c->name);
+		ast_log(LOG_WARNING, "Don't know how to display condition %d on %s\n", cond, ast_channel_name(c));
 		return -1;
 	}
 
@@ -792,31 +793,31 @@ static struct ast_channel *oss_new(struct chan_oss_pvt *o, char *ext, char *ctx,
 	c = ast_channel_alloc(1, state, o->cid_num, o->cid_name, "", ext, ctx, linkedid, 0, "Console/%s", o->device + 5);
 	if (c == NULL)
 		return NULL;
-	c->tech = &oss_tech;
+	ast_channel_tech_set(c, &oss_tech);
 	if (o->sounddev < 0)
 		setformat(o, O_RDWR);
 	ast_channel_set_fd(c, 0, o->sounddev); /* -1 if device closed, override later */
 
-	ast_format_set(&c->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&c->writeformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_cap_add(c->nativeformats, &c->readformat);
+	ast_format_set(ast_channel_readformat(c), AST_FORMAT_SLINEAR, 0);
+	ast_format_set(ast_channel_writeformat(c), AST_FORMAT_SLINEAR, 0);
+	ast_format_cap_add(ast_channel_nativeformats(c), ast_channel_readformat(c));
 
 	/* if the console makes the call, add video to the offer */
 	/* if (state == AST_STATE_RINGING) TODO XXX CONSOLE VIDEO IS DISABLED UNTIL IT GETS A MAINTAINER
 		c->nativeformats |= console_video_formats; */
 
-	c->tech_pvt = o;
+	ast_channel_tech_pvt_set(c, o);
 
 	if (!ast_strlen_zero(o->language))
-		ast_string_field_set(c, language, o->language);
+		ast_channel_language_set(c, o->language);
 	/* Don't use ast_set_callerid() here because it will
 	 * generate a needless NewCallerID event */
 	if (!ast_strlen_zero(o->cid_num)) {
-		c->caller.ani.number.valid = 1;
-		c->caller.ani.number.str = ast_strdup(o->cid_num);
+		ast_channel_caller(c)->ani.number.valid = 1;
+		ast_channel_caller(c)->ani.number.str = ast_strdup(o->cid_num);
 	}
 	if (!ast_strlen_zero(ext)) {
-		c->dialed.number.str = ast_strdup(ext);
+		ast_channel_dialed(c)->number.str = ast_strdup(ext);
 	}
 
 	o->owner = c;
@@ -824,7 +825,7 @@ static struct ast_channel *oss_new(struct chan_oss_pvt *o, char *ext, char *ctx,
 	ast_jb_configure(c, &global_jbconf);
 	if (state != AST_STATE_DOWN) {
 		if (ast_pbx_start(c)) {
-			ast_log(LOG_WARNING, "Unable to start PBX on %s\n", c->name);
+			ast_log(LOG_WARNING, "Unable to start PBX on %s\n", ast_channel_name(c));
 			ast_hangup(c);
 			o->owner = c = NULL;
 		}
@@ -834,7 +835,7 @@ static struct ast_channel *oss_new(struct chan_oss_pvt *o, char *ext, char *ctx,
 	return c;
 }
 
-static struct ast_channel *oss_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *oss_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, const char *data, int *cause)
 {
 	struct ast_channel *c;
 	struct chan_oss_pvt *o;
@@ -849,7 +850,7 @@ static struct ast_channel *oss_request(const char *type, struct ast_format_cap *
 	AST_NONSTANDARD_APP_ARGS(args, parse, '/');
 	o = find_desc(args.name);
 
-	ast_log(LOG_WARNING, "oss_request ty <%s> data 0x%p <%s>\n", type, data, (char *) data);
+	ast_log(LOG_WARNING, "oss_request ty <%s> data 0x%p <%s>\n", type, data, data);
 	if (o == NULL) {
 		ast_log(LOG_NOTICE, "Device %s not found\n", args.name);
 		/* XXX we could default to 'dsp' perhaps ? */
@@ -864,7 +865,7 @@ static struct ast_channel *oss_request(const char *type, struct ast_format_cap *
 		*cause = AST_CAUSE_BUSY;
 		return NULL;
 	}
-	c = oss_new(o, NULL, NULL, AST_STATE_DOWN, requestor ? requestor->linkedid : NULL);
+	c = oss_new(o, NULL, NULL, AST_STATE_DOWN, requestor ? ast_channel_linkedid(requestor) : NULL);
 	if (c == NULL) {
 		ast_log(LOG_WARNING, "Unable to create new OSS channel\n");
 		return NULL;
@@ -1099,16 +1100,16 @@ static char *console_dial(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 	if (o->owner) {	/* already in a call */
 		int i;
 		struct ast_frame f = { AST_FRAME_DTMF, { 0 } };
-		const char *s;
+		const char *digits;
 
 		if (a->argc == e->args) {	/* argument is mandatory here */
 			ast_cli(a->fd, "Already in a call. You can only dial digits until you hangup.\n");
 			return CLI_FAILURE;
 		}
-		s = a->argv[e->args];
+		digits = a->argv[e->args];
 		/* send the string one char at a time */
-		for (i = 0; i < strlen(s); i++) {
-			f.subclass.integer = s[i];
+		for (i = 0; i < strlen(digits); i++) {
+			f.subclass.integer = digits[i];
 			ast_queue_frame(o->owner, &f);
 		}
 		return CLI_SUCCESS;
@@ -1193,12 +1194,12 @@ static char *console_transfer(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 
 	tmp = ast_ext_ctx(a->argv[2], &ext, &ctx);
 	if (ctx == NULL)			/* supply default context if needed */
-		ctx = o->owner->context;
+		ctx = ast_strdupa(ast_channel_context(o->owner));
 	if (!ast_exists_extension(b, ctx, ext, 1,
-		S_COR(b->caller.id.number.valid, b->caller.id.number.str, NULL))) {
+		S_COR(ast_channel_caller(b)->id.number.valid, ast_channel_caller(b)->id.number.str, NULL))) {
 		ast_cli(a->fd, "No such extension exists\n");
 	} else {
-		ast_cli(a->fd, "Whee, transferring %s to %s@%s.\n", b->name, ext, ctx);
+		ast_cli(a->fd, "Whee, transferring %s to %s@%s.\n", ast_channel_name(b), ext, ctx);
 		if (ast_async_goto(b, ctx, ext, 1))
 			ast_cli(a->fd, "Failed to transfer :(\n");
 	}
@@ -1393,9 +1394,7 @@ static struct chan_oss_pvt *store_config(struct ast_config *cfg, char *ctg)
 	if (o->mixer_cmd) {
 		char *cmd;
 
-		if (asprintf(&cmd, "mixer %s", o->mixer_cmd) < 0) {
-			ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
-		} else {
+		if (ast_asprintf(&cmd, "mixer %s", o->mixer_cmd) >= 0) {
 			ast_log(LOG_WARNING, "running [%s]\n", cmd);
 			if (system(cmd) < 0) {
 				ast_log(LOG_WARNING, "system() failed: %s\n", strerror(errno));

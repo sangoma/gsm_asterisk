@@ -18,14 +18,18 @@
 
 /*! \file
  *
- * \brief Berekeley DB to SQLite3 converter
+ * \brief Berkeley DB to SQLite3 converter
  *
  * \author Terry Wilson <twilson@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-//ASTERISK_FILE_VERSION(__FILE__, "$Revision: 326750 $")
+//ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include <sys/types.h>
 #include <sys/stat.h>

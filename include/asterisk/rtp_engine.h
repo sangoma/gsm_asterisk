@@ -76,7 +76,11 @@ extern "C" {
 #include "asterisk/res_srtp.h"
 
 /* Maximum number of payloads supported */
-#define AST_RTP_MAX_PT 256
+#if defined(LOW_MEMORY)
+#define AST_RTP_MAX_PT 128
+#else
+#define AST_RTP_MAX_PT 196
+#endif
 
 /* Maximum number of generations */
 #define AST_RED_MAX_GENERATION 5
@@ -232,7 +236,8 @@ struct ast_rtp_payload_type {
 	struct ast_format format;
 	/*! Actual internal RTP specific value of the payload */
 	int rtp_code;
-
+	/*! Actual payload number */
+	int payload;
 };
 
 /*! Structure that represents statistics from an RTP instance */
@@ -310,6 +315,99 @@ if (stat == combined) { \
 return 0; \
 }
 
+/*! \brief ICE candidate types */
+enum ast_rtp_ice_candidate_type {
+	AST_RTP_ICE_CANDIDATE_TYPE_HOST,    /*!< ICE host candidate. A host candidate represents the actual local transport address in the host. */
+	AST_RTP_ICE_CANDIDATE_TYPE_SRFLX,   /*!< ICE server reflexive candidate, which represents the public mapped address of the local address. */
+	AST_RTP_ICE_CANDIDATE_TYPE_RELAYED, /*!< ICE relayed candidate, which represents the address allocated in TURN server. */
+};
+
+/*! \brief Structure for an ICE candidate */
+struct ast_rtp_engine_ice_candidate {
+	char *foundation;                     /*!< Foundation identifier */
+	unsigned int id;                      /*!< Component identifier */
+	char *transport;                      /*!< Transport for the media */
+	int priority;                         /*!< Priority which is used if multiple candidates can be used */
+	struct ast_sockaddr address;          /*!< Address of the candidate */
+	struct ast_sockaddr relay_address;    /*!< Relay address for the candidate */
+	enum ast_rtp_ice_candidate_type type; /*!< Type of candidate */
+};
+
+/*! \brief Structure that represents the optional ICE support within an RTP engine */
+struct ast_rtp_engine_ice {
+	/*! Callback for setting received authentication information */
+	void (*set_authentication)(struct ast_rtp_instance *instance, const char *ufrag, const char *password);
+	/*! Callback for adding a remote candidate */
+	void (*add_remote_candidate)(struct ast_rtp_instance *instance, const struct ast_rtp_engine_ice_candidate *candidate);
+	/*! Callback for starting ICE negotiation */
+	void (*start)(struct ast_rtp_instance *instance);
+	/*! Callback for stopping ICE support */
+	void (*stop)(struct ast_rtp_instance *instance);
+	/*! Callback for getting local username */
+	const char *(*get_ufrag)(struct ast_rtp_instance *instance);
+	/*! Callback for getting local password */
+	const char *(*get_password)(struct ast_rtp_instance *instance);
+	/*! Callback for getting local candidates */
+	struct ao2_container *(*get_local_candidates)(struct ast_rtp_instance *instance);
+	/*! Callback for telling the ICE support that it is talking to an ice-lite implementation */
+	void (*ice_lite)(struct ast_rtp_instance *instance);
+};
+
+/*! \brief DTLS setup types */
+enum ast_rtp_dtls_setup {
+	AST_RTP_DTLS_SETUP_ACTIVE,   /*!< Endpoint is willing to inititate connections */
+	AST_RTP_DTLS_SETUP_PASSIVE,  /*!< Endpoint is willing to accept connections */
+	AST_RTP_DTLS_SETUP_ACTPASS,  /*!< Endpoint is willing to both accept and initiate connections */
+	AST_RTP_DTLS_SETUP_HOLDCONN, /*!< Endpoint does not want the connection to be established right now */
+};
+
+/*! \brief DTLS connection states */
+enum ast_rtp_dtls_connection {
+        AST_RTP_DTLS_CONNECTION_NEW,      /*!< Endpoint wants to use a new connection */
+	AST_RTP_DTLS_CONNECTION_EXISTING, /*!< Endpoint wishes to use existing connection */
+};
+
+/*! \brief DTLS fingerprint hashes */
+enum ast_rtp_dtls_hash {
+	AST_RTP_DTLS_HASH_SHA1, /*!< SHA-1 fingerprint hash */
+};
+
+/*! \brief DTLS configuration structure */
+struct ast_rtp_dtls_cfg {
+	unsigned int enabled:1;                /*!< Whether DTLS support is enabled or not */
+	unsigned int verify:1;                 /*!< Whether to request and verify a client certificate when acting as server */
+	unsigned int rekey;                    /*!< Interval at which to renegotiate and rekey - defaults to 0 (off) */
+	enum ast_rtp_dtls_setup default_setup; /*!< Default setup type to use for outgoing */
+	enum ast_srtp_suite suite;             /*!< Crypto suite in use */
+	char *certfile;                        /*!< Certificate file */
+	char *pvtfile;                         /*!< Private key file */
+	char *cipher;                          /*!< Cipher to use */
+	char *cafile;                          /*!< Certificate authority file */
+	char *capath;                          /*!< Path to certificate authority */
+};
+
+/*! \brief Structure that represents the optional DTLS SRTP support within an RTP engine */
+struct ast_rtp_engine_dtls {
+	/*! Set the configuration of the DTLS support on the instance */
+	int (*set_configuration)(struct ast_rtp_instance *instance, const struct ast_rtp_dtls_cfg *dtls_cfg);
+	/*! Get if the DTLS SRTP support is active or not */
+	int (*active)(struct ast_rtp_instance *instance);
+	/*! Stop and terminate DTLS SRTP support */
+	void (*stop)(struct ast_rtp_instance *instance);
+	/*! Reset the connection and start fresh */
+	void (*reset)(struct ast_rtp_instance *instance);
+	/*! Get the current connection state */
+	enum ast_rtp_dtls_connection (*get_connection)(struct ast_rtp_instance *instance);
+	/*! Get the current setup state */
+	enum ast_rtp_dtls_setup (*get_setup)(struct ast_rtp_instance *instance);
+	/*! Set the remote setup state */
+	void (*set_setup)(struct ast_rtp_instance *instance, enum ast_rtp_dtls_setup setup);
+	/*! Set the remote fingerprint */
+	void (*set_fingerprint)(struct ast_rtp_instance *instance, enum ast_rtp_dtls_hash hash, const char *fingerprint);
+	/*! Get the local fingerprint */
+	const char *(*get_fingerprint)(struct ast_rtp_instance *instance, enum ast_rtp_dtls_hash hash);
+};
+
 /*! Structure that represents an RTP stack (engine) */
 struct ast_rtp_engine {
 	/*! Name of the RTP engine, used when explicitly requested */
@@ -381,16 +479,20 @@ struct ast_rtp_engine {
 	void (*available_formats)(struct ast_rtp_instance *instance, struct ast_format_cap *to_endpoint, struct ast_format_cap *to_asterisk, struct ast_format_cap *result);
 	/*! Callback to send CNG */
 	int (*sendcng)(struct ast_rtp_instance *instance, int level);
+	/*! Callback to pointer for optional ICE support */
+	struct ast_rtp_engine_ice *ice;
+	/*! Callback to pointer for optional DTLS SRTP support */
+	struct ast_rtp_engine_dtls *dtls;
 	/*! Linked list information */
 	AST_RWLIST_ENTRY(ast_rtp_engine) entry;
 };
 
 /*! Structure that represents codec and packetization information */
 struct ast_rtp_codecs {
+	/*! Payloads present */
+	struct ao2_container *payloads;
 	/*! Codec packetization preferences */
 	struct ast_codec_pref pref;
-	/*! Payloads present */
-	struct ast_rtp_payload_type payloads[AST_RTP_MAX_PT];
 };
 
 /*! Structure that represents the glue that binds an RTP instance to a channel */
@@ -405,10 +507,25 @@ struct ast_rtp_glue {
 	 */
 	enum ast_rtp_glue_result (*get_rtp_info)(struct ast_channel *chan, struct ast_rtp_instance **instance);
 	/*!
+	 * \brief Used to prevent two channels from remotely bridging audio rtp if the channel tech has a
+	 *        reason for prohibiting it based on qualities that need to be compared from both channels.
+	 * \note This function should only be called with two channels of the same technology
+	 * \note This function may be NULL for a given channel driver. This should be accounted for and if that is the case, function this is not used.
+	 */
+	int (*allow_rtp_remote)(struct ast_channel *chan1, struct ast_channel *chan2);
+	/*!
 	 * \brief Callback for retrieving the RTP instance carrying video
 	 * \note This function increases the reference count on the returned RTP instance.
 	 */
 	enum ast_rtp_glue_result (*get_vrtp_info)(struct ast_channel *chan, struct ast_rtp_instance **instance);
+	/*!
+	 * \brief Used to prevent two channels from remotely bridging video rtp if the channel tech has a
+	 *        reason for prohibiting it based on qualities that need to be compared from both channels.
+	 * \note This function should only be called with two channels of the same technology
+	 * \note This function may be NULL for a given channel driver. This should be accounted for and if that is the case, this function is not used.
+	 */
+	int (*allow_vrtp_remote)(struct ast_channel *chan1, struct ast_channel *chan2);
+
 	/*!
 	 * \brief Callback for retrieving the RTP instance carrying text
 	 * \note This function increases the reference count on the returned RTP instance.
@@ -886,6 +1003,41 @@ int ast_rtp_instance_get_prop(struct ast_rtp_instance *instance, enum ast_rtp_pr
 struct ast_rtp_codecs *ast_rtp_instance_get_codecs(struct ast_rtp_instance *instance);
 
 /*!
+ * \brief Initialize an RTP codecs structure
+ *
+ * \param codecs The codecs structure to initialize
+ *
+ * \retval 0 success
+ * \retval -1 failure
+ *
+ * Example usage:
+ *
+ * \code
+ * struct ast_rtp_codecs codecs;
+ * ast_rtp_codecs_payloads_initialize(&codecs);
+ * \endcode
+ *
+ * \since 11
+ */
+int ast_rtp_codecs_payloads_initialize(struct ast_rtp_codecs *codecs);
+
+/*!
+ * \brief Destroy the contents of an RTP codecs structure (but not the structure itself)
+ *
+ * \param codecs The codecs structure to destroy the contents of
+ *
+ * Example usage:
+ *
+ * \code
+ * struct ast_rtp_codecs codecs;
+ * ast_rtp_codecs_payloads_destroy(&codecs);
+ * \endcode
+ *
+ * \since 11
+ */
+void ast_rtp_codecs_payloads_destroy(struct ast_rtp_codecs *codecs);
+
+/*!
  * \brief Clear payload information from an RTP instance
  *
  * \param codecs The codecs structure that payloads will be cleared from
@@ -1121,6 +1273,24 @@ void ast_rtp_codecs_payload_formats(struct ast_rtp_codecs *codecs, struct ast_fo
  * \since 1.8
  */
 int ast_rtp_codecs_payload_code(struct ast_rtp_codecs *codecs, int asterisk_format, const struct ast_format *format, int code);
+/*!
+ * \brief Search for a payload code in the ast_rtp_codecs structure
+ *
+ * \param codecs Codecs structure to look in
+ * \param code The format to look for
+ *
+ * \retval Numerical payload or -1 if unable to find payload in codecs
+ *
+ * Example usage:
+ *
+ * \code
+ * int payload = ast_rtp_codecs_payload_code(&codecs, 0);
+ * \endcode
+ *
+ * This looks for the numerical payload for ULAW in the codecs structure.
+ *
+ */
+int ast_rtp_codecs_find_payload_code(struct ast_rtp_codecs *codecs, int code);
 
 /*!
  * \brief Retrieve mime subtype information on a payload
@@ -1861,7 +2031,25 @@ struct ast_channel *ast_rtp_instance_get_chan(struct ast_rtp_instance *instance)
  */
 int ast_rtp_instance_sendcng(struct ast_rtp_instance *instance, int level);
 
-int ast_rtp_instance_add_srtp_policy(struct ast_rtp_instance *instance, struct ast_srtp_policy *policy);
+/*!
+ * \brief Add or replace the SRTP policies for the given RTP instance
+ *
+ * \param instance the RTP instance
+ * \param remote_policy the remote endpoint's policy
+ * \param local_policy our policy for this RTP instance's remote endpoint
+ *
+ * \retval 0 Success
+ * \retval non-zero Failure
+ */
+int ast_rtp_instance_add_srtp_policy(struct ast_rtp_instance *instance, struct ast_srtp_policy* remote_policy, struct ast_srtp_policy *local_policy);
+
+/*!
+ * \brief Obtain the SRTP instance associated with an RTP instance
+ *
+ * \param instance the RTP instance
+ * \retval the SRTP instance on success
+ * \retval NULL if no SRTP instance exists
+ */
 struct ast_srtp *ast_rtp_instance_get_srtp(struct ast_rtp_instance *instance);
 
 /*! \brief Custom formats declared in codecs.conf at startup must be communicated to the rtp_engine
@@ -1872,6 +2060,53 @@ int ast_rtp_engine_load_format(const struct ast_format *format);
  * interface registered in order for the rtp engine to handle it correctly.  If an
  * attribute interface is unloaded, this function must be called to notify the rtp_engine. */
 int ast_rtp_engine_unload_format(const struct ast_format *format);
+
+/*!
+ * \brief Obtain a pointer to the ICE support present on an RTP instance
+ *
+ * \param instance the RTP instance
+ *
+ * \retval ICE support if present
+ * \retval NULL if no ICE support available
+ */
+struct ast_rtp_engine_ice *ast_rtp_instance_get_ice(struct ast_rtp_instance *instance);
+
+/*!
+ * \brief Obtain a pointer to the DTLS support present on an RTP instance
+ *
+ * \param instance the RTP instance
+ *
+ * \retval DTLS support if present
+ * \retval NULL if no DTLS support available
+ */
+struct ast_rtp_engine_dtls *ast_rtp_instance_get_dtls(struct ast_rtp_instance *instance);
+
+/*!
+ * \brief Parse DTLS related configuration options
+ *
+ * \param dtls_cfg a DTLS configuration structure
+ * \param name name of the configuration option
+ * \param value value of the configuration option
+ *
+ * \retval 0 if handled
+ * \retval -1 if not handled
+ */
+int ast_rtp_dtls_cfg_parse(struct ast_rtp_dtls_cfg *dtls_cfg, const char *name, const char *value);
+
+/*!
+ * \brief Copy contents of a DTLS configuration structure
+ *
+ * \param src_cfg source DTLS configuration structure
+ * \param dst_cfg destination DTLS configuration structure
+ */
+void ast_rtp_dtls_cfg_copy(const struct ast_rtp_dtls_cfg *src_cfg, struct ast_rtp_dtls_cfg *dst_cfg);
+
+/*!
+ * \brief Free contents of a DTLS configuration structure
+ *
+ * \param dtls_cfg a DTLS configuration structure
+ */
+void ast_rtp_dtls_cfg_free(struct ast_rtp_dtls_cfg *dtls_cfg);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

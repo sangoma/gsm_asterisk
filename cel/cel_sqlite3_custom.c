@@ -41,7 +41,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 355321 $")
 
 #include <sqlite3.h>
 
@@ -321,7 +321,7 @@ static int load_module(void)
 	}
 
 	/* is the table there? */
-	sql = sqlite3_mprintf("SELECT COUNT(AcctId) FROM %q;", table);
+	sql = sqlite3_mprintf("SELECT COUNT(*) FROM %q;", table);
 	res = sqlite3_exec(db, sql, NULL, NULL, NULL);
 	sqlite3_free(sql);
 	if (res != SQLITE_OK) {
@@ -353,7 +353,7 @@ static int reload(void)
 
 	ast_mutex_lock(&lock);
 	res = load_config(1);
-	ast_mutex_lock(&lock);
+	ast_mutex_unlock(&lock);
 
 	return res;
 }

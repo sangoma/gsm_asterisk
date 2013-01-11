@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370951 $");
 
 #include "asterisk/channel.h"
 #include "asterisk/pbx.h"
@@ -119,7 +119,7 @@ static char *orig_exten(int fd, const char *chan, const char *data)
 		return CLI_FAILURE;
 	}
 	ast_format_cap_add(cap, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
-	ast_pbx_outgoing_exten(chantech, cap, chandata, TIMEOUT * 1000, context, exten, 1, &reason, 0, NULL, NULL, NULL, NULL, NULL);
+	ast_pbx_outgoing_exten(chantech, cap, chandata, TIMEOUT * 1000, context, exten, 1, &reason, 0, NULL, NULL, NULL, NULL, NULL, 0);
 	cap = ast_format_cap_destroy(cap);
 
 	return CLI_SUCCESS;
@@ -181,7 +181,6 @@ static char *handle_orig(struct ast_cli_entry *e, int cmd, struct ast_cli_args *
 	} else if (!strcasecmp("extension", a->argv[3])) {
 		res = orig_exten(a->fd, a->argv[2], a->argv[4]);
 	} else {
-		ast_log(LOG_WARNING, "else");
 		res = CLI_SHOWUSAGE;
 	}
 

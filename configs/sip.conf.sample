@@ -10,8 +10,8 @@
 ;
 ;	Especially note the following settings:
 ;		- allowguest (default enabled)
-;		- permit/deny - IP address filters
-;		- contactpermit/contactdeny - IP address filters for registrations
+;		- permit/deny/acl - IP address filters
+;		- contactpermit/contactdeny/contactacl - IP address filters for registrations
 ;		- context - Which set of services you offer various users
 ;
 ; SIP dial strings
@@ -112,7 +112,7 @@
 ; "setvar" to set variables that can be used in the dialplan for various limits.
 
 [general]
-context=default                 ; Default context for incoming calls
+context=public                  ; Default context for incoming calls. Defaults to 'default'
 ;allowguest=no                  ; Allow or reject guest calls (default is yes)
 				; If your Asterisk is connected to the Internet
 				; and you have allowguest=yes
@@ -122,6 +122,13 @@ context=default                 ; Default context for incoming calls
                                 ; 'username' field from the authentication line
                                 ; instead of the From: field.
 allowoverlap=no                 ; Disable overlap dialing support. (Default is yes)
+;allowoverlap=yes               ; Enable RFC3578 overlap dialing support.
+                                ; Can use the Incomplete application to collect the
+                                ; needed digits from an ambiguous dialplan match.
+;allowoverlap=dtmf              ; Enable overlap dialing support using DTMF delivery
+                                ; methods (inband, RFC2833, SIP INFO) in the early
+                                ; media phase.  Uses the Incomplete application to
+                                ; collect the needed digits.
 ;allowtransfer=no               ; Disable all transfers (unless enabled in peers or users)
                                 ; Default is enabled. The Dial() options 't' and 'T' are not
                                 ; related as to whether SIP transfers are allowed or not.
@@ -136,6 +143,16 @@ allowoverlap=no                 ; Disable overlap dialing support. (Default is y
                                 ; In this case Realm will be based on request 'From'/'To' header
                                 ; and should match one of domain names.
                                 ; Otherwise default 'realm=...' will be used.
+;recordonfeature=automixmon	; Default feature to use when receiving 'Record: on' header
+				; from an INFO message. Defaults to 'automon'. Works with
+				; dynamic features. Feature must be usable on requesting
+				; channel for it to work. Setting this value to a blank
+				; will disable it.
+;recordofffeature=automixmon	; Default feature to use when receiving 'Record: off' header
+				; from an INFO message. Defaults to 'automon'. Works with
+				; dynamic features. Feature must be usable on requesting
+				; channel for it to work. Setting this value to a blank
+				; will disable it.
 
 ; With the current situation, you can do one of four things:
 ;  a) Listen on a specific IPv4 address.      Example: bindaddr=192.0.2.1
@@ -212,6 +229,9 @@ tcpbindaddr=0.0.0.0             ; IP address for TCP server to bind to (0.0.0.0 
 				; unauthenticated sessions that will be allowed
                                 ; to connect at any given time. (default: 100)
 
+transport=udp                   ; Set the default transports.  The order determines the primary default transport.
+                                ; If tcpenable=no and the transport set is tcp, we will fallback to UDP.
+
 srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; Note: Asterisk only uses the first host
                                 ; in SRV records
@@ -238,10 +258,11 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;cos_video=4                    ; Sets 802.1p priority for RTP video packets.
 ;cos_text=3                     ; Sets 802.1p priority for RTP text packets.
 
-;maxexpiry=3600                 ; Maximum allowed time of incoming registrations
-                                ; and subscriptions (seconds)
-;minexpiry=60                   ; Minimum length of registrations/subscriptions (default 60)
+;maxexpiry=3600                 ; Maximum allowed time of incoming registrations (seconds)
+;minexpiry=60                   ; Minimum length of registrations (default 60)
 ;defaultexpiry=120              ; Default length of incoming/outgoing registration
+;submaxexpiry=3600              ; Maximum allowed time of incoming subscriptions (seconds), default: maxexpiry
+;subminexpiry=60                ; Minimum length of subscriptions, default: minexpiry
 ;mwiexpiry=3600                 ; Expiry time for outgoing MWI subscriptions
 ;maxforwards=70			; Setting for the SIP Max-Forwards: header (loop prevention)
 				; Default value is 70
@@ -253,6 +274,9 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 				; Default: 100
 ;qualifypeers=1			; Number of peers in a group to be qualified at the same time
 				; Default: 1
+;keepalive=60                   ; Interval at which keepalive packets should be sent to a peer
+				; Valid options are yes (60 seconds), no, or the number of seconds.
+                                ; Default: 0
 ;notifymimetype=text/plain      ; Allow overriding of mime type in MWI NOTIFY
 ;buggymwi=no                    ; Cisco SIP firmware doesn't support the MWI RFC
                                 ; fully. Enable this option to not get error messages
@@ -431,6 +455,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;contactdeny=0.0.0.0/0.0.0.0           ; Use contactpermit and contactdeny to
 ;contactpermit=172.16.0.0/255.255.0.0  ; restrict at what IPs your users may
                                        ; register their phones.
+;contactacl=named_acl_example          ; Use named ACLs defined in acl.conf
 
 ;engine=asterisk                ; RTP engine to use when communicating with the device
 
@@ -459,6 +484,11 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                                     ; user options for whatever reason.  The behavior is similar to
                                                     ; how SIP URI's were typically handled in 1.6.2, hence the name.
 
+;send_diversion=no              ; Default "yes"     ; Asterisk normally sends Diversion headers with certain SIP
+                                                    ; invites to relay data about forwarded calls. If this option
+                                                    ; is disabled, Asterisk won't send Diversion headers unless
+                                                    ; they are added manually.
+
 ; The shrinkcallerid function removes '(', ' ', ')', non-trailing '.', and '-' not
 ; in square brackets.  For example, the caller id value 555.5555 becomes 5555555
 ; when this option is enabled.  Disabling this option results in no modification
@@ -471,6 +501,24 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 
 ;use_q850_reason = no ; Default "no"
                       ; Set to yes add Reason header and use Reason header if it is available.
+
+; When the Transfer() application sends a REFER SIP message, extra headers specified in
+; the dialplan by way of SIPAddHeader are sent out with that message. 1.8 and earlier did not
+; add the extra headers. To revert to 1.8- behavior, call SIPRemoveHeader with no arguments
+; before calling Transfer() to remove all additional headers from the channel. The setting
+; below is for transitional compatibility only.
+;
+;refer_addheaders=yes	; on by default
+
+;autocreatepeer=no             ; Allow any UAC not explicitly defined to register
+                               ; WITHOUT AUTHENTICATION. Enabling this options poses a high
+                               ; potential security risk and should be avoided unless the
+                               ; server is behind a trusted firewall.
+                               ; If set to "yes", then peers created in this fashion
+                               ; are purged during SIP reloads.
+                               ; When set to "persist", the peers created in this fashion
+                               ; are not purged during SIP reloads.
+
 ;
 ;------------------------ TLS settings ------------------------------------------------------------
 ;tlscertfile=</path/to/certificate.pem> ; Certificate file (*.pem format only) to use for TLS connections
@@ -549,11 +597,20 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; * session-expires   - Maximum session refresh interval in seconds. Defaults to 1800 secs.
 ; * session-minse     - Minimum session refresh interval in seconds. Defualts to 90 secs.
 ; * session-refresher - The session refresher (uac|uas). Defaults to 'uas'.
+;                            uac - Default to the caller initially refreshing when possible
+;                            uas - Default to the callee initially refreshing when possible
+;
+; Note that, due to recommendations in RFC 4028, Asterisk will always honor the other
+; endpoint's preference for who will handle refreshes. Asterisk will never override the
+; preferences of the other endpoint. Doing so could result in Asterisk and the endpoint
+; fighting over who sends the refreshes. This holds true for the initiation of session
+; timers and subsequent re-INVITE requests whether Asterisk is the caller or callee, or
+; whether Asterisk is currently the refresher or not.
 ;
 ;session-timers=originate
 ;session-expires=600
 ;session-minse=90
-;session-refresher=uas
+;session-refresher=uac
 ;
 ;--------------------------- SIP DEBUGGING ---------------------------------------------------
 ;sipdebug = yes                 ; Turn on SIP debugging by default, from
@@ -706,7 +763,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;
 ;register => tls://username:xxxxxx@sip-tls-proxy.example.org
 ;
-;    The 'transport' part defaults to 'udp' but may also be 'tcp' or 'tls'.
+;    The 'transport' part defaults to 'udp' but may also be 'tcp', 'tls', 'ws', or 'wss'.
 ;    Using 'udp://' explicitly is also useful in case the username part
 ;    contains a '/' ('user/name').
 
@@ -804,18 +861,43 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; However, this is only useful if the external traffic can reach us.
 ; The following settings are allowed (both globally and in individual sections):
 ;
-;        nat = no                ; Default. Use rport if the remote side says to use it.
-;        nat = force_rport       ; Force rport to always be on.
-;        nat = yes               ; Force rport to always be on and perform comedia RTP handling.
-;        nat = comedia           ; Use rport if the remote side says to use it and perform comedia RTP handling.
+;   nat = no                ; Do no special NAT handling other than RFC3581
+;   nat = force_rport       ; Pretend there was an rport parameter even if there wasn't
+;   nat = comedia           ; Send media to the port Asterisk received it from regardless
+;                           ; of where the SDP says to send it.
+;   nat = auto_force_rport  ; Set the force_rport option if Asterisk detects NAT (default)
+;   nat = auto_comedia      ; Set the comedia option if Asterisk detects NAT
+;
+; The nat settings can be combined. For example, to set both force_rport and comedia
+; one would set nat=force_rport,comedia. If any of the comma-separated options is 'no',
+; Asterisk will ignore any other settings and set nat=no. If one of the "auto" settings
+; is used in conjunction with its non-auto counterpart (nat=comedia,auto_comedia), then
+; the non-auto option will be ignored.
+;
+; The RFC 3581-defined 'rport' parameter allows a client to request that Asterisk send
+; SIP responses to it via the source IP and port from which the request originated
+; instead of the address/port listed in the top-most Via header. This is useful if a
+; client knows that it is behind a NAT and therefore cannot guess from what address/port
+; its request will be sent. Asterisk will always honor the 'rport' parameter if it is
+; sent. The force_rport setting causes Asterisk to always send responses back to the
+; address/port from which it received requests; even if the other side doesn't support
+; adding the 'rport' parameter.
 ;
 ; 'comedia RTP handling' refers to the technique of sending RTP to the port that the
 ; the other endpoint's RTP arrived from, and means 'connection-oriented media'. This is
 ; only partially related to RFC 4145 which was referred to as COMEDIA while it was in
 ; draft form. This method is used to accomodate endpoints that may be located behind
-; NAT devices, and as such the port number they tell Asterisk to send RTP packets to
-; for their media streams is not actual port number that will be used on the nearer
+; NAT devices, and as such the address/port they tell Asterisk to send RTP packets to
+; for their media streams is not the actual address/port that will be used on the nearer
 ; side of the NAT.
+;
+; IT IS IMPORTANT TO NOTE that if the nat setting in the general section differs from
+; the nat setting in a peer definition, then the peer username will be discoverable
+; by outside parties as Asterisk will respond to different ports for defined and
+; undefined peers. For this reason it is recommended to ONLY DEFINE NAT SETTINGS IN THE
+; GENERAL SECTION. Specifically, if nat=force_rport in one section and nat=no in the
+; other, then valid peers with settings differing from those in the general section will
+; be discoverable.
 ;
 ; In addition to these settings, Asterisk *always* uses 'symmetric RTP' mode as defined by
 ; RFC 4961; Asterisk will always send RTP packets from the same port number it expects
@@ -836,6 +918,11 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; this feature.
 ;
 ; subscribe_network_change_event = yes ; on by default
+;
+; ICE/STUN/TURN usage can be disabled globally or on a per-peer basis using the icesupport
+; configuration option. When set to yes ICE support is enabled. When set to no it is disabled.
+;
+; icesupport = no
 
 ;----------------------------------- MEDIA HANDLING --------------------------------
 ; By default, Asterisk tries to re-invite media streams to an optimal path. If there's
@@ -873,6 +960,13 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; instead of INVITE. This can be combined with 'nonat', as
                                 ; 'directmedia=update,nonat'. It implies 'yes'.
 
+;directmedia=outgoing           ; When sending directmedia reinvites, do not send an immediate
+                                ; reinvite on an incoming call leg. This option is useful when
+                                ; peered with another SIP user agent that is known to send
+                                ; immediate direct media reinvites upon call establishment. Setting
+                                ; the option in this situation helps to prevent potential glares.
+                                ; Setting this option implies 'yes'.
+
 ;directrtpsetup=yes             ; Enable the new experimental direct RTP setup. This sets up
                                 ; the call directly with media peer-2-peer without re-invites.
                                 ; Will not work for video and cases where the callee sends
@@ -886,6 +980,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; Use this if some of your phones are on IP addresses that
                                 ; can not reach each other directly. This way you can force 
                                 ; RTP to always flow through asterisk in such cases.
+;directmediaacl=acl_example     ; Use named ACLs defined in acl.conf
 
 ;ignoresdpversion=yes           ; By default, Asterisk will honor the session version
                                 ; number in SDP packets and will only modify the SDP
@@ -905,7 +1000,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
                                 ; on outgoing calls to a peer. Calls will fail with HANGUPCAUSE=58 if
                                 ; the peer does not support SRTP. Defaults to no.
 ;encryption_taglen=80           ; Set the auth tag length offered in the INVITE either 32/80 default 80
-
+;
+;avpf=yes                       ; Enable inter-operability with media streams using the AVPF RTP profile.
+				; This will cause all offers and answers to use AVPF (or SAVPF). This
+				; option may be specified at the global or peer scope.
 ;----------------------------------------- REALTIME SUPPORT ------------------------
 ; For additional information on ARA, the Asterisk Realtime Architecture,
 ; please read https://wiki.asterisk.org/wiki/display/AST/Realtime+Database+Configuration
@@ -1021,15 +1119,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 
 ; jblog = no                  ; Enables jitterbuffer frame logging. Defaults to "no".
 
-;----------------------------- SIP_CAUSE reporting ---------------------------------
-; storesipcause = no          ; This option causes chan_sip to set the
-			      ; HASH(SIP_CAUSE,<channel name>) channel variable
-			      ; to the value of the last sip response.
-			      ; WARNING: enabling this option carries a
-			      ; significant performance burden. It should only
-			      ; be used in low call volume situations. This
-                              ; option defaults to "no".
-
 ;-----------------------------------------------------------------------------------
 
 [authentication]
@@ -1052,15 +1141,25 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;------------------------------------------------------------------------------
 ; DEVICE CONFIGURATION
 ;
-; The SIP channel has two types of devices, the friend and the peer.
-; * The type=friend is a device type that accepts both incoming and outbound calls,
-;   where Asterisk match on the From: username on incoming calls.
-;   (A synonym for friend is "user"). This is a type you use for your local
-;   SIP phones.
-; * The type=peer also handles both incoming and outbound calls. On inbound calls,
-;   Asterisk only matches on IP/port, not on names. This is mostly used for SIP
-;   trunks.
-;
+; SIP entities have a 'type' which determines their roles within Asterisk.
+; * For entities with 'type=peer':
+;   Peers handle both inbound and outbound calls and are matched by ip/port, so for
+;   The case of incoming calls from the peer, the IP address must match in order for
+;   The invitation to work. This means calls made from either direction won't work if
+;   The peer is unregistered while host=dynamic or if the host is otherise not set to
+;   the correct IP of the sender.
+; * For entities with 'type=user':
+;   Asterisk users handle inbound calls only (meaning they call Asterisk, Asterisk can't
+;   call them) and are matched by their authorization information (authname and secret).
+;   Asterisk doesn't rely on their IP and will accept calls regardless of the host setting
+;   as long as the incoming SIP invite authorizes successfully.
+; * For entities with 'type=friend':
+;   Asterisk will create the entity as both a friend and a peer. Asterisk will accept
+;   calls from friends like it would for users, requiring only that the authorization
+;   matches rather than the IP address. Since it is also a peer, a friend entity can
+;   be called as long as its IP is known to Asterisk. In the case of host=dynamic,
+;   this means it is necessary for the entity to register before Asterisk can call it.
+; 
 ; Use remotesecret for outbound authentication, and secret for authenticating
 ; inbound requests. For historical reasons, if no remotesecret is supplied for an
 ; outbound registration or call, the secret will be used. 
@@ -1124,6 +1223,7 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; host
 ; port
 ; qualify
+; keepalive
 ; defaultip
 ; defaultuser
 ; rtptimeout
@@ -1139,15 +1239,48 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ; t38pt_usertpsource
 ; contactpermit         ; Limit what a host may register as (a neat trick
 ; contactdeny           ; is to register at the same IP as a SIP provider,
-;                       ; then call oneself, and get redirected to that
+; contactacl            ; then call oneself, and get redirected to that
 ;                       ; same location).
 ; directmediapermit
 ; directmediadeny
+; directmediaacl
 ; unsolicited_mailbox
 ; use_q850_reason
 ; maxforwards
 ; encryption
 ; description		; Used to provide a description of the peer in console output
+; dtlsenable
+; dtlsverify
+; dtlsrekey
+; dtlscertfile
+; dtlsprivatekey
+; dtlscipher
+; dtlscafile
+; dtlscapath
+; dtlssetup
+;
+
+;------------------------------------------------------------------------------
+; DTLS-SRTP CONFIGURATION
+;
+; DTLS-SRTP support is available if the underlying RTP engine in use supports it.
+;
+; dtlsenable = yes                   ; Enable or disable DTLS-SRTP support
+; dtlsverify = yes                   ; Verify that the provided peer certificate is valid
+; dtlsrekey = 60                     ; Interval at which to renegotiate the TLS session and rekey the SRTP session
+;                                    ; If this is not set or the value provided is 0 rekeying will be disabled
+; dtlscertfile = file                ; Path to certificate file to present
+; dtlsprivatekey = file              ; Path to private key for certificate file
+; dtlscipher = <SSL cipher string>   ; Cipher to use for TLS negotiation
+;                                    ; A list of valid SSL cipher strings can be found at:
+;                                    ; http://www.openssl.org/docs/apps/ciphers.html#CIPHER_STRINGS
+; dtlscafile = file                  ; Path to certificate authority certificate
+; dtlscapath = path                  ; Path to a directory containing certificate authority certificates
+; dtlssetup = actpass                ; Whether we are willing to accept connections, connect to the other party, or both.
+;                                    ; Valid options are active (we want to connect to the other party), passive (we want to
+;                                    ; accept connections only), and actpass (we will do both). This value will be used in
+;                                    ; the outgoing SDP when offering and for incoming SDP offers when the remote party sends
+;                                    ; actpass
 
 ;[sip_proxy]
 ; For incoming calls only. Example: FWD (Free World Dialup)
@@ -1205,12 +1338,10 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
         type=friend
 
 [natted-phone](!,basic-options)   ; another template inheriting basic-options
-        nat=yes
         directmedia=no
         host=dynamic
 
 [public-phone](!,basic-options)   ; another template inheriting basic-options
-        nat=no
         directmedia=yes
 
 [my-codecs](!)                    ; a template for my preferred codecs
@@ -1245,12 +1376,13 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;[grandstream1]
 ;type=friend
 ;context=from-sip                ; Where to start in the dialplan when this phone calls
+;recordonfeature=dynamicfeature1 ; Feature to use when INFO with Record: on is received.
+;recordofffeature=dynamicfeature2 ; Feature to use when INFO with Record: off is received.
 ;callerid=John Doe <1234>        ; Full caller ID, to override the phones config
                                  ; on incoming calls to Asterisk
 ;description=Courtesy Phone      ; Description of the peer. Shown when doing 'sip show peers'.
 ;host=192.168.0.23               ; we have a static but private IP address
                                  ; No registration allowed
-;nat=no                          ; there is not NAT between phone and Asterisk
 ;directmedia=yes                 ; allow RTP voice traffic to bypass Asterisk
 ;dtmfmode=info                   ; either RFC2833 or INFO for the BudgeTone
 ;call-limit=1                    ; permit only 1 outgoing call and 1 incoming call at a time
@@ -1280,7 +1412,6 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;regexten=1234                   ; When they register, create extension 1234
 ;callerid="Jane Smith" <5678>
 ;host=dynamic                    ; This device needs to register
-;nat=yes                         ; X-Lite is behind a NAT router
 ;directmedia=no                  ; Typically set to NO if behind NAT
 ;disallow=all
 ;allow=gsm                       ; GSM consumes far less bandwidth than ulaw
@@ -1342,6 +1473,8 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;
 ;callgroup=1,3-4                 ; We are in caller groups 1,3,4
 ;pickupgroup=1,3-5               ; We can do call pick-p for call group 1,3,4,5
+;namedcallgroup=engineering,sales,netgroup,protgroup ; We are in named call groups engineering,sales,netgroup,protgroup
+;namedpickupgroup=sales          ; We can do call pick-p for named call group sales
 ;defaultip=192.168.0.60          ; IP address to use if peer has not registered
 ;deny=0.0.0.0/0.0.0.0            ; ACL: Control access to this account based on IP address
 ;permit=192.168.0.60/255.255.255.0
@@ -1349,14 +1482,12 @@ srvlookup=yes                   ; Enable DNS SRV lookups on outbound calls
 ;permit=2001:db8::/32            ; IPv6 ACLs can be specified if desired. IPv6 ACLs
                                  ; apply only to IPv6 addresses, and IPv4 ACLs apply
                                  ; only to IPv4 addresses.
+;acl=named_acl_example           ; Use named ACLs defined in acl.conf
 
 ;[cisco1]
 ;type=friend
 ;secret=blah
 ;qualify=200                     ; Qualify peer is no more than 200ms away
-;nat=yes                         ; This phone may be natted
-                                 ; Send SIP and RTP to the IP address that packet is
-                                 ; received from instead of trusting SIP headers
 ;host=dynamic                    ; This device registers with us
 ;directmedia=no                  ; Asterisk by default tries to redirect the
                                  ; RTP media stream (audio) to go directly from

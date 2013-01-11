@@ -19,9 +19,13 @@
  * \brief Asterisk datastore objects
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 273566 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include "asterisk/_private.h"
 

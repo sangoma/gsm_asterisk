@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 366051 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -140,7 +140,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			with this function, and this variable will be stored on the cdr.</para>
 			<note><para>For setting CDR values, the <literal>l</literal> flag does not apply to
 			setting the <literal>accountcode</literal>, <literal>userfield</literal>, or
-			<literal>amaflags</literal>.</para></note>
+			<literal>amaflags</literal>.</para><para>CDRs can only be modified before the bridge
+			between two channels is torn down. For example, CDRs may not be modified after the
+			<literal>Dial</literal> application has returned.</para></note>
 			<para>Raw values for <literal>disposition</literal>:</para>
 			<enumlist>
 				<enum name="0">
@@ -195,19 +197,23 @@ AST_APP_OPTIONS(cdr_func_options, {
 static int cdr_read(struct ast_channel *chan, const char *cmd, char *parse,
 		    char *buf, size_t len)
 {
-	char *ret;
+	char *ret = NULL;
 	struct ast_flags flags = { 0 };
-	struct ast_cdr *cdr = chan ? chan->cdr : NULL;
+	struct ast_cdr *cdr;
 	AST_DECLARE_APP_ARGS(args,
 			     AST_APP_ARG(variable);
 			     AST_APP_ARG(options);
 	);
 
-	if (ast_strlen_zero(parse))
+	if (ast_strlen_zero(parse) || !chan)
 		return -1;
 
-	if (!cdr)
+	ast_channel_lock(chan);
+	cdr = ast_channel_cdr(chan);
+	if (!cdr) {
+		ast_channel_unlock(chan);
 		return -1;
+	}
 
 	AST_STANDARD_APP_ARGS(args, parse);
 
@@ -255,13 +261,14 @@ static int cdr_read(struct ast_channel *chan, const char *cmd, char *parse,
 				   ast_test_flag(&flags, OPT_UNPARSED));
 	}
 
+	ast_channel_unlock(chan);
 	return ret ? 0 : -1;
 }
 
 static int cdr_write(struct ast_channel *chan, const char *cmd, char *parse,
 		     const char *value)
 {
-	struct ast_cdr *cdr = chan ? chan->cdr : NULL;
+	struct ast_cdr *cdr;
 	struct ast_flags flags = { 0 };
 	AST_DECLARE_APP_ARGS(args,
 			     AST_APP_ARG(variable);
@@ -271,8 +278,12 @@ static int cdr_write(struct ast_channel *chan, const char *cmd, char *parse,
 	if (ast_strlen_zero(parse) || !value || !chan)
 		return -1;
 
-	if (!cdr)
+	ast_channel_lock(chan);
+	cdr = ast_channel_cdr(chan);
+	if (!cdr) {
+		ast_channel_unlock(chan);
 		return -1;
+	}
 
 	AST_STANDARD_APP_ARGS(args, parse);
 
@@ -296,6 +307,7 @@ static int cdr_write(struct ast_channel *chan, const char *cmd, char *parse,
 		/* No need to worry about the u flag, as all fields for which setting
 		 * 'u' would do anything are marked as readonly. */
 
+	ast_channel_unlock(chan);
 	return 0;
 }
 

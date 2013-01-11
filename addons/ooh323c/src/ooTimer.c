@@ -17,6 +17,7 @@
 #include "asterisk.h"
 #include "asterisk/lock.h"
 
+#include "ootypes.h"
 #include "ooDateTime.h"
 #include "ooTimer.h"
 #include "ootrace.h"
@@ -79,7 +80,7 @@ void ooTimerComputeExpireTime (OOTimer* pTimer)
 
 void ooTimerDelete (OOCTXT* pctxt, DList *pList, OOTimer* pTimer)
 {
-   dListFindAndRemove (pList, pTimer);
+   dListFindAndRemove (pctxt, pList, pTimer);
    memFreePtr (pctxt, pTimer);
 }
 
@@ -101,7 +102,7 @@ OOBOOL ooTimerExpired (OOTimer* pTimer)
 void ooTimerFireExpired (OOCTXT* pctxt, DList *pList)
 {
    OOTimer* pTimer;
-   int stat;
+   int ret = OO_OK;
 
    while (pList->count > 0) {
       pTimer = (OOTimer*) pList->head->data;
@@ -113,14 +114,16 @@ void ooTimerFireExpired (OOCTXT* pctxt, DList *pList)
           */
          if (pTimer->reRegister) ooTimerReset (pctxt, pList, pTimer);
 
-         stat = (*pTimer->timeoutCB)(pTimer->cbData);
+	 ret = (*pTimer->timeoutCB)(pTimer->cbData);
 
-         if (0 != stat || !pTimer->reRegister) {
+         if (!pTimer->reRegister) {
             ooTimerDelete (pctxt, pList, pTimer);
          }
       }
       else break;
    }
+
+   return (void)ret;
 }
 
 int ooTimerInsertEntry (OOCTXT* pctxt, DList *pList, OOTimer* pTimer)
@@ -175,7 +178,7 @@ struct timeval* ooTimerNextTimeout (DList *pList, struct timeval* ptimeout)
 void ooTimerReset (OOCTXT* pctxt, DList *pList, OOTimer* pTimer)
 {
    if (pTimer->reRegister) {
-      dListFindAndRemove (pList, pTimer);
+      dListFindAndRemove (pctxt, pList, pTimer);
       ooTimerComputeExpireTime (pTimer);
       ooTimerInsertEntry (pctxt, pList, pTimer);
    }

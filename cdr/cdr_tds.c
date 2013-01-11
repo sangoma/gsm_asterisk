@@ -64,7 +64,7 @@ CREATE TABLE [dbo].[cdr] (
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371592 $")
 
 #include "asterisk/config.h"
 #include "asterisk/channel.h"
@@ -360,11 +360,11 @@ static int execute_and_consume(DBPROCESS *dbproc, const char *fmt, ...)
 	va_end(ap);
 
 	if (dbfcmd(dbproc, buffer) == FAIL) {
-		free(buffer);
+		ast_free(buffer);
 		return 1;
 	}
 
-	free(buffer);
+	ast_free(buffer);
 
 	if (dbsqlexec(dbproc) == FAIL) {
 		return 1;

@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335079 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -135,13 +135,13 @@ static int autoanswer = 1;
 static int mute = 0;
 static int noaudiocapture = 0;
 
-static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause);
+static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, const char *data, int *cause);
 static int alsa_digit(struct ast_channel *c, char digit, unsigned int duration);
 static int alsa_text(struct ast_channel *c, const char *text);
 static int alsa_hangup(struct ast_channel *c);
 static int alsa_answer(struct ast_channel *c);
 static struct ast_frame *alsa_read(struct ast_channel *chan);
-static int alsa_call(struct ast_channel *c, char *dest, int timeout);
+static int alsa_call(struct ast_channel *c, const char *dest, int timeout);
 static int alsa_write(struct ast_channel *chan, struct ast_frame *f);
 static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, size_t datalen);
 static int alsa_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
@@ -182,7 +182,7 @@ static snd_pcm_t *alsa_card_init(char *dev, snd_pcm_stream_t stream)
 		ast_debug(1, "Opening device %s in %s mode\n", dev, (stream == SND_PCM_STREAM_CAPTURE) ? "read" : "write");
 	}
 
-	hwparams = alloca(snd_pcm_hw_params_sizeof());
+	hwparams = ast_alloca(snd_pcm_hw_params_sizeof());
 	memset(hwparams, 0, snd_pcm_hw_params_sizeof());
 	snd_pcm_hw_params_any(handle, hwparams);
 
@@ -223,7 +223,7 @@ static snd_pcm_t *alsa_card_init(char *dev, snd_pcm_stream_t stream)
 	if (err < 0)
 		ast_log(LOG_ERROR, "Couldn't set the new hw params: %s\n", snd_strerror(err));
 
-	swparams = alloca(snd_pcm_sw_params_sizeof());
+	swparams = ast_alloca(snd_pcm_sw_params_sizeof());
 	memset(swparams, 0, snd_pcm_sw_params_sizeof());
 	snd_pcm_sw_params_current(handle, swparams);
 
@@ -313,7 +313,7 @@ static void grab_owner(void)
 	}
 }
 
-static int alsa_call(struct ast_channel *c, char *dest, int timeout)
+static int alsa_call(struct ast_channel *c, const char *dest, int timeout)
 {
 	struct ast_frame f = { AST_FRAME_CONTROL };
 
@@ -366,7 +366,7 @@ static int alsa_answer(struct ast_channel *c)
 static int alsa_hangup(struct ast_channel *c)
 {
 	ast_mutex_lock(&alsalock);
-	c->tech_pvt = NULL;
+	ast_channel_tech_pvt_set(c, NULL);
 	alsa.owner = NULL;
 	ast_verbose(" << Hangup on console >> \n");
 	ast_module_unref(ast_module_info->self);
@@ -440,7 +440,6 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 	static int left = FRAME_SIZE;
 	snd_pcm_state_t state;
 	int r = 0;
-	int off = 0;
 
 	ast_mutex_lock(&alsalock);
 	f.frametype = AST_FRAME_NULL;
@@ -478,8 +477,6 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 		snd_pcm_prepare(alsa.icard);
 	} else if (r < 0) {
 		ast_log(LOG_ERROR, "Read error: %s\n", snd_strerror(r));
-	} else if (r >= 0) {
-		off -= r;
 	}
 	/* Update positions */
 	readpos += r;
@@ -489,7 +486,7 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 		/* A real frame */
 		readpos = 0;
 		left = FRAME_SIZE;
-		if (chan->_state != AST_STATE_UP) {
+		if (ast_channel_state(chan) != AST_STATE_UP) {
 			/* Don't transmit unless it's up */
 			ast_mutex_unlock(&alsalock);
 			return &f;
@@ -517,7 +514,7 @@ static struct ast_frame *alsa_read(struct ast_channel *chan)
 
 static int alsa_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 {
-	struct chan_alsa_pvt *p = newchan->tech_pvt;
+	struct chan_alsa_pvt *p = ast_channel_tech_pvt(newchan);
 
 	ast_mutex_lock(&alsalock);
 	p->owner = newchan;
@@ -537,6 +534,7 @@ static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, s
 	case AST_CONTROL_CONGESTION:
 	case AST_CONTROL_RINGING:
 	case AST_CONTROL_INCOMPLETE:
+	case AST_CONTROL_PVT_CAUSE_CODE:
 	case -1:
 		res = -1;  /* Ask for inband indications */
 		break;
@@ -554,7 +552,7 @@ static int alsa_indicate(struct ast_channel *chan, int cond, const void *data, s
 		ast_moh_stop(chan);
 		break;
 	default:
-		ast_log(LOG_WARNING, "Don't know how to display condition %d on %s\n", cond, chan->name);
+		ast_log(LOG_WARNING, "Don't know how to display condition %d on %s\n", cond, ast_channel_name(chan));
 		res = -1;
 	}
 
@@ -570,25 +568,25 @@ static struct ast_channel *alsa_new(struct chan_alsa_pvt *p, int state, const ch
 	if (!(tmp = ast_channel_alloc(1, state, 0, 0, "", p->exten, p->context, linkedid, 0, "ALSA/%s", indevname)))
 		return NULL;
 
-	tmp->tech = &alsa_tech;
+	ast_channel_tech_set(tmp, &alsa_tech);
 	ast_channel_set_fd(tmp, 0, readdev);
-	ast_format_set(&tmp->readformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_set(&tmp->writeformat, AST_FORMAT_SLINEAR, 0);
-	ast_format_cap_add(tmp->nativeformats, &tmp->writeformat);
+	ast_format_set(ast_channel_readformat(tmp), AST_FORMAT_SLINEAR, 0);
+	ast_format_set(ast_channel_writeformat(tmp), AST_FORMAT_SLINEAR, 0);
+	ast_format_cap_add(ast_channel_nativeformats(tmp), ast_channel_writeformat(tmp));
 
-	tmp->tech_pvt = p;
+	ast_channel_tech_pvt_set(tmp, p);
 	if (!ast_strlen_zero(p->context))
-		ast_copy_string(tmp->context, p->context, sizeof(tmp->context));
+		ast_channel_context_set(tmp, p->context);
 	if (!ast_strlen_zero(p->exten))
-		ast_copy_string(tmp->exten, p->exten, sizeof(tmp->exten));
+		ast_channel_exten_set(tmp, p->exten);
 	if (!ast_strlen_zero(language))
-		ast_string_field_set(tmp, language, language);
+		ast_channel_language_set(tmp, language);
 	p->owner = tmp;
 	ast_module_ref(ast_module_info->self);
 	ast_jb_configure(tmp, &global_jbconf);
 	if (state != AST_STATE_DOWN) {
 		if (ast_pbx_start(tmp)) {
-			ast_log(LOG_WARNING, "Unable to start PBX on %s\n", tmp->name);
+			ast_log(LOG_WARNING, "Unable to start PBX on %s\n", ast_channel_name(tmp));
 			ast_hangup(tmp);
 			tmp = NULL;
 		}
@@ -597,7 +595,7 @@ static struct ast_channel *alsa_new(struct chan_alsa_pvt *p, int state, const ch
 	return tmp;
 }
 
-static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *alsa_request(const char *type, struct ast_format_cap *cap, const struct ast_channel *requestor, const char *data, int *cause)
 {
 	struct ast_format tmpfmt;
 	char buf[256];
@@ -615,7 +613,7 @@ static struct ast_channel *alsa_request(const char *type, struct ast_format_cap 
 	if (alsa.owner) {
 		ast_log(LOG_NOTICE, "Already have a call on the ALSA channel\n");
 		*cause = AST_CAUSE_BUSY;
-	} else if (!(tmp = alsa_new(&alsa, AST_STATE_DOWN, requestor ? requestor->linkedid : NULL))) {
+	} else if (!(tmp = alsa_new(&alsa, AST_STATE_DOWN, requestor ? ast_channel_linkedid(requestor) : NULL))) {
 		ast_log(LOG_WARNING, "Unable to create new ALSA channel\n");
 	}
 

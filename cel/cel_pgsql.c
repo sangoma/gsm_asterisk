@@ -44,7 +44,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 372175 $")
 
 #include <libpq-fe.h>
 
@@ -63,6 +63,12 @@ static char *pghostname = NULL, *pgdbname = NULL, *pgdbuser = NULL, *pgpassword 
 static int connected = 0;
 static int maxsize = 512, maxsize2 = 512;
 
+/*! \brief show_user_def is off by default */
+#define CEL_SHOW_USERDEF_DEFAULT	0
+
+/*! TRUE if we should set the eventtype field to USER_DEFINED on user events. */
+static unsigned char cel_show_user_def;
+
 AST_MUTEX_DEFINE_STATIC(pgsql_lock);
 
 static PGconn	*conn = NULL;
@@ -70,12 +76,12 @@ static PGresult	*result = NULL;
 static struct ast_event_sub *event_sub = NULL;
 
 struct columns {
-        char *name;
-        char *type;
-        int len;
-        unsigned int notnull:1;
-        unsigned int hasdefault:1;
-        AST_RWLIST_ENTRY(columns) list;
+	char *name;
+	char *type;
+	int len;
+	unsigned int notnull:1;
+	unsigned int hasdefault:1;
+	AST_RWLIST_ENTRY(columns) list;
 };
 
 static AST_RWLIST_HEAD_STATIC(psql_columns, columns);
@@ -145,13 +151,7 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 		int first = 1;
 
 		if (!sql || !sql2) {
-			if (sql) {
-				ast_free(sql);
-			}
-			if (sql2) {
-				ast_free(sql2);
-			}
-			return;
+			goto ast_log_cleanup;
 		}
 
 		ast_str_set(&sql, 0, "INSERT INTO %s (", table);
@@ -191,8 +191,13 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 					ast_str_append(&sql2, 0, "%s%f", SEP, (double) record.event_type);
 				} else {
 					/* Char field, probably */
-					LENGTHEN_BUF2(strlen(record.event_name) + 1);
-					ast_str_append(&sql2, 0, "%s'%s'", SEP, record.event_name);
+					const char *event_name;
+
+					event_name = (!cel_show_user_def
+						&& record.event_type == AST_CEL_USER_DEFINED)
+						? record.user_defined_name : record.event_name;
+					LENGTHEN_BUF2(strlen(event_name) + 1);
+					ast_str_append(&sql2, 0, "%s'%s'", SEP, event_name);
 				}
 			} else if (strcmp(cur->name, "amaflags") == 0) {
 				if (strncmp(cur->type, "int", 3) == 0) {
@@ -291,10 +296,10 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 		if (PQstatus(conn) == CONNECTION_OK) {
 			connected = 1;
 		} else {
-			ast_log(LOG_ERROR, "Connection was lost... attempting to reconnect.\n");
+			ast_log(LOG_WARNING, "Connection was lost... attempting to reconnect.\n");
 			PQreset(conn);
 			if (PQstatus(conn) == CONNECTION_OK) {
-				ast_log(LOG_ERROR, "Connection reestablished.\n");
+				ast_log(LOG_NOTICE, "Connection reestablished.\n");
 				connected = 1;
 			} else {
 				pgerror = PQerrorMessage(conn);
@@ -303,21 +308,18 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 				PQfinish(conn);
 				conn = NULL;
 				connected = 0;
-				ast_mutex_unlock(&pgsql_lock);
-				ast_free(sql);
-				ast_free(sql2);
-				return;
+				goto ast_log_cleanup;
 			}
 		}
 		result = PQexec(conn, ast_str_buffer(sql));
 		if (PQresultStatus(result) != PGRES_COMMAND_OK) {
 			pgerror = PQresultErrorMessage(result);
-			ast_log(LOG_ERROR, "Failed to insert call detail record into database!\n");
-			ast_log(LOG_ERROR, "Reason: %s\n", pgerror);
-			ast_log(LOG_ERROR, "Connection may have been lost... attempting to reconnect.\n");
+			ast_log(LOG_WARNING, "Failed to insert call detail record into database!\n");
+			ast_log(LOG_WARNING, "Reason: %s\n", pgerror);
+			ast_log(LOG_WARNING, "Connection may have been lost... attempting to reconnect.\n");
 			PQreset(conn);
 			if (PQstatus(conn) == CONNECTION_OK) {
-				ast_log(LOG_ERROR, "Connection reestablished.\n");
+				ast_log(LOG_NOTICE, "Connection reestablished.\n");
 				connected = 1;
 				PQclear(result);
 				result = PQexec(conn, ast_str_buffer(sql));
@@ -327,14 +329,17 @@ static void pgsql_log(const struct ast_event *event, void *userdata)
 					ast_log(LOG_ERROR, "Reason: %s\n", pgerror);
 				}
 			}
-			ast_mutex_unlock(&pgsql_lock);
 			PQclear(result);
-			ast_free(sql);
-			ast_free(sql2);
-			return;
+			goto ast_log_cleanup;
 		}
-		ast_mutex_unlock(&pgsql_lock);
+		PQclear(result);
+
+ast_log_cleanup:
+		ast_free(sql);
+		ast_free(sql2);
 	}
+
+	ast_mutex_unlock(&pgsql_lock);
 }
 
 static int my_unload_module(void)
@@ -456,6 +461,10 @@ static int process_my_load_module(struct ast_config *cfg)
 	if (!(table = ast_strdup(tmp))) {
 		return AST_MODULE_LOAD_DECLINE;
 	}
+	cel_show_user_def = CEL_SHOW_USERDEF_DEFAULT;
+	if ((tmp = ast_variable_retrieve(cfg, "global", "show_user_defined"))) {
+		cel_show_user_def = ast_true(tmp) ? 1 : 0;
+	}
 	if (option_debug) {
 		if (ast_strlen_zero(pghostname)) {
 			ast_debug(3, "cel_pgsql: using default unix socket\n");
@@ -467,6 +476,8 @@ static int process_my_load_module(struct ast_config *cfg)
 		ast_debug(3, "cel_pgsql: got dbname of %s\n", pgdbname);
 		ast_debug(3, "cel_pgsql: got password of %s\n", pgpassword);
 		ast_debug(3, "cel_pgsql: got sql table name of %s\n", table);
+		ast_debug(3, "cel_pgsql: got show_user_defined of %s\n",
+			cel_show_user_def ? "Yes" : "No");
 	}
 
 	conn = PQsetdbLogin(pghostname, pgdbport, NULL, NULL, pgdbname, pgdbuser, pgpassword);

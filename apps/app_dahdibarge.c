@@ -40,7 +40,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357721 $")
 
 #include <dahdi/user.h>
 
@@ -117,19 +117,19 @@ static int conf_run(struct ast_channel *chan, int confno, int confflags)
 
 	/* Set it into U-law mode (write) */
 	if (ast_set_write_format_by_id(chan, AST_FORMAT_ULAW) < 0) {
-		ast_log(LOG_WARNING, "Unable to set '%s' to write ulaw mode\n", chan->name);
+		ast_log(LOG_WARNING, "Unable to set '%s' to write ulaw mode\n", ast_channel_name(chan));
 		goto outrun;
 	}
 
 	/* Set it into U-law mode (read) */
 	if (ast_set_read_format_by_id(chan, AST_FORMAT_ULAW) < 0) {
-		ast_log(LOG_WARNING, "Unable to set '%s' to read ulaw mode\n", chan->name);
+		ast_log(LOG_WARNING, "Unable to set '%s' to read ulaw mode\n", ast_channel_name(chan));
 		goto outrun;
 	}
 	ast_indicate(chan, -1);
-	retrydahdi = strcasecmp(chan->tech->type, "DAHDI");
+	retrydahdi = strcasecmp(ast_channel_tech(chan)->type, "DAHDI");
 dahdiretry:
-	origfd = chan->fds[0];
+	origfd = ast_channel_fd(chan, 0);
 	if (retrydahdi) {
 		fd = open("/dev/dahdi/pseudo", O_RDWR);
 		if (fd < 0) {
@@ -162,7 +162,7 @@ dahdiretry:
 		nfds = 1;
 	} else {
 		/* XXX Make sure we're not running on a pseudo channel XXX */
-		fd = chan->fds[0];
+		fd = ast_channel_fd(chan, 0);
 		nfds = 0;
 	}
 	memset(&dahdic, 0, sizeof(dahdic));
@@ -192,14 +192,14 @@ dahdiretry:
 		close(fd);
 		goto outrun;
 	}
-	ast_debug(1, "Placed channel %s in DAHDI channel %d monitor\n", chan->name, confno);
+	ast_debug(1, "Placed channel %s in DAHDI channel %d monitor\n", ast_channel_name(chan), confno);
 
 	for(;;) {
 		outfd = -1;
 		ms = -1;
 		c = ast_waitfor_nandfds(&chan, 1, &fd, nfds, NULL, &outfd, &ms);
 		if (c) {
-			if (c->fds[0] != origfd) {
+			if (ast_channel_fd(c, 0) != origfd) {
 				if (retrydahdi) {
 					/* Kill old pseudo */
 					close(fd);
@@ -215,7 +215,7 @@ dahdiretry:
 				ret = 0;
 				ast_frfree(f);
 				break;
-			} else if (fd != chan->fds[0]) {
+			} else if (fd != ast_channel_fd(chan, 0)) {
 				if (f->frametype == AST_FRAME_VOICE) {
 					if (f->subclass.format.id == AST_FORMAT_ULAW) {
 						/* Carefully write */
@@ -243,7 +243,7 @@ dahdiretry:
 				ast_log(LOG_WARNING, "Failed to read frame: %s\n", strerror(errno));
 		}
 	}
-	if (fd != chan->fds[0])
+	if (fd != ast_channel_fd(chan, 0))
 		close(fd);
 	else {
 		/* Take out of conference */
@@ -277,7 +277,7 @@ static int conf_exec(struct ast_channel *chan, const char *data)
 		}
 	}
 	
-	if (chan->_state != AST_STATE_UP)
+	if (ast_channel_state(chan) != AST_STATE_UP)
 		ast_answer(chan);
 
 	while(!confno && (++retrycnt < 4)) {

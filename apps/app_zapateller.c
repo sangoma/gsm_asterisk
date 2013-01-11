@@ -31,7 +31,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357542 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -98,7 +98,7 @@ static int zapateller_exec(struct ast_channel *chan, const char *data)
 
 	pbx_builtin_setvar_helper(chan, "ZAPATELLERSTATUS", "NOTHING");
 	ast_stopstream(chan);
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if (answer) {
 			res = ast_answer(chan);
 			pbx_builtin_setvar_helper(chan, "ZAPATELLERSTATUS", "ANSWERED");
@@ -108,8 +108,8 @@ static int zapateller_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if (nocallerid	/* Zap caller if no caller id. */
-		&& chan->caller.id.number.valid
-		&& !ast_strlen_zero(chan->caller.id.number.str)) {
+		&& ast_channel_caller(chan)->id.number.valid
+		&& !ast_strlen_zero(ast_channel_caller(chan)->id.number.str)) {
 		/* We have caller id. */
 		return res;
 	}

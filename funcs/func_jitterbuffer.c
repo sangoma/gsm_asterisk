@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340932 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 375895 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -182,7 +182,7 @@ static int jb_framedata_init(struct jb_framedata *framedata, const char *data, c
 	}
 
 	/* now that all the user parsing is done and nothing will change, create the jb obj */
-	framedata->jb_obj = framedata->jb_impl->create(&framedata->jb_conf, framedata->jb_conf.resync_threshold);
+	framedata->jb_obj = framedata->jb_impl->create(&framedata->jb_conf);
 	return 0;
 }
 
@@ -218,8 +218,11 @@ static struct ast_frame *hook_event_cb(struct ast_channel *chan, struct ast_fram
 		return frame;
 	}
 
-	if (chan->fdno == AST_JITTERBUFFER_FD && framedata->timer) {
-		ast_timer_ack(framedata->timer, 1);
+	if (ast_channel_fdno(chan) == AST_JITTERBUFFER_FD && framedata->timer) {
+		if (ast_timer_ack(framedata->timer, 1) < 0) {
+			ast_log(LOG_ERROR, "Failed to acknowledge timer in jitter buffer\n");
+			return frame;
+		}
 	}
 
 	if (!frame) {

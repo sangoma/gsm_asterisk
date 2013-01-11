@@ -29,7 +29,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371592 $")
 
 #include <ctype.h>
 
@@ -55,6 +55,8 @@ static char *overrideswitch_config = NULL;
 
 AST_MUTEX_DEFINE_STATIC(save_dialplan_lock);
 
+AST_MUTEX_DEFINE_STATIC(reload_lock);
+
 static struct ast_context *local_contexts = NULL;
 static struct ast_hashtab *local_table = NULL;
 /*
@@ -66,11 +68,48 @@ static char *complete_dialplan_remove_ignorepat(struct ast_cli_args *);
 static char *complete_dialplan_add_ignorepat(struct ast_cli_args *);
 static char *complete_dialplan_remove_extension(struct ast_cli_args *);
 static char *complete_dialplan_add_extension(struct ast_cli_args *);
+static char *complete_dialplan_remove_context(struct ast_cli_args *);
 
 /*
  * Implementation of functions provided by this module
  */
 
+/*!
+ * * REMOVE context command stuff
+ */
+
+static char *handle_cli_dialplan_remove_context(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+	struct ast_context *con;
+
+	switch (cmd) {
+	case CLI_INIT:
+		e->command = "dialplan remove context";
+		e->usage =
+			"Usage: dialplan remove context <context>\n"
+			"       Removes all extensions from a specified context.\n";
+		return NULL;
+	case CLI_GENERATE:
+		return complete_dialplan_remove_context(a);
+	}
+
+	if (a->argc != 4) {
+		return CLI_SHOWUSAGE;
+	}
+
+	con = ast_context_find(a->argv[3]);
+
+	if (!con) {
+		ast_cli(a->fd, "There is no such context as '%s'\n",
+                        a->argv[3]);
+                return CLI_SUCCESS;
+	} else {
+		ast_context_destroy(con, registrar);
+		ast_cli(a->fd, "Removing context '%s'\n",
+			a->argv[3]);
+		return CLI_SUCCESS;
+	}
+}
 /*!
  * REMOVE INCLUDE command stuff
  */
@@ -87,7 +126,7 @@ static char *handle_cli_dialplan_remove_include(struct ast_cli_entry *e, int cmd
 		return complete_dialplan_remove_include(a);
 	}
 
-	if (strcmp(a->argv[4], "from"))
+	if (a->argc != 6 || strcmp(a->argv[4], "from"))
 		return CLI_SHOWUSAGE;
 
 	if (!ast_context_remove_include(a->argv[5], a->argv[3], registrar)) {
@@ -433,14 +472,12 @@ static char *complete_dialplan_remove_extension(struct ast_cli_args *a)
 						if (++which > a->n) {
 							/* If there is an extension then return exten@context. */
 							if (ast_get_extension_matchcid(e) && (!strchr(a->word, '@') || strchr(a->word, '/'))) {
-								if (asprintf(&ret, "%s/%s@%s", ast_get_extension_name(e), ast_get_extension_cidmatch(e), ast_get_context_name(c)) < 0) {
-									ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+								if (ast_asprintf(&ret, "%s/%s@%s", ast_get_extension_name(e), ast_get_extension_cidmatch(e), ast_get_context_name(c)) < 0) {
 									ret = NULL;
 								}
 								break;
 							} else if (!ast_get_extension_matchcid(e) && !strchr(a->word, '/')) {
-								if (asprintf(&ret, "%s@%s", ast_get_extension_name(e), ast_get_context_name(c)) < 0) {
-									ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+								if (ast_asprintf(&ret, "%s@%s", ast_get_extension_name(e), ast_get_context_name(c)) < 0) {
 									ret = NULL;
 								}
 								break;
@@ -521,6 +558,8 @@ static char *complete_dialplan_remove_extension(struct ast_cli_args *a)
  */
 static char *handle_cli_dialplan_add_include(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
+	const char *into_context;
+
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "dialplan add include";
@@ -538,6 +577,18 @@ static char *handle_cli_dialplan_add_include(struct ast_cli_entry *e, int cmd, s
 	/* fifth arg must be 'into' ... */
 	if (strcmp(a->argv[4], "into"))
 		return CLI_SHOWUSAGE;
+
+	into_context = a->argv[5];
+
+	if (!ast_context_find(into_context)) {
+		ast_cli(a->fd, "Context '%s' did not exist prior to add include - the context will be created.\n", into_context);
+	}
+
+	if (!ast_context_find_or_create(NULL, NULL, into_context, registrar)) {
+		ast_cli(a->fd, "ast_context_find_or_create() failed\n");
+		ast_cli(a->fd, "Failed to include '%s' in '%s' context\n",a->argv[3], a->argv[5]);
+		return CLI_FAILURE;
+	}
 
 	if (ast_context_add_include(a->argv[5], a->argv[3], registrar)) {
 		switch (errno) {
@@ -593,43 +644,18 @@ static char *complete_dialplan_add_include(struct ast_cli_args *a)
 		ast_unlock_contexts();
 		return ret;
 	} else if (a->pos == 4) { /* dialplan add include CTX _X_ */
-		/* complete  as 'into' if context exists or we are unable to check */
-		char *context, *dupline;
-		const char *s = skip_words(a->line, 3); /* should not fail */
-
-		if (a->n != 0)	/* only once */
-			return NULL;
-
-		/* parse context from line ... */
-		context = dupline = strdup(s);
-		if (!context) {
-			ast_log(LOG_ERROR, "Out of free memory\n");
-			return strdup("into");
-		}
-		strsep(&dupline, " ");
-
-		/* check for context existence ... */
-		if (ast_rdlock_contexts()) {
-			ast_log(LOG_ERROR, "Failed to lock context list\n");
-			/* our fault, we can't check, so complete 'into' ... */
-			ret = strdup("into");
-		} else {
-			struct ast_context *ctx;
-			for (ctx = NULL; !ret && (ctx = ast_walk_contexts(ctx)); )
-				if (!strcmp(context, ast_get_context_name(ctx)))
-					ret = strdup("into"); /* found */
-			ast_unlock_contexts();
-		}
-		free(context);
-		return ret;
+		/* always complete  as 'into' */
+		return (a->n == 0) ? strdup("into") : NULL;
 	} else if (a->pos == 5) { /* 'dialplan add include CTX into _X_' (dst context) */
 		char *context, *dupline, *into;
 		const char *s = skip_words(a->line, 3); /* should not fail */
 		context = dupline = strdup(s);
+
 		if (!dupline) {
 			ast_log(LOG_ERROR, "Out of free memory\n");
 			return NULL;
 		}
+
 		strsep(&dupline, " "); /* skip context */
 		into = strsep(&dupline, " ");
 		/* error if missing context or fifth word is not 'into' */
@@ -644,21 +670,14 @@ static char *complete_dialplan_add_include(struct ast_cli_args *a)
 			goto error3;
 		}
 
-		for (c = NULL; (c = ast_walk_contexts(c)); )
+		for (c = NULL; !ret && (c = ast_walk_contexts(c)); ) {
 			if (!strcmp(context, ast_get_context_name(c)))
-				break;
-		if (c) { /* first context exists, go on... */
-			/* go through all contexts ... */
-			for (c = NULL; !ret && (c = ast_walk_contexts(c)); ) {
-				if (!strcmp(context, ast_get_context_name(c)))
-					continue; /* skip ourselves */
-				if (partial_match(ast_get_context_name(c), a->word, len) &&
-						!lookup_ci(c, context) /* not included yet */ &&
-						++which > a->n)
-					ret = strdup(ast_get_context_name(c));
+				continue; /* skip ourselves */
+			if (partial_match(ast_get_context_name(c), a->word, len) &&
+					!lookup_ci(c, context) /* not included yet */ &&
+					++which > a->n) {
+				ret = strdup(ast_get_context_name(c));
 			}
-		} else {
-			ast_log(LOG_ERROR, "context %s not found\n", context);
 		}
 		ast_unlock_contexts();
 	error3:
@@ -731,6 +750,11 @@ static char *handle_cli_dialplan_save(struct ast_cli_entry *e, int cmd, struct a
 	snprintf(filename, sizeof(filename), "%s%s%s", base, slash, config);
 
 	cfg = ast_config_load("extensions.conf", config_flags);
+	if (!cfg) {
+		ast_cli(a->fd, "Failed to load extensions.conf\n");
+		ast_mutex_unlock(&save_dialplan_lock);
+		return CLI_FAILURE;
+	}
 
 	/* try to lock contexts list */
 	if (ast_rdlock_contexts()) {
@@ -912,11 +936,16 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 	case CLI_INIT:
 		e->command = "dialplan add extension";
 		e->usage =
-			"Usage: dialplan add extension <exten>,<priority>,<app>,<app-data>\n"
-			"       into <context> [replace]\n\n"
-			"       This command will add new extension into <context>. If there is an\n"
-			"       existence of extension with the same priority and last 'replace'\n"
-			"       arguments is given here we simply replace this extension.\n"
+			"Usage: dialplan add extension <exten>,<priority>,<app> into <context> [replace]\n"
+			"\n"
+			"       app can be either:\n"
+			"         app-name\n"
+			"         app-name(app-data)\n"
+			"         app-name,<app-data>\n"
+			"\n"
+			"       This command will add the new extension into <context>.  If\n"
+			"       an extension with the same priority already exists and the\n"
+			"       'replace' option is given we will replace the extension.\n"
 			"\n"
 			"Example: dialplan add extension 6123,1,Dial,IAX/216.207.245.56/6123 into local\n"
 			"         Now, you can dial 6123 and talk to Markster :)\n";
@@ -954,23 +983,27 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 		}
 	}
 	app = whole_exten;
-	if (app && (start = strchr(app, '(')) && (end = strrchr(app, ')'))) {
-		*start = *end = '\0';
-		app_data = start + 1;
-	} else {
-		if (app) {
+	if (app) {
+		if ((start = strchr(app, '(')) && (end = strrchr(app, ')'))) {
+			*start = *end = '\0';
+			app_data = start + 1;
+		} else {
 			app_data = strchr(app, ',');
 			if (app_data) {
-				*app_data = '\0';
-				app_data++;
+				*app_data++ = '\0';
 			}
-		} else	
-			app_data = NULL;
+		}
+	} else {
+		app_data = NULL;
 	}
 
-	if (!exten || !prior || !app || (!app_data && iprior != PRIORITY_HINT))
+	if (!exten || !prior || !app) {
 		return CLI_SHOWUSAGE;
-	
+	}
+
+	if (!app_data) {
+		app_data = "";
+	}
 	into_context = a->argv[5];
 
 	if (!ast_context_find(into_context)) {
@@ -978,15 +1011,13 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 	}
 
 	if (!ast_context_find_or_create(NULL, NULL, into_context, registrar)) {
-		ast_cli(a->fd, "ast_context_find_or_create() failed\n");
-		ast_cli(a->fd, "Failed to add '%s,%s,%s,%s' extension into '%s' context\n", exten, prior, app, app_data, into_context);
+		ast_cli(a->fd, "Failed to add '%s,%s,%s(%s)' extension into '%s' context\n",
+			exten, prior, app, app_data, into_context);
 		return CLI_FAILURE;
 	}
 
-	if (!app_data)
-		app_data="";
 	if (ast_add_extension(into_context, a->argc == 7 ? 1 : 0, exten, iprior, NULL, cidmatch, app,
-		(void *)strdup(app_data), ast_free_ptr, registrar)) {
+		ast_strdup(app_data), ast_free_ptr, registrar)) {
 		switch (errno) {
 		case ENOMEM:
 			ast_cli(a->fd, "Out of free memory\n");
@@ -1006,21 +1037,50 @@ static char *handle_cli_dialplan_add_extension(struct ast_cli_entry *e, int cmd,
 			break;
 
 		default:
-			ast_cli(a->fd, "Failed to add '%s,%s,%s,%s' extension into '%s' context\n",
+			ast_cli(a->fd, "Failed to add '%s,%s,%s(%s)' extension into '%s' context\n",
 					exten, prior, app, app_data, into_context);
 			break;
 		}
 		return CLI_FAILURE;
 	}
 
-	if (a->argc == 7)
-		ast_cli(a->fd, "Extension %s@%s (%s) replace by '%s,%s,%s,%s'\n",
+	if (a->argc == 7) {
+		ast_cli(a->fd, "Extension %s@%s (%s) replace by '%s,%s,%s(%s)'\n",
 			exten, into_context, prior, exten, prior, app, app_data);
-	else
-		ast_cli(a->fd, "Extension '%s,%s,%s,%s' added into '%s' context\n",
+	} else {
+		ast_cli(a->fd, "Extension '%s,%s,%s(%s)' added into '%s' context\n",
 			exten, prior, app, app_data, into_context);
+	}
 
 	return CLI_SUCCESS;
+}
+
+static char *complete_dialplan_remove_context(struct ast_cli_args *a)
+{
+	struct ast_context *c = NULL;
+	int len = strlen(a->word);
+	char *res = NULL;
+	int which = 0;
+
+	if (a->pos != 3) {
+		return NULL;
+	}
+
+
+	/* try to lock contexts list ... */
+	if (ast_rdlock_contexts()) {
+		ast_log(LOG_WARNING, "Failed to lock contexts list\n");
+		return NULL;
+	}
+
+	/* walk through all contexts */
+	while ( !res && (c = ast_walk_contexts(c)) ) {
+		if (partial_match(ast_get_context_name(c), a->word, len) && ++which > a->n) {
+			res = strdup(ast_get_context_name(c));
+		}
+	}
+	ast_unlock_contexts();
+	return res;
 }
 
 /*! dialplan add extension 6123,1,Dial,IAX/212.71.138.13/6123 into local */
@@ -1321,6 +1381,7 @@ static char *handle_cli_dialplan_reload(struct ast_cli_entry *e, int cmd, struct
 static struct ast_cli_entry cli_pbx_config[] = {
 	AST_CLI_DEFINE(handle_cli_dialplan_add_extension,    "Add new extension into context"),
 	AST_CLI_DEFINE(handle_cli_dialplan_remove_extension, "Remove a specified extension"),
+	AST_CLI_DEFINE(handle_cli_dialplan_remove_context,   "Remove a specified context"),
 	AST_CLI_DEFINE(handle_cli_dialplan_add_ignorepat,    "Add new ignore pattern"),
 	AST_CLI_DEFINE(handle_cli_dialplan_remove_ignorepat, "Remove ignore pattern from context"),
 	AST_CLI_DEFINE(handle_cli_dialplan_add_include,      "Include context in other context"),
@@ -1355,8 +1416,13 @@ static int unload_module(void)
 static char *pbx_strsep(char **destructible, const char *delim)
 {
 	int square = 0;
-	char *res = *destructible;
-	for (; destructible && *destructible && **destructible; (*destructible)++) {
+	char *res;
+
+	if (!destructible || !*destructible) {
+		return NULL;
+	}
+	res = *destructible;
+	for (; **destructible; (*destructible)++) {
 		if (**destructible == '[' && !strchr(delim, '[')) {
 			square++;
 		} else if (**destructible == ']' && !strchr(delim, ']')) {
@@ -1371,7 +1437,7 @@ static char *pbx_strsep(char **destructible, const char *delim)
 			break;
 		}
 	}
-	if (destructible && *destructible && **destructible == '\0') {
+	if (**destructible == '\0') {
 		*destructible = NULL;
 	}
 	return res;
@@ -1461,7 +1527,7 @@ static int pbx_load_config(const char *config_file)
 				}
 			} else if (!strcasecmp(v->name, "exten")) {
 				int ipri;
-				char *plus, *firstp;
+				char *plus;
 				char *pri, *appl, *data, *cidmatch;
 
 				if (!(stringp = tc = ast_strdup(v->value))) {
@@ -1531,7 +1597,7 @@ process_extension:
 				}
 				appl = S_OR(stringp, "");
 				/* Find the first occurrence of '(' */
-				if (!(firstp = strchr(appl, '('))) {
+				if (!strchr(appl, '(')) {
 					/* No arguments */
 					data = "";
 				} else {
@@ -1575,13 +1641,13 @@ process_extension:
 							"The use of '%s' for an extension is strongly discouraged and can have unexpected behavior.  Please use '_X%c' instead at line %d of %s\n",
 							realext, realext[1], v->lineno, vfile);
 					}
-					if (ast_add_extension2(con, 0, realext, ipri, label, cidmatch, appl, strdup(data), ast_free_ptr, registrar)) {
+					if (ast_add_extension2(con, 0, realext, ipri, label, cidmatch, appl, ast_strdup(data), ast_free_ptr, registrar)) {
 						ast_log(LOG_WARNING,
 							"Unable to register extension at line %d of %s\n",
 							v->lineno, vfile);
 					}
 				}
-				free(tc);
+				ast_free(tc);
 			} else if (!strcasecmp(v->name, "include")) {
 				pbx_substitute_variables_helper(NULL, v->value, realvalue, sizeof(realvalue) - 1);
 				if (ast_context_add_include2(con, realvalue, registrar)) {
@@ -1622,8 +1688,8 @@ process_extension:
 						v->value, cxt, v->lineno, vfile);
 				}
 			} else if (!strcasecmp(v->name, "switch") || !strcasecmp(v->name, "lswitch") || !strcasecmp(v->name, "eswitch")) {
-				char *stringp = realvalue;
 				char *appl, *data;
+				stringp = realvalue;
 				
 				if (!strcasecmp(v->name, "switch")) {
 					pbx_substitute_variables_helper(NULL, v->value, realvalue, sizeof(realvalue) - 1);
@@ -1743,10 +1809,16 @@ static void pbx_load_users(void)
 			ast_add_extension2(con, 0, cat, -1, NULL, NULL, iface, NULL, NULL, registrar);
 			/* If voicemail, use "stdexten" else use plain old dial */
 			if (hasvoicemail) {
-				snprintf(tmp, sizeof(tmp), "stdexten,%s,${HINT}", cat);
-				ast_add_extension2(con, 0, cat, 1, NULL, NULL, "Macro", strdup(tmp), ast_free_ptr, registrar);
+				if (ast_opt_stdexten_macro) {
+					/* Use legacy stdexten macro method. */
+					snprintf(tmp, sizeof(tmp), "stdexten,%s,${HINT}", cat);
+					ast_add_extension2(con, 0, cat, 1, NULL, NULL, "Macro", ast_strdup(tmp), ast_free_ptr, registrar);
+				} else {
+					snprintf(tmp, sizeof(tmp), "%s,stdexten(${HINT})", cat);
+					ast_add_extension2(con, 0, cat, 1, NULL, NULL, "Gosub", ast_strdup(tmp), ast_free_ptr, registrar);
+				}
 			} else {
-				ast_add_extension2(con, 0, cat, 1, NULL, NULL, "Dial", strdup("${HINT}"), ast_free_ptr, registrar);
+				ast_add_extension2(con, 0, cat, 1, NULL, NULL, "Dial", ast_strdup("${HINT}"), ast_free_ptr, registrar);
 			}
 			altexts = ast_variable_retrieve(cfg, cat, "alternateexts");
 			if (!ast_strlen_zero(altexts)) {
@@ -1755,7 +1827,7 @@ static void pbx_load_users(void)
 				c = altcopy;
 				ext = strsep(&c, ",");
 				while (ext) {
-					ast_add_extension2(con, 0, ext, 1, NULL, NULL, "Goto", strdup(tmp), ast_free_ptr, registrar);
+					ast_add_extension2(con, 0, ext, 1, NULL, NULL, "Goto", ast_strdup(tmp), ast_free_ptr, registrar);
 					ext = strsep(&c, ",");
 				}
 			}
@@ -1768,17 +1840,23 @@ static int pbx_load_module(void)
 {
 	struct ast_context *con;
 
+	ast_mutex_lock(&reload_lock);
+
 	if (!local_table)
 		local_table = ast_hashtab_create(17, ast_hashtab_compare_contexts, ast_hashtab_resize_java, ast_hashtab_newsize_java, ast_hashtab_hash_contexts, 0);
 
-	if (!pbx_load_config(config))
+	if (!pbx_load_config(config)) {
+		ast_mutex_unlock(&reload_lock);
 		return AST_MODULE_LOAD_DECLINE;
+	}
 	
 	pbx_load_users();
 
 	ast_merge_contexts_and_delete(&local_contexts, local_table, registrar);
 	local_table = NULL; /* the local table has been moved into the global one. */
 	local_contexts = NULL;
+
+	ast_mutex_unlock(&reload_lock);
 
 	for (con = NULL; (con = ast_walk_contexts(con));)
 		ast_context_verify_includes(con);

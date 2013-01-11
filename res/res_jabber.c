@@ -31,14 +31,16 @@
  */
 
 /*** MODULEINFO
+        <defaultenabled>no</defaultenabled>
 	<depend>iksemel</depend>
 	<use type="external">openssl</use>
-	<support_level>extended</support_level>
+	<support_level>deprecated</support_level>
+	<replacement>res_xmpp</replacement>
  ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342557 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 378347 $")
 
 #include <ctype.h>
 #include <iksemel.h>
@@ -287,8 +289,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 342557 $")
 
 /*-- Forward declarations */
 static void aji_message_destroy(struct aji_message *obj);
-static void aji_buddy_destroy(struct aji_buddy *obj);
-static void aji_client_destroy(struct aji_client *obj);
 static int aji_is_secure(struct aji_client *client);
 #ifdef HAVE_OPENSSL
 static int aji_start_tls(struct aji_client *client);
@@ -315,7 +315,6 @@ static char *aji_do_set_debug(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 static char *aji_do_reload(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 static char *aji_show_clients(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 static char *aji_show_buddies(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
-static char *aji_test(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a);
 static int aji_create_client(char *label, struct ast_variable *var, int debug);
 static int aji_create_buddy(char *label, struct aji_client *client);
 static int aji_reload(int reload);
@@ -353,7 +352,7 @@ static char *aji_cli_create_leafnode(struct ast_cli_entry *e, int cmd,
 static void aji_create_affiliations(struct aji_client *client, const char *node);
 static iks* aji_pubsub_iq_create(struct aji_client *client, const char *type);
 static void aji_publish_device_state(struct aji_client *client, const char * device,
-	const char *device_state);
+				     const char *device_state, unsigned int cachable);
 static int aji_handle_pubsub_error(void *data, ikspak *pak);
 static int aji_handle_pubsub_event(void *data, ikspak *pak);
 static void aji_pubsub_subscribe(struct aji_client *client, const char *node);
@@ -367,7 +366,7 @@ static void aji_publish_mwi(struct aji_client *client, const char *mailbox,
 static void aji_devstate_cb(const struct ast_event *ast_event, void *data);
 static void aji_mwi_cb(const struct ast_event *ast_event, void *data);
 static iks* aji_build_publish_skeleton(struct aji_client *client, const char *node,
-	const char *event_type);
+				       const char *event_type, unsigned int cachable);
 /* No transports in this version */
 /*
 static int aji_create_transport(char *label, struct aji_client *client);
@@ -387,7 +386,6 @@ static struct ast_cli_entry aji_cli[] = {
 	AST_CLI_DEFINE(aji_do_reload, "Reload Jabber configuration"),
 	AST_CLI_DEFINE(aji_show_clients, "Show state of clients and components"),
 	AST_CLI_DEFINE(aji_show_buddies, "Show buddy lists of our clients"),
-	AST_CLI_DEFINE(aji_test, "Shows roster, but is generally used for mog's debugging."),
 	AST_CLI_DEFINE(aji_cli_create_collection, "Creates a PubSub node collection."),
 	AST_CLI_DEFINE(aji_cli_list_pubsub_nodes, "Lists PubSub nodes"),
 	AST_CLI_DEFINE(aji_cli_create_leafnode, "Creates a PubSub leaf node"),
@@ -419,10 +417,10 @@ static struct ast_flags pubsubflags = { 0 };
  * \param obj aji_client The structure we will delete.
  * \return void.
  */
-static void aji_client_destroy(struct aji_client *obj)
+void ast_aji_client_destroy(struct aji_client *obj)
 {
 	struct aji_message *tmp;
-	ASTOBJ_CONTAINER_DESTROYALL(&obj->buddies, aji_buddy_destroy);
+	ASTOBJ_CONTAINER_DESTROYALL(&obj->buddies, ast_aji_buddy_destroy);
 	ASTOBJ_CONTAINER_DESTROY(&obj->buddies);
 	iks_filter_delete(obj->f);
 	iks_parser_delete(obj->p);
@@ -441,7 +439,7 @@ static void aji_client_destroy(struct aji_client *obj)
  * \param obj aji_buddy The structure we will delete.
  * \return void.
  */
-static void aji_buddy_destroy(struct aji_buddy *obj)
+void ast_aji_buddy_destroy(struct aji_buddy *obj)
 {
 	struct aji_resource *tmp;
 
@@ -677,12 +675,15 @@ static int aji_status_exec(struct ast_channel *chan, const char *data)
 	buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, jid.screenname);
 	if (!buddy) {
 		ast_log(LOG_WARNING, "Could not find buddy in list: '%s'\n", jid.screenname);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return -1;
 	}
 	r = aji_find_resource(buddy, jid.resource);
 	if (!r && buddy->resources) {
 		r = buddy->resources;
 	}
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	if (!r) {
 		ast_log(LOG_NOTICE, "Resource '%s' of buddy '%s' was not found\n", jid.resource, jid.screenname);
 	} else {
@@ -741,12 +742,15 @@ static int acf_jabberstatus_read(struct ast_channel *chan, const char *name, cha
 	buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, jid.screenname);
 	if (!buddy) {
 		ast_log(LOG_WARNING, "Could not find buddy in list: '%s'\n", jid.screenname);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return -1;
 	}
 	r = aji_find_resource(buddy, jid.resource);
 	if (!r && buddy->resources) {
 		r = buddy->resources;
 	}
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	if (!r) {
 		ast_log(LOG_NOTICE, "Resource %s of buddy %s was not found.\n", jid.resource, jid.screenname);
 	} else {
@@ -772,7 +776,7 @@ static struct ast_custom_function jabberstatus_function = {
  */
 static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, char *data, char *buf, size_t buflen)
 {
-	char *aux = NULL, *parse = NULL;
+	char *parse = NULL;
 	int timeout;
 	int jidlen, resourcelen;
 	struct timeval start;
@@ -803,17 +807,10 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 		return -1;
 	}
 
-	client = ast_aji_get_client(args.account);
-	if (!client) {
-		ast_log(LOG_WARNING, "Could not find client %s, exiting\n", args.account);
-		return -1;
-	}
-
 	parse = ast_strdupa(args.jid);
 	AST_NONSTANDARD_APP_ARGS(jid, parse, '/');
 	if (jid.argc < 1 || jid.argc > 2 || strlen(args.jid) > AJI_MAX_JIDLEN) {
 		ast_log(LOG_WARNING, "Invalid JID : %s\n", parse);
-		ASTOBJ_UNREF(client, aji_client_destroy);
 		return -1;
 	}
 
@@ -823,7 +820,6 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 		sscanf(args.timeout, "%d", &timeout);
 		if (timeout <= 0) {
 			ast_log(LOG_WARNING, "Invalid timeout specified: '%s'\n", args.timeout);
-			ASTOBJ_UNREF(client, aji_client_destroy);
 			return -1;
 		}
 	}
@@ -831,12 +827,19 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 	jidlen = strlen(jid.screenname);
 	resourcelen = ast_strlen_zero(jid.resource) ? 0 : strlen(jid.resource);
 
+	client = ast_aji_get_client(args.account);
+	if (!client) {
+		ast_log(LOG_WARNING, "Could not find client %s, exiting\n", args.account);
+		return -1;
+	}
+
 	ast_debug(3, "Waiting for an XMPP message from %s\n", args.jid);
 
 	start = ast_tvnow();
 
 	if (ast_autoservice_start(chan) < 0) {
-		ast_log(LOG_WARNING, "Cannot start autoservice for channel %s\n", chan->name);
+		ast_log(LOG_WARNING, "Cannot start autoservice for channel %s\n", ast_channel_name(chan));
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return -1;
 	}
 
@@ -890,7 +893,7 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 				continue;
 			}
 			found = 1;
-			aux = ast_strdupa(tmp->message);
+			ast_copy_string(buf, tmp->message, buflen);
 			AST_LIST_REMOVE_CURRENT(list);
 			aji_message_destroy(tmp);
 			break;
@@ -905,9 +908,9 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 		diff = ast_tvdiff_ms(ast_tvnow(), start);
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	if (ast_autoservice_stop(chan) < 0) {
-		ast_log(LOG_WARNING, "Cannot stop autoservice for channel %s\n", chan->name);
+		ast_log(LOG_WARNING, "Cannot stop autoservice for channel %s\n", ast_channel_name(chan));
 	}
 
 	/* return if we timed out */
@@ -915,7 +918,6 @@ static int acf_jabberreceive_read(struct ast_channel *chan, const char *name, ch
 		ast_log(LOG_NOTICE, "Timed out : no message received from %s\n", args.jid);
 		return -1;
 	}
-	ast_copy_string(buf, aux, buflen);
 
 	return 0;
 }
@@ -1017,14 +1019,13 @@ static int aji_join_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	if (!(client = ast_aji_get_client(args.sender))) {
-		ast_log(LOG_ERROR, "Could not find sender connection: '%s'\n", args.sender);
+	if (strchr(args.jid, '/')) {
+		ast_log(LOG_ERROR, "Invalid room name : resource must not be appended\n");
 		return -1;
 	}
 
-	if (strchr(args.jid, '/')) {
-		ast_log(LOG_ERROR, "Invalid room name : resource must not be appended\n");
-		ASTOBJ_UNREF(client, aji_client_destroy);
+	if (!(client = ast_aji_get_client(args.sender))) {
+		ast_log(LOG_ERROR, "Could not find sender connection: '%s'\n", args.sender);
 		return -1;
 	}
 
@@ -1044,7 +1045,7 @@ static int aji_join_exec(struct ast_channel *chan, const char *data)
 		ast_log(LOG_ERROR, "Problem with specified jid of '%s'\n", args.jid);
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return 0;
 }
 
@@ -1078,16 +1079,16 @@ static int aji_leave_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
+	if (strchr(args.jid, '/')) {
+		ast_log(LOG_ERROR, "Invalid room name, resource must not be appended\n");
+		return -1;
+	}
+
 	if (!(client = ast_aji_get_client(args.sender))) {
 		ast_log(LOG_ERROR, "Could not find sender connection: '%s'\n", args.sender);
 		return -1;
 	}
 
-	if (strchr(args.jid, '/')) {
-		ast_log(LOG_ERROR, "Invalid room name, resource must not be appended\n");
-		ASTOBJ_UNREF(client, aji_client_destroy);
-		return -1;
-	}
 	if (!ast_strlen_zero(args.nick)) {
 		snprintf(nick, AJI_MAX_RESJIDLEN, "%s", args.nick);
 	} else {
@@ -1101,7 +1102,7 @@ static int aji_leave_exec(struct ast_channel *chan, const char *data)
 	if (!ast_strlen_zero(args.jid) && strchr(args.jid, '@')) {
 		ast_aji_leave_chat(client, args.jid, nick);
 	}
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return 0;
 }
 
@@ -1142,6 +1143,7 @@ static int aji_send_exec(struct ast_channel *chan, const char *data)
 	if (strchr(args.recipient, '@') && !ast_strlen_zero(args.message)) {
 		ast_aji_send_chat(client, args.recipient, args.message);
 	}
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return 0;
 }
 
@@ -1167,7 +1169,6 @@ static int msg_send_cb(const struct ast_msg *msg, const char *to, const char *fr
 		return -1;
 	}
 
-
 	ast_debug(1, "Sending message to '%s' from '%s'\n", dest, client->name);
 
 	res = ast_aji_send_chat(client, dest, ast_msg_get_body(msg));
@@ -1175,11 +1176,7 @@ static int msg_send_cb(const struct ast_msg *msg, const char *to, const char *fr
 		ast_log(LOG_WARNING, "Failed to send xmpp message (%d).\n", res);
 	}
 
-	/* 
-	 * XXX Reference leak here.  See note with ast_aji_get_client() about the problems
-	 * with that function.
-	 */
-
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return res == IKS_OK ? 0 : -1;
 }
 
@@ -1234,7 +1231,7 @@ static int aji_sendgroup_exec(struct ast_channel *chan, const char *data)
 		res = ast_aji_send_groupchat(client, nick, args.groupchat, args.message);
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	if (res != IKS_OK) {
 		return -1;
 	}
@@ -1284,7 +1281,6 @@ static int aji_start_tls(struct aji_client *client)
  */
 static int aji_tls_handshake(struct aji_client *client)
 {
-	int ret;
 	int sock;
 
 	ast_debug(1, "Starting TLS handshake\n");
@@ -1302,12 +1298,12 @@ static int aji_tls_handshake(struct aji_client *client)
 
 	/* Enforce TLS on our XMPP connection */
 	sock = iks_fd(client->p);
-	if (!(ret = SSL_set_fd(client->ssl_session, sock))) {
+	if (!SSL_set_fd(client->ssl_session, sock)) {
 		return IKS_NET_TLSFAIL;
 	}
 
 	/* Perform SSL handshake */
-	if (!(ret = SSL_connect(client->ssl_session))) {
+	if (!SSL_connect(client->ssl_session)) {
 		return IKS_NET_TLSFAIL;
 	}
 
@@ -1315,7 +1311,7 @@ static int aji_tls_handshake(struct aji_client *client)
 	client->stream_flags |= SECURE;
 
 	/* Sent over the established TLS connection */
-	if ((ret = aji_send_header(client, client->jid->server)) != IKS_OK) {
+	if (aji_send_header(client, client->jid->server) != IKS_OK) {
 		return IKS_NET_TLSFAIL;
 	}
 
@@ -1549,7 +1545,7 @@ static void aji_log_hook(void *data, const char *xmpp, size_t size, int is_incom
 		}
 
 	}
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 }
 
 /*!
@@ -1587,8 +1583,8 @@ static int aji_start_sasl(struct aji_client *client, enum ikssasltype type, char
 
 	iks_insert_attrib(x, "xmlns", IKS_NS_XMPP_SASL);
 	len = strlen(username) + strlen(pass) + 3;
-	s = alloca(len);
-	base64 = alloca((len + 2) * 4 / 3);
+	s = ast_alloca(len);
+	base64 = ast_alloca((len + 2) * 4 / 3);
 	iks_insert_attrib(x, "mechanism", "PLAIN");
 	snprintf(s, len, "%c%s%c%s", 0, username, 0, pass);
 
@@ -1621,12 +1617,12 @@ static int aji_act_hook(void *data, int type, iks *node)
 
 	if (!node) {
 		ast_log(LOG_ERROR, "aji_act_hook was called with out a packet\n"); /* most likely cause type is IKS_NODE_ERROR lost connection */
-		ASTOBJ_UNREF(client, aji_client_destroy);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return IKS_HOOK;
 	}
 
 	if (client->state == AJI_DISCONNECTING) {
-		ASTOBJ_UNREF(client, aji_client_destroy);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return IKS_HOOK;
 	}
 
@@ -1655,16 +1651,16 @@ static int aji_act_hook(void *data, int type, iks *node)
 			if (client->usetls && !aji_is_secure(client)) {
 #ifndef HAVE_OPENSSL
 				ast_log(LOG_ERROR, "TLS connection cannot be established. Please install OpenSSL and its development libraries on this system, or disable the TLS option in your configuration file\n");
-				ASTOBJ_UNREF(client, aji_client_destroy);
+				ASTOBJ_UNREF(client, ast_aji_client_destroy);
 				return IKS_HOOK;
 #else
 				if (aji_start_tls(client) == IKS_NET_TLSFAIL) {
 					ast_log(LOG_ERROR, "Could not start TLS\n");
-					ASTOBJ_UNREF(client, aji_client_destroy);
-					return IKS_HOOK;		
+					ASTOBJ_UNREF(client, ast_aji_client_destroy);
+					return IKS_HOOK;
 				}
-#endif
 				break;
+#endif
 			}
 			if (!client->usesasl) {
 				iks_filter_add_rule(client->f, aji_client_connect, client, IKS_RULE_TYPE, IKS_PAK_IQ, IKS_RULE_SUBTYPE, IKS_TYPE_RESULT, IKS_RULE_ID, client->mid, IKS_RULE_DONE);
@@ -1730,7 +1726,7 @@ static int aji_act_hook(void *data, int type, iks *node)
 
 						ret = aji_start_sasl(client, features, client->jid->user, client->password);
 						if (ret != IKS_OK) {
-							ASTOBJ_UNREF(client, aji_client_destroy);
+							ASTOBJ_UNREF(client, ast_aji_client_destroy);
 							return IKS_HOOK;
 						}
 						break;
@@ -1745,12 +1741,12 @@ static int aji_act_hook(void *data, int type, iks *node)
 			break;
 		case IKS_NODE_ERROR:
 			ast_log(LOG_ERROR, "JABBER: Node Error\n");
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_HOOK;
 			break;
 		case IKS_NODE_STOP:
 			ast_log(LOG_WARNING, "JABBER: Disconnected\n");
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_HOOK;
 			break;
 		}
@@ -1762,11 +1758,9 @@ static int aji_act_hook(void *data, int type, iks *node)
 
 				sprintf(secret, "%s%s", pak->id, client->password);
 				ast_sha1_hash(shasum, secret);
-				handshake = NULL;
-				if (asprintf(&handshake, "<handshake>%s</handshake>", shasum) >= 0) {
+				if (ast_asprintf(&handshake, "<handshake>%s</handshake>", shasum) >= 0) {
 					aji_send_raw(client, handshake);
 					ast_free(handshake);
-					handshake = NULL;
 				}
 				client->state = AJI_CONNECTING;
 				if (aji_recv(client, 1) == 2) /*XXX proper result for iksemel library on iks_recv of <handshake/> XXX*/
@@ -1782,12 +1776,12 @@ static int aji_act_hook(void *data, int type, iks *node)
 
 		case IKS_NODE_ERROR:
 			ast_log(LOG_ERROR, "JABBER: Node Error\n");
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_HOOK;
 
 		case IKS_NODE_STOP:
 			ast_log(LOG_WARNING, "JABBER: Disconnected\n");
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_HOOK;
 		}
 	}
@@ -1822,7 +1816,7 @@ static int aji_act_hook(void *data, int type, iks *node)
 	if (node)
 		iks_delete(node);
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_OK;
 }
 /*!
@@ -1865,7 +1859,7 @@ static int aji_register_approve_handler(void *data, ikspak *pak)
 	iks_delete(presence);
 	iks_delete(x);
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 /*!
@@ -1879,7 +1873,6 @@ static int aji_register_query_handler(void *data, ikspak *pak)
 {
 	struct aji_client *client = ASTOBJ_REF((struct aji_client *) data);
 	struct aji_buddy *buddy = NULL;
-	char *node = NULL;
 	iks *iq = NULL, *query = NULL;
 
 	client = (struct aji_client *) data;
@@ -1912,7 +1905,7 @@ static int aji_register_query_handler(void *data, ikspak *pak)
 
 		iks_delete(error);
 		iks_delete(notacceptable);
-	} else if (!(node = iks_find_attrib(pak->query, "node"))) {
+	} else if (!iks_find_attrib(pak->query, "node")) {
 		iks *instructions = NULL;
 		char *explain = "Welcome to Asterisk - the Open Source PBX.\n";
 		iq = iks_new("iq");
@@ -1936,7 +1929,8 @@ static int aji_register_query_handler(void *data, ikspak *pak)
 	}
 	iks_delete(iq);
 	iks_delete(query);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -2032,7 +2026,7 @@ static int aji_ditems_handler(void *data, ikspak *pak)
 		iks_delete(feature);
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 
 }
@@ -2050,11 +2044,18 @@ static int aji_client_info_handler(void *data, ikspak *pak)
 	struct aji_resource *resource = NULL;
 	struct aji_buddy *buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, pak->from->partial);
 
+	if (!buddy) {
+		ast_log(LOG_NOTICE, "JABBER: Received client info from unknown buddy: %s.\n", pak->from->full);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
+		return IKS_FILTER_EAT;
+	}
+
 	resource = aji_find_resource(buddy, pak->from->resource);
 	if (pak->subtype == IKS_TYPE_RESULT) {
 		if (!resource) {
 			ast_log(LOG_NOTICE, "JABBER: Received client info from %s when not requested.\n", pak->from->full);
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_FILTER_EAT;
 		}
 		if (iks_find_with_attrib(pak->query, "feature", "var", "http://www.google.com/xmpp/protocol/voice/v1")) {
@@ -2097,7 +2098,8 @@ static int aji_client_info_handler(void *data, ikspak *pak)
 	} else if (pak->subtype == IKS_TYPE_ERROR) {
 		ast_log(LOG_NOTICE, "User %s does not support discovery.\n", pak->from->full);
 	}
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -2115,16 +2117,23 @@ static int aji_dinfo_handler(void *data, ikspak *pak)
 	struct aji_resource *resource = NULL;
 	struct aji_buddy *buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, pak->from->partial);
 
-	resource = aji_find_resource(buddy, pak->from->resource);
-	if (pak->subtype == IKS_TYPE_ERROR) {
-		ast_log(LOG_WARNING, "Received error from a client, turn on jabber debug!\n");
-		ASTOBJ_UNREF(client, aji_client_destroy);
+	if (!buddy) {
+		ast_log(LOG_NOTICE, "JABBER: Received client info from unknown buddy: %s.\n", pak->from->full);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return IKS_FILTER_EAT;
 	}
+
+	if (pak->subtype == IKS_TYPE_ERROR) {
+		ast_log(LOG_WARNING, "Received error from a client, turn on jabber debug!\n");
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
+		return IKS_FILTER_EAT;
+	}
+	resource = aji_find_resource(buddy, pak->from->resource);
 	if (pak->subtype == IKS_TYPE_RESULT) {
 		if (!resource) {
 			ast_log(LOG_NOTICE, "JABBER: Received client info from %s when not requested.\n", pak->from->full);
-			ASTOBJ_UNREF(client, aji_client_destroy);
+			ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+			ASTOBJ_UNREF(client, ast_aji_client_destroy);
 			return IKS_FILTER_EAT;
 		}
 		if (iks_find_with_attrib(pak->query, "feature", "var", "http://www.google.com/xmpp/protocol/voice/v1")) {
@@ -2239,7 +2248,8 @@ static int aji_dinfo_handler(void *data, ikspak *pak)
 		iks_delete(feature);
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -2291,6 +2301,7 @@ static void aji_handle_message(struct aji_client *client, ikspak *pak)
 		/* insert will furtherly be added to message list */
 		insert->from = ast_strdup(pak->from->full);
 		if (!insert->from) {
+			ast_free(insert);
 			ast_log(LOG_ERROR, "Memory allocation failure\n");
 			return;
 		}
@@ -2448,6 +2459,8 @@ static void aji_handle_presence(struct aji_client *client, ikspak *pak)
 
 		if (!found) {
 			ast_log(LOG_ERROR, "Out of memory!\n");
+			ASTOBJ_UNLOCK(buddy);
+			ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
 			return;
 		}
 		ast_copy_string(found->resource, pak->from->resource, sizeof(found->resource));
@@ -2481,7 +2494,7 @@ static void aji_handle_presence(struct aji_client *client, ikspak *pak)
 	}
 
 	ASTOBJ_UNLOCK(buddy);
-	ASTOBJ_UNREF(buddy, aji_buddy_destroy);
+	ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
 
 	node = iks_find_attrib(iks_find(pak->x, "c"), "node");
 	ver = iks_find_attrib(iks_find(pak->x, "c"), "ver");
@@ -2606,11 +2619,11 @@ static void aji_handle_subscribe(struct aji_client *client, ikspak *pak)
 		buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, pak->from->partial);
 		if (!buddy && pak->from->partial) {
 			aji_create_buddy(pak->from->partial, client);
+		} else if (buddy) {
+			ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
 		}
 	default:
-		if (option_verbose > 4) {
-			ast_verbose(VERBOSE_PREFIX_3 "JABBER: This is a subcription of type %i\n", pak->subtype);
-		}
+		ast_verb(5, "JABBER: This is a subcription of type %i\n", pak->subtype);
 	}
 }
 
@@ -2821,7 +2834,7 @@ static void *aji_recv_loop(void *data)
 			ast_log(LOG_WARNING, "JABBER: socket read error\n");
 		}
 	} while (client);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return 0;
 }
 
@@ -2877,7 +2890,7 @@ static int aji_register_transport(void *data, ikspak *pak)
 
 	if (send)
 		iks_delete(send);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 
 }
@@ -2927,7 +2940,7 @@ static int aji_register_transport2(void *data, ikspak *pak)
 		iks_delete(reguser);
 	if (regpass)
 		iks_delete(regpass);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 #endif
@@ -2983,7 +2996,7 @@ static void aji_pruneregister(struct aji_client *client)
 	iks_delete(removeitem);
 	iks_delete(send);
 
-	ASTOBJ_CONTAINER_PRUNE_MARKED(&client->buddies, aji_buddy_destroy);
+	ASTOBJ_CONTAINER_PRUNE_MARKED(&client->buddies, ast_aji_buddy_destroy);
 }
 
 /*!
@@ -3042,7 +3055,7 @@ static int aji_filter_roster(void *data, ikspak *pak)
 			buddy = ast_calloc(1, sizeof(*buddy));
 			if (!buddy) {
 				ast_log(LOG_WARNING, "Out of memory\n");
-				ASTOBJ_UNREF(client, aji_client_destroy);
+				ASTOBJ_UNREF(client, ast_aji_client_destroy);
 				return 0;
 			}
 			ASTOBJ_INIT(buddy);
@@ -3062,7 +3075,7 @@ static int aji_filter_roster(void *data, ikspak *pak)
 			ASTOBJ_UNLOCK(buddy);
 			if (buddy) {
 				ASTOBJ_CONTAINER_LINK(&client->buddies, buddy);
-				ASTOBJ_UNREF(buddy, aji_buddy_destroy);
+				ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
 			}
 		}
 		x = iks_next(x);
@@ -3071,7 +3084,7 @@ static int aji_filter_roster(void *data, ikspak *pak)
 	iks_delete(x);
 	aji_pruneregister(client);
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -3155,7 +3168,7 @@ static int aji_client_connect(void *data, ikspak *pak)
 		ast_log(LOG_ERROR, "Out of memory.\n");
 	}
 
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return res;
 }
 
@@ -3206,7 +3219,7 @@ int ast_aji_disconnect(struct aji_client *client)
 #endif
 		iks_disconnect(client->p);
 		iks_parser_delete(client->p);
-		ASTOBJ_UNREF(client, aji_client_destroy);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	}
 
 	return 1;
@@ -3240,7 +3253,7 @@ static void aji_mwi_cb(const struct ast_event *ast_event, void *data)
 	snprintf(newmsgs, sizeof(newmsgs), "%d",
 		ast_event_get_ie_uint(ast_event, AST_EVENT_IE_NEWMSGS));
 	aji_publish_mwi(client, mailbox, context, oldmsgs, newmsgs);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 
 }
 /*!
@@ -3253,6 +3266,7 @@ static void aji_devstate_cb(const struct ast_event *ast_event, void *data)
 {
 	const char *device;
 	const char *device_state;
+	unsigned int cachable;
 	struct aji_client *client;
 	if (ast_eid_cmp(&ast_eid_default, ast_event_get_ie_raw(ast_event, AST_EVENT_IE_EID)))
 	{
@@ -3264,8 +3278,9 @@ static void aji_devstate_cb(const struct ast_event *ast_event, void *data)
 	client = ASTOBJ_REF((struct aji_client *) data);
 	device = ast_event_get_ie_str(ast_event, AST_EVENT_IE_DEVICE);
 	device_state = ast_devstate_str(ast_event_get_ie_uint(ast_event, AST_EVENT_IE_STATE));
-	aji_publish_device_state(client, device, device_state);
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	cachable = ast_event_get_ie_uint(ast_event, AST_EVENT_IE_CACHABLE);
+	aji_publish_device_state(client, device, device_state, cachable);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 }
 
 /*!
@@ -3304,11 +3319,13 @@ static void aji_init_event_distribution(struct aji_client *client)
  */
 static int aji_handle_pubsub_event(void *data, ikspak *pak)
 {
-	char *item_id, *device_state, *context;
+	char *item_id, *device_state, *context, *cachable_str;
 	int oldmsgs, newmsgs;
 	iks *item, *item_content;
 	struct ast_eid pubsub_eid;
 	struct ast_event *event;
+	unsigned int cachable = AST_DEVSTATE_CACHABLE;
+
 	item = iks_find(iks_find(iks_find(pak->x, "event"), "items"), "item");
 	if (!item) {
 		ast_log(LOG_ERROR, "Could not parse incoming PubSub event\n");
@@ -3323,11 +3340,14 @@ static int aji_handle_pubsub_event(void *data, ikspak *pak)
 	}
 	if (!strcasecmp(iks_name(item_content), "state")) {
 		device_state = iks_find_cdata(item, "state");
+		if ((cachable_str = iks_find_cdata(item, "cachable"))) {
+			sscanf(cachable_str, "%30d", &cachable);
+		}
 		if (!(event = ast_event_new(AST_EVENT_DEVICE_STATE_CHANGE,
-			AST_EVENT_IE_DEVICE, AST_EVENT_IE_PLTYPE_STR, item_id, AST_EVENT_IE_STATE,
-			AST_EVENT_IE_PLTYPE_UINT, ast_devstate_val(device_state), AST_EVENT_IE_EID,
-			AST_EVENT_IE_PLTYPE_RAW, &pubsub_eid, sizeof(pubsub_eid),
-			AST_EVENT_IE_END))) {
+					    AST_EVENT_IE_DEVICE, AST_EVENT_IE_PLTYPE_STR, item_id, AST_EVENT_IE_STATE,
+					    AST_EVENT_IE_PLTYPE_UINT, ast_devstate_val(device_state), AST_EVENT_IE_EID,
+					    AST_EVENT_IE_PLTYPE_RAW, &pubsub_eid, sizeof(pubsub_eid),
+					    AST_EVENT_IE_END))) {
 			return IKS_FILTER_EAT;
 		}
 	} else if (!strcasecmp(iks_name(item_content), "mailbox")) {
@@ -3347,7 +3367,13 @@ static int aji_handle_pubsub_event(void *data, ikspak *pak)
 			iks_name(item_content));
 		return IKS_FILTER_EAT;
 	}
-	ast_event_queue_and_cache(event);
+
+	if (cachable == AST_DEVSTATE_CACHABLE) {
+		ast_event_queue_and_cache(event);
+	} else {
+		ast_event_queue(event);
+	}
+
 	return IKS_FILTER_EAT;
 }
 
@@ -3422,7 +3448,7 @@ static void aji_pubsub_subscribe(struct aji_client *client, const char *node)
  * \return iks *
  */
 static iks* aji_build_publish_skeleton(struct aji_client *client, const char *node,
-	const char *event_type)
+				       const char *event_type, unsigned int cachable)
 {
 	iks *request = aji_pubsub_iq_create(client, "set");
 	iks *pubsub, *publish, *item;
@@ -3436,8 +3462,24 @@ static iks* aji_build_publish_skeleton(struct aji_client *client, const char *no
 	}
 	item = iks_insert(publish, "item");
 	iks_insert_attrib(item, "id", node);
-	return item;
 
+	if (cachable == AST_DEVSTATE_NOT_CACHABLE) {
+		iks *options, *x, *field_form_type, *field_persist;
+
+		options = iks_insert(pubsub, "publish-options");
+		x = iks_insert(options, "x");
+		iks_insert_attrib(x, "xmlns", "jabber:x:data");
+		iks_insert_attrib(x, "type", "submit");
+		field_form_type = iks_insert(x, "field");
+		iks_insert_attrib(field_form_type, "var", "FORM_TYPE");
+		iks_insert_attrib(field_form_type, "type", "hidden");
+		iks_insert_cdata(iks_insert(field_form_type, "value"), "http://jabber.org/protocol/pubsub#publish-options", 0);
+		field_persist = iks_insert(x, "field");
+		iks_insert_attrib(field_persist, "var", "pubsub#persist_items");
+		iks_insert_cdata(iks_insert(field_persist, "value"), "0", 1);
+	}
+
+	return item;
 }
 
 /*!
@@ -3448,11 +3490,11 @@ static iks* aji_build_publish_skeleton(struct aji_client *client, const char *no
  * \return void
  */
 static void aji_publish_device_state(struct aji_client *client, const char *device,
-	const char *device_state)
+				     const char *device_state, unsigned int cachable)
 {
-	iks *request = aji_build_publish_skeleton(client, device, "device_state");
+	iks *request = aji_build_publish_skeleton(client, device, "device_state", cachable);
 	iks *state;
-	char eid_str[20];
+	char eid_str[20], cachable_str[2];
 	if (ast_test_flag(&pubsubflags, AJI_PUBSUB_AUTOCREATE)) {
 		if (ast_test_flag(&pubsubflags, AJI_XEP0248)) {
 			aji_create_pubsub_node(client, "leaf", device, "device_state");
@@ -3464,6 +3506,8 @@ static void aji_publish_device_state(struct aji_client *client, const char *devi
 	state = iks_insert(request, "state");
 	iks_insert_attrib(state, "xmlns", "http://asterisk.org");
 	iks_insert_attrib(state, "eid", eid_str);
+	snprintf(cachable_str, sizeof(cachable_str), "%u", cachable);
+	iks_insert_attrib(state, "cachable", cachable_str);
 	iks_insert_cdata(state, device_state, strlen(device_state));
 	ast_aji_send(client, iks_root(request));
 	iks_delete(request);
@@ -3483,7 +3527,7 @@ static void aji_publish_mwi(struct aji_client *client, const char *mailbox,
 	char eid_str[20];
 	iks *mailbox_node, *request;
 	snprintf(full_mailbox, sizeof(full_mailbox), "%s@%s", mailbox, context);
-	request = aji_build_publish_skeleton(client, full_mailbox, "message_waiting");
+	request = aji_build_publish_skeleton(client, full_mailbox, "message_waiting", 1);
 	ast_eid_to_str(eid_str, sizeof(eid_str), &ast_eid_default);
 	mailbox_node = iks_insert(request, "mailbox");
 	iks_insert_attrib(mailbox_node, "xmlns", "http://asterisk.org");
@@ -3556,7 +3600,7 @@ static int aji_handle_pubsub_error(void *data, ikspak *pak)
 		iks_insert_node(request, orig_pubsub);
 		ast_aji_send(client, request);
 		iks_delete(request);
-		ASTOBJ_UNREF(client, aji_client_destroy);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return IKS_FILTER_EAT;
 	} else if (!strcasecmp(iks_name(orig_request), "subscribe")) {
 		if (ast_test_flag(&pubsubflags, AJI_XEP0248)) {
@@ -3565,7 +3609,7 @@ static int aji_handle_pubsub_error(void *data, ikspak *pak)
 			aji_create_pubsub_node(client, NULL, node_name, NULL);
 		}
 	}
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -3627,7 +3671,7 @@ static int aji_receive_node_list(void *data, ikspak* pak)
 	if (item) {
 		iks_delete(item);
 	}
-	ASTOBJ_UNREF(client, aji_client_destroy);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return IKS_FILTER_EAT;
 }
 
@@ -3666,13 +3710,14 @@ ast_cli_args *a)
 		if (a->argc == 5) {
 			collection = a->argv[4];
 		}
-        if (!(client = ASTOBJ_CONTAINER_FIND(&clients, name))) {
+		if (!(client = ASTOBJ_CONTAINER_FIND(&clients, name))) {
 			ast_cli(a->fd, "Unable to find client '%s'!\n", name);
 			return CLI_FAILURE;
 		}
 
 		ast_cli(a->fd, "Listing pubsub nodes.\n");
 		aji_request_pubsub_nodes(client, collection);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return CLI_SUCCESS;
 }
 
@@ -3715,6 +3760,7 @@ static char *aji_cli_purge_pubsub_nodes(struct ast_cli_entry *e, int cmd, struct
 	} else {
 		aji_delete_pubsub_node(client, a->argv[4]);
 	}
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return CLI_SUCCESS;
 }
 
@@ -3790,6 +3836,7 @@ static char *aji_cli_delete_pubsub_node(struct ast_cli_entry *e, int cmd, struct
 		return CLI_FAILURE;
 	}
 	aji_delete_pubsub_node(client, a->argv[4]);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return CLI_SUCCESS;
 }
 
@@ -3939,6 +3986,7 @@ static char *aji_cli_create_collection(struct ast_cli_entry *e, int cmd, struct 
 
 		ast_cli(a->fd, "Creating test PubSub node collection.\n");
 		aji_create_pubsub_collection(client, collection_name);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return CLI_SUCCESS;
 }
 
@@ -3979,6 +4027,7 @@ static char *aji_cli_create_leafnode(struct ast_cli_entry *e, int cmd, struct as
 
 	ast_cli(a->fd, "Creating test PubSub node collection.\n");
 	aji_create_pubsub_leaf(client, collection_name, leaf_name);
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	return CLI_SUCCESS;
 }
 
@@ -4232,69 +4281,6 @@ static char *aji_show_buddies(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 
 /*!
  * \internal
- * \brief Send test message for debugging.
- * \return CLI_SUCCESS,CLI_FAILURE.
- */
-static char *aji_test(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
-{
-	struct aji_client *client;
-	struct aji_resource *resource;
-	const char *name;
-	struct aji_message *tmp;
-
-	switch (cmd) {
-	case CLI_INIT:
-		e->command = "jabber test";
-		e->usage =
-			"Usage: jabber test <connection>\n"
-			"       Sends test message for debugging purposes.  A specific client\n"
-			"       as configured in jabber.conf must be specified.\n";
-		return NULL;
-	case CLI_GENERATE:
-		return NULL;
-	}
-
-	if (a->argc != 3) {
-		return CLI_SHOWUSAGE;
-	}
-	name = a->argv[2];
-
-	if (!(client = ASTOBJ_CONTAINER_FIND(&clients, name))) {
-		ast_cli(a->fd, "Unable to find client '%s'!\n", name);
-		return CLI_FAILURE;
-	}
-
-	/* XXX Does Matt really want everyone to use his personal address for tests? */ /* XXX yes he does */
-	ast_aji_send_chat(client, "mogorman@astjab.org", "blahblah");
-	ASTOBJ_CONTAINER_TRAVERSE(&client->buddies, 1, {
-		ASTOBJ_RDLOCK(iterator);
-		ast_verbose("User: %s\n", iterator->name);
-		for (resource = iterator->resources; resource; resource = resource->next) {
-			ast_verbose("Resource: %s\n", resource->resource);
-			if (resource->cap) {
-				ast_verbose("   client: %s\n", resource->cap->parent->node);
-				ast_verbose("   version: %s\n", resource->cap->version);
-				ast_verbose("   Jingle Capable: %d\n", resource->cap->jingle);
-			}
-			ast_verbose("	Priority: %d\n", resource->priority);
-			ast_verbose("	Status: %d\n", resource->status);
-			ast_verbose("	Message: %s\n", S_OR(resource->description, ""));
-		}
-		ASTOBJ_UNLOCK(iterator);
-	});
-	ast_verbose("\nOooh a working message stack!\n");
-	AST_LIST_LOCK(&client->messages);
-	AST_LIST_TRAVERSE(&client->messages, tmp, list) {
-		//ast_verbose("	Message from: %s with id %s @ %s	%s\n",tmp->from, S_OR(tmp->id,""), ctime(&tmp->arrived), S_OR(tmp->message, ""));
-	}
-	AST_LIST_UNLOCK(&client->messages);
-	ASTOBJ_UNREF(client, aji_client_destroy);
-
-	return CLI_SUCCESS;
-}
-
-/*!
- * \internal
  * \brief creates aji_client structure.
  * \param label
  * \param var ast_variable
@@ -4448,7 +4434,7 @@ static int aji_create_client(char *label, struct ast_variable *var, int debug)
 	}
 	if (!flag) {
 		ASTOBJ_UNLOCK(client);
-		ASTOBJ_UNREF(client, aji_client_destroy);
+		ASTOBJ_UNREF(client, ast_aji_client_destroy);
 		return 1;
 	}
 
@@ -4469,8 +4455,7 @@ static int aji_create_client(char *label, struct ast_variable *var, int debug)
 		return 0;
 	}
 	if (!strchr(client->user, '/') && !client->component) { /*client */
-		resource = NULL;
-		if (asprintf(&resource, "%s/asterisk", client->user) >= 0) {
+		if (ast_asprintf(&resource, "%s/asterisk", client->user) >= 0) {
 			client->jid = iks_id_new(client->stack, resource);
 			ast_free(resource);
 		}
@@ -4505,9 +4490,11 @@ static int aji_create_transport(char *label, struct aji_client *client)
 {
 	char *server = NULL, *buddyname = NULL, *user = NULL, *pass = NULL;
 	struct aji_buddy *buddy = NULL;
+	int needs_unref = 1;
 
 	buddy = ASTOBJ_CONTAINER_FIND(&client->buddies,label);
 	if (!buddy) {
+		needs_unref = 0;
 		buddy = ast_calloc(1, sizeof(*buddy));
 		if (!buddy) {
 			ast_log(LOG_WARNING, "Out of memory\n");
@@ -4532,6 +4519,10 @@ static int aji_create_transport(char *label, struct aji_client *client)
 						ast_copy_string(buddy->user, user, sizeof(buddy->user));
 						ast_copy_string(buddy->name, buddyname, sizeof(buddy->name));
 						ast_copy_string(buddy->server, server, sizeof(buddy->server));
+						if (needs_unref) {
+							ASTOBJ_UNMARK(buddy);
+							ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+						}
 						return 1;
 					}
 				}
@@ -4539,8 +4530,12 @@ static int aji_create_transport(char *label, struct aji_client *client)
 		}
 	}
 	ASTOBJ_UNLOCK(buddy);
-	ASTOBJ_UNMARK(buddy);
-	ASTOBJ_CONTAINER_LINK(&client->buddies, buddy);
+	if (needs_unref) {
+		ASTOBJ_UNMARK(buddy);
+		ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	} else {
+		ASTOBJ_CONTAINER_LINK(&client->buddies, buddy);
+	}
 	return 0;
 }
 #endif
@@ -4555,10 +4550,10 @@ static int aji_create_transport(char *label, struct aji_client *client)
 static int aji_create_buddy(char *label, struct aji_client *client)
 {
 	struct aji_buddy *buddy = NULL;
-	int flag = 0;
+	int needs_unref = 1;
 	buddy = ASTOBJ_CONTAINER_FIND(&client->buddies, label);
 	if (!buddy) {
-		flag = 1;
+		needs_unref = 0;
 		buddy = ast_calloc(1, sizeof(*buddy));
 		if (!buddy) {
 			ast_log(LOG_WARNING, "Out of memory\n");
@@ -4569,11 +4564,11 @@ static int aji_create_buddy(char *label, struct aji_client *client)
 	ASTOBJ_WRLOCK(buddy);
 	ast_copy_string(buddy->name, label, sizeof(buddy->name));
 	ASTOBJ_UNLOCK(buddy);
-	if (flag) {
-		ASTOBJ_CONTAINER_LINK(&client->buddies, buddy);
-	} else {
+	if (needs_unref) {
 		ASTOBJ_UNMARK(buddy);
-		ASTOBJ_UNREF(buddy, aji_buddy_destroy);
+		ASTOBJ_UNREF(buddy, ast_aji_buddy_destroy);
+	} else {
+		ASTOBJ_CONTAINER_LINK(&client->buddies, buddy);
 	}
 	return 1;
 }
@@ -4632,17 +4627,10 @@ static int aji_load_config(int reload)
 }
 
 /*!
- * \brief grab a aji_client structure by label name or JID
+ * \brief grab a aji_client structure by label name or JID. Bumps the refcount.
  * (without the resource string)
  * \param name label or JID
  * \return aji_client.
- *
- * XXX \bug This function leads to reference leaks all over the place.
- *          ASTOBJ_CONTAINER_FIND() returns a reference, but if the
- *          client is found via the traversal, no reference is returned.
- *          None of the calling code releases references.  This code needs
- *          to be changed to always return a reference, and all of the users
- *          need to be fixed to release them.
  */
 struct aji_client *ast_aji_get_client(const char *name)
 {
@@ -4658,7 +4646,7 @@ struct aji_client *ast_aji_get_client(const char *name)
 				aux = strsep(&aux, "/");
 			}
 			if (!strncasecmp(aux, name, strlen(aux))) {
-				client = iterator;
+				client = ASTOBJ_REF(iterator);
 			}
 		});
 	}
@@ -4711,6 +4699,7 @@ static int manager_jabber_send(struct mansession *s, const struct message *m)
 	} else {
 		astman_append(s, "Response: Error\r\n");
 	}
+	ASTOBJ_UNREF(client, ast_aji_client_destroy);
 	if (!ast_strlen_zero(id)) {
 		astman_append(s, "ActionID: %s\r\n", id);
 	}
@@ -4733,7 +4722,7 @@ static int aji_reload(int reload)
 	} else if (res == -1)
 		return 1;
 
-	ASTOBJ_CONTAINER_PRUNE_MARKED(&clients, aji_client_destroy);
+	ASTOBJ_CONTAINER_PRUNE_MARKED(&clients, ast_aji_client_destroy);
 	ASTOBJ_CONTAINER_TRAVERSE(&clients, 1, {
 		ASTOBJ_RDLOCK(iterator);
 		if (iterator->state == AJI_DISCONNECTED) {
@@ -4784,7 +4773,7 @@ static int unload_module(void)
 		ast_aji_disconnect(iterator);
 	});
 
-	ASTOBJ_CONTAINER_DESTROYALL(&clients, aji_client_destroy);
+	ASTOBJ_CONTAINER_DESTROYALL(&clients, ast_aji_client_destroy);
 	ASTOBJ_CONTAINER_DESTROY(&clients);
 
 	ast_cond_destroy(&message_received_condition);

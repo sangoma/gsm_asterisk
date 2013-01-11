@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357542 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -90,25 +90,25 @@ static int timeout_read(struct ast_channel *chan, const char *cmd, char *data,
 	switch (*data) {
 	case 'a':
 	case 'A':
-		if (ast_tvzero(chan->whentohangup)) {
+		if (ast_tvzero(*ast_channel_whentohangup(chan))) {
 			ast_copy_string(buf, "0", len);
 		} else {
 			myt = ast_tvnow();
-			snprintf(buf, len, "%.3f", ast_tvdiff_ms(chan->whentohangup, myt) / 1000.0);
+			snprintf(buf, len, "%.3f", ast_tvdiff_ms(*ast_channel_whentohangup(chan), myt) / 1000.0);
 		}
 		break;
 
 	case 'r':
 	case 'R':
-		if (chan->pbx) {
-			snprintf(buf, len, "%.3f", chan->pbx->rtimeoutms / 1000.0);
+		if (ast_channel_pbx(chan)) {
+			snprintf(buf, len, "%.3f", ast_channel_pbx(chan)->rtimeoutms / 1000.0);
 		}
 		break;
 
 	case 'd':
 	case 'D':
-		if (chan->pbx) {
-			snprintf(buf, len, "%.3f", chan->pbx->dtimeoutms / 1000.0);
+		if (ast_channel_pbx(chan)) {
+			snprintf(buf, len, "%.3f", ast_channel_pbx(chan)->dtimeoutms / 1000.0);
 		}
 		break;
 
@@ -156,31 +156,29 @@ static int timeout_write(struct ast_channel *chan, const char *cmd, char *data,
 	case 'a':
 	case 'A':
 		ast_channel_setwhentohangup_tv(chan, when);
-		if (VERBOSITY_ATLEAST(3)) {
-			if (!ast_tvzero(chan->whentohangup)) {
-				when = ast_tvadd(when, ast_tvnow());
-				ast_strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S.%3q %Z",
-					ast_localtime(&when, &myt, NULL));
-				ast_verbose("Channel will hangup at %s.\n", timestr);
-			} else {
-				ast_verbose("Channel hangup cancelled.\n");
-			}
+		if (!ast_tvzero(*ast_channel_whentohangup(chan))) {
+			when = ast_tvadd(when, ast_tvnow());
+			ast_strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S.%3q %Z",
+				ast_localtime(&when, &myt, NULL));
+			ast_verb(3, "Channel will hangup at %s.\n", timestr);
+		} else {
+			ast_verb(3, "Channel hangup cancelled.\n");
 		}
 		break;
 
 	case 'r':
 	case 'R':
-		if (chan->pbx) {
-			chan->pbx->rtimeoutms = when.tv_sec * 1000 + when.tv_usec / 1000.0;
-			ast_verb(3, "Response timeout set to %.3f\n", chan->pbx->rtimeoutms / 1000.0);
+		if (ast_channel_pbx(chan)) {
+			ast_channel_pbx(chan)->rtimeoutms = when.tv_sec * 1000 + when.tv_usec / 1000;
+			ast_verb(3, "Response timeout set to %.3f\n", ast_channel_pbx(chan)->rtimeoutms / 1000.0);
 		}
 		break;
 
 	case 'd':
 	case 'D':
-		if (chan->pbx) {
-			chan->pbx->dtimeoutms = when.tv_sec * 1000 + when.tv_usec / 1000.0;
-			ast_verb(3, "Digit timeout set to %.3f\n", chan->pbx->dtimeoutms / 1000.0);
+		if (ast_channel_pbx(chan)) {
+			ast_channel_pbx(chan)->dtimeoutms = when.tv_sec * 1000 + when.tv_usec / 1000;
+			ast_verb(3, "Digit timeout set to %.3f\n", ast_channel_pbx(chan)->dtimeoutms / 1000.0);
 		}
 		break;
 

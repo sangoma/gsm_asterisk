@@ -23,9 +23,13 @@
  * \author Dwayne Hubbard <dhubbard@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 306258 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 374196 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/module.h"
@@ -118,6 +122,12 @@ static struct ast_cli_entry taskprocessor_clis[] = {
 	AST_CLI_DEFINE(cli_tps_report, "List instantiated task processors and statistics"),
 };
 
+/*! \internal \brief Clean up resources on Asterisk shutdown */
+static void tps_shutdown(void)
+{
+	ao2_t_ref(tps_singletons, -1, "Unref tps_singletons in shutdown");
+}
+
 /* initialize the taskprocessor container and register CLI operations */
 int ast_tps_init(void)
 {
@@ -129,6 +139,9 @@ int ast_tps_init(void)
 	ast_cond_init(&cli_ping_cond, NULL);
 
 	ast_cli_register_multiple(taskprocessor_clis, ARRAY_LEN(taskprocessor_clis));
+
+	ast_register_atexit(tps_shutdown);
+
 	return 0;
 }
 
@@ -143,7 +156,7 @@ static struct tps_task *tps_task_alloc(int (*task_exe)(void *datap), void *datap
 	return t;
 }
 
-/* release task resources */	
+/* release task resources */
 static void *tps_task_free(struct tps_task *task)
 {
 	if (task) {
@@ -153,7 +166,7 @@ static void *tps_task_free(struct tps_task *task)
 }
 
 /* taskprocessor tab completion */
-static char *tps_taskprocessor_tab_complete(struct ast_taskprocessor *p, struct ast_cli_args *a) 
+static char *tps_taskprocessor_tab_complete(struct ast_taskprocessor *p, struct ast_cli_args *a)
 {
 	int tklen;
 	int wordnum = 0;
@@ -173,6 +186,7 @@ static char *tps_taskprocessor_tab_complete(struct ast_taskprocessor *p, struct 
 		}
 		ao2_ref(p, -1);
 	}
+	ao2_iterator_destroy(&i);
 	return name;
 }
 
@@ -197,7 +211,7 @@ static char *cli_tps_ping(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "core ping taskprocessor";
-		e->usage = 
+		e->usage =
 			"Usage: core ping taskprocessor <taskprocessor>\n"
 			"	Displays the time required for a task to be processed\n";
 		return NULL;
@@ -229,7 +243,7 @@ static char *cli_tps_ping(struct ast_cli_entry *e, int cmd, struct ast_cli_args 
 	delta = ast_tvsub(end, begin);
 	ast_cli(a->fd, "\n\t%24s ping time: %.1ld.%.6ld sec\n\n", name, (long)delta.tv_sec, (long int)delta.tv_usec);
 	ao2_ref(tps, -1);
-	return CLI_SUCCESS;	
+	return CLI_SUCCESS;
 }
 
 static char *cli_tps_report(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
@@ -245,12 +259,12 @@ static char *cli_tps_report(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "core show taskprocessors";
-		e->usage = 
+		e->usage =
 			"Usage: core show taskprocessors\n"
 			"	Shows a list of instantiated task processors and their statistics\n";
 		return NULL;
 	case CLI_GENERATE:
-		return NULL;	
+		return NULL;
 	}
 
 	if (a->argc != e->args)
@@ -266,9 +280,10 @@ static char *cli_tps_report(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 		ast_cli(a->fd, "\n%24s   %17ld %12ld %12ld", name, processed, qsize, maxqsize);
 		ao2_ref(p, -1);
 	}
-	tcount = ao2_container_count(tps_singletons); 
+	ao2_iterator_destroy(&i);
+	tcount = ao2_container_count(tps_singletons);
 	ast_cli(a->fd, "\n\t+---------------------+-----------------+------------+-------------+\n\t%d taskprocessors\n\n", tcount);
-	return CLI_SUCCESS;	
+	return CLI_SUCCESS;
 }
 
 /* this is the task processing worker function */
@@ -284,42 +299,42 @@ static void *tps_processing_function(void *data)
 	}
 
 	while (i->poll_thread_run) {
- 		ast_mutex_lock(&i->taskprocessor_lock);
- 		if (!i->poll_thread_run) {
-  			ast_mutex_unlock(&i->taskprocessor_lock);
- 			break;
-  		}
- 		if (!(size = tps_taskprocessor_depth(i))) {
- 			ast_cond_wait(&i->poll_cond, &i->taskprocessor_lock);
-  			if (!i->poll_thread_run) {
-  				ast_mutex_unlock(&i->taskprocessor_lock);
-	  			break;
+		ast_mutex_lock(&i->taskprocessor_lock);
+		if (!i->poll_thread_run) {
+			ast_mutex_unlock(&i->taskprocessor_lock);
+			break;
+		}
+		if (!(size = tps_taskprocessor_depth(i))) {
+			ast_cond_wait(&i->poll_cond, &i->taskprocessor_lock);
+			if (!i->poll_thread_run) {
+				ast_mutex_unlock(&i->taskprocessor_lock);
+				break;
 			}
-  		}
-  		ast_mutex_unlock(&i->taskprocessor_lock);
- 		/* stuff is in the queue */
- 		if (!(t = tps_taskprocessor_pop(i))) {
- 			ast_log(LOG_ERROR, "Wtf?? %d tasks in the queue, but we're popping blanks!\n", size);
- 			continue;
- 		}
- 		if (!t->execute) {
- 			ast_log(LOG_WARNING, "Task is missing a function to execute!\n");
- 			tps_task_free(t);
- 			continue;
- 		}
- 		t->execute(t->datap);
- 
- 		ast_mutex_lock(&i->taskprocessor_lock);
- 		if (i->stats) {
- 			i->stats->_tasks_processed_count++;
- 			if (size > i->stats->max_qsize) {
- 				i->stats->max_qsize = size;
- 			}
- 		}
- 		ast_mutex_unlock(&i->taskprocessor_lock);
- 
- 		tps_task_free(t);
-  	}
+		}
+		ast_mutex_unlock(&i->taskprocessor_lock);
+		/* stuff is in the queue */
+		if (!(t = tps_taskprocessor_pop(i))) {
+			ast_log(LOG_ERROR, "Wtf?? %d tasks in the queue, but we're popping blanks!\n", size);
+			continue;
+		}
+		if (!t->execute) {
+			ast_log(LOG_WARNING, "Task is missing a function to execute!\n");
+			tps_task_free(t);
+			continue;
+		}
+		t->execute(t->datap);
+
+		ast_mutex_lock(&i->taskprocessor_lock);
+		if (i->stats) {
+			i->stats->_tasks_processed_count++;
+			if (size > i->stats->max_qsize) {
+				i->stats->max_qsize = size;
+			}
+		}
+		ast_mutex_unlock(&i->taskprocessor_lock);
+
+		tps_task_free(t);
+	}
 	while ((t = tps_taskprocessor_pop(i))) {
 		tps_task_free(t);
 	}
@@ -402,14 +417,14 @@ const char *ast_taskprocessor_name(struct ast_taskprocessor *tps)
 }
 
 /* Provide a reference to a taskprocessor.  Create the taskprocessor if necessary, but don't
- * create the taskprocessor if we were told via ast_tps_options to return a reference only 
+ * create the taskprocessor if we were told via ast_tps_options to return a reference only
  * if it already exists */
 struct ast_taskprocessor *ast_taskprocessor_get(const char *name, enum ast_tps_options create)
 {
 	struct ast_taskprocessor *p, tmp_tps = {
 		.name = name,
 	};
-		
+
 	if (ast_strlen_zero(name)) {
 		ast_log(LOG_ERROR, "requesting a nameless taskprocessor!!!\n");
 		return NULL;
@@ -478,7 +493,7 @@ void *ast_taskprocessor_unreference(struct ast_taskprocessor *tps)
 	return NULL;
 }
 
-/* push the task into the taskprocessor queue */	
+/* push the task into the taskprocessor queue */
 int ast_taskprocessor_push(struct ast_taskprocessor *tps, int (*task_exe)(void *datap), void *datap)
 {
 	struct tps_task *t;

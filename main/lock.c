@@ -21,9 +21,13 @@
  * \brief General Asterisk locking.
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 314359 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371720 $")
 
 #include "asterisk/lock.h"
 
@@ -154,7 +158,7 @@ int __ast_pthread_mutex_destroy(const char *filename, int lineno, const char *fu
 }
 
 int __ast_pthread_mutex_lock(const char *filename, int lineno, const char *func,
-                                           const char* mutex_name, ast_mutex_t *t)
+				const char* mutex_name, ast_mutex_t *t)
 {
 	int res;
 
@@ -286,7 +290,7 @@ int __ast_pthread_mutex_lock(const char *filename, int lineno, const char *func,
 }
 
 int __ast_pthread_mutex_trylock(const char *filename, int lineno, const char *func,
-                                              const char* mutex_name, ast_mutex_t *t)
+				const char* mutex_name, ast_mutex_t *t)
 {
 	int res;
 
@@ -1137,13 +1141,13 @@ int __ast_rwlock_timedrdlock(const char *filename, int line, const char *func, a
 	res = pthread_rwlock_timedrdlock(&t->lock, abs_timeout);
 #else
 	do {
-		struct timeval _start = ast_tvnow(), _diff;
+		struct timeval _now;
 		for (;;) {
 			if (!(res = pthread_rwlock_tryrdlock(&t->lock))) {
 				break;
 			}
-			_diff = ast_tvsub(ast_tvnow(), _start);
-			if (_diff.tv_sec > abs_timeout->tv_sec || (_diff.tv_sec == abs_timeout->tv_sec && _diff.tv_usec * 1000 > abs_timeout->tv_nsec)) {
+			_now = ast_tvnow();
+			if (_now.tv_sec > abs_timeout->tv_sec || (_now.tv_sec == abs_timeout->tv_sec && _now.tv_usec * 1000 > abs_timeout->tv_nsec)) {
 				break;
 			}
 			usleep(1);
@@ -1240,13 +1244,13 @@ int __ast_rwlock_timedwrlock(const char *filename, int line, const char *func, a
 	res = pthread_rwlock_timedwrlock(&t->lock, abs_timeout);
 #else
 	do {
-		struct timeval _start = ast_tvnow(), _diff;
+		struct timeval _now;
 		for (;;) {
 			if (!(res = pthread_rwlock_trywrlock(&t->lock))) {
 				break;
 			}
-			_diff = ast_tvsub(ast_tvnow(), _start);
-			if (_diff.tv_sec > abs_timeout->tv_sec || (_diff.tv_sec == abs_timeout->tv_sec && _diff.tv_usec * 1000 > abs_timeout->tv_nsec)) {
+			_now = ast_tvnow();
+			if (_now.tv_sec > abs_timeout->tv_sec || (_now.tv_sec == abs_timeout->tv_sec && _now.tv_usec * 1000 > abs_timeout->tv_nsec)) {
 				break;
 			}
 			usleep(1);

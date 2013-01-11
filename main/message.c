@@ -23,15 +23,20 @@
  * \author Russell Bryant <russell@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 374611 $")
 
 #include "asterisk/_private.h"
 
 #include "asterisk/module.h"
 #include "asterisk/datastore.h"
 #include "asterisk/pbx.h"
+#include "asterisk/manager.h"
 #include "asterisk/strings.h"
 #include "asterisk/astobj2.h"
 #include "asterisk/app.h"
@@ -55,6 +60,18 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
 				<enum name="from">
 					<para>Read-only.  The source of the message.  When processing an
 					incoming message, this will be set to the source of the message.</para>
+				</enum>
+				<enum name="custom_data">
+					<para>Write-only.  Mark or unmark all message headers for an outgoing
+					message.  The following values can be set:</para>
+					<enumlist>
+						<enum name="mark_all_outbound">
+							<para>Mark all headers for an outgoing message.</para>
+						</enum>
+						<enum name="clear_all_outbound">
+							<para>Unmark all headers for an outgoing message.</para>
+						</enum>
+					</enumlist>
 				</enum>
 				<enum name="body">
 					<para>Read/Write.  The message body.  When processing an incoming
@@ -88,34 +105,42 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
 			<para>This function will read from or write a value to a text message.
 			It is used both to read the data out of an incoming message, as well as
 			modify a message that will be sent outbound.</para>
-			<para>NOTE: If you want to set an outbound message to carry data in the
-			current message, do Set(MESSAGE_DATA(key)=${MESSAGE_DATA(key)}).</para>
+			<note>
+				<para>If you want to set an outbound message to carry data in the
+				current message, do
+				Set(MESSAGE_DATA(<replaceable>key</replaceable>)=${MESSAGE_DATA(<replaceable>key</replaceable>)}).</para>
+			</note>
 		</description>
 		<see-also>
 			<ref type="application">MessageSend</ref>
 		</see-also>
 	</function>
 	<application name="MessageSend" language="en_US">
- 		<synopsis>
+		<synopsis>
 			Send a text message.
 		</synopsis>
 		<syntax>
 			<parameter name="to" required="true">
 				<para>A To URI for the message.</para>
+				<xi:include xpointer="xpointer(/docs/info[@name='SIPMessageToInfo'])" />
+				<xi:include xpointer="xpointer(/docs/info[@name='XMPPMessageToInfo'])" />
 			</parameter>
 			<parameter name="from" required="false">
 				<para>A From URI for the message if needed for the
 				message technology being used to send this message.</para>
+				<xi:include xpointer="xpointer(/docs/info[@name='SIPMessageFromInfo'])" />
+				<xi:include xpointer="xpointer(/docs/info[@name='XMPPMessageFromInfo'])" />
 			</parameter>
 		</syntax>
 		<description>
 			<para>Send a text message.  The body of the message that will be
-			sent is what is currently set to <literal>MESSAGE(body)</literal>.</para>
-
+			sent is what is currently set to <literal>MESSAGE(body)</literal>.
+			  The technology chosen for sending the message is determined
+			based on a prefix to the <literal>to</literal> parameter.</para>
 			<para>This application sets the following channel variables:</para>
 			<variablelist>
 				<variable name="MESSAGE_SEND_STATUS">
-					<para>This is the time from dialing a channel until when it is disconnected.</para>
+					<para>This is the message delivery status returned by this application.</para>
 					<value name="INVALID_PROTOCOL">
 						No handler for the technology part of the URI was found.
 					</value>
@@ -132,6 +157,39 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321546 $")
 			</variablelist>
 		</description>
 	</application>
+	<manager name="MessageSend" language="en_US">
+		<synopsis>
+			Send an out of call message to an endpoint.
+		</synopsis>
+		<syntax>
+			<xi:include xpointer="xpointer(/docs/manager[@name='Login']/syntax/parameter[@name='ActionID'])" />
+			<parameter name="To" required="true">
+				<para>The URI the message is to be sent to.</para>
+				<xi:include xpointer="xpointer(/docs/info[@name='SIPMessageToInfo'])" />
+				<xi:include xpointer="xpointer(/docs/info[@name='XMPPMessageToInfo'])" />
+			</parameter>
+			<parameter name="From">
+				<para>A From URI for the message if needed for the
+				message technology being used to send this message.</para>
+				<xi:include xpointer="xpointer(/docs/info[@name='SIPMessageFromInfo'])" />
+				<xi:include xpointer="xpointer(/docs/info[@name='XMPPMessageFromInfo'])" />
+			</parameter>
+			<parameter name="Body">
+				<para>The message body text.  This must not contain any newlines as that
+				conflicts with the AMI protocol.</para>
+			</parameter>
+			<parameter name="Base64Body">
+				<para>Text bodies requiring the use of newlines have to be base64 encoded
+				in this field.  Base64Body will be decoded before being sent out.
+				Base64Body takes precedence over Body.</para>
+			</parameter>
+			<parameter name="Variable">
+				<para>Message variable to set, multiple Variable: headers are
+				allowed.  The header value is a comma separated list of
+				name=value pairs.</para>
+			</parameter>
+		</syntax>
+	</manager>
  ***/
 
 struct msg_data {
@@ -160,7 +218,7 @@ struct ast_msg {
 
 struct ast_msg_tech_holder {
 	const struct ast_msg_tech *tech;
-	/*! 
+	/*!
 	 * \brief A rwlock for this object
 	 *
 	 * a read/write lock must be used to protect the wrapper instead
@@ -386,6 +444,12 @@ struct ast_msg *ast_msg_alloc(void)
 	return msg;
 }
 
+struct ast_msg *ast_msg_ref(struct ast_msg *msg)
+{
+	ao2_ref(msg, 1);
+	return msg;
+}
+
 struct ast_msg *ast_msg_destroy(struct ast_msg *msg)
 {
 	ao2_ref(msg, -1);
@@ -487,6 +551,9 @@ static int msg_set_var_full(struct ast_msg *msg, const char *name, const char *v
 	struct msg_data *data;
 
 	if (!(data = msg_data_find(msg->vars, name))) {
+		if (ast_strlen_zero(value)) {
+			return 0;
+		}
 		if (!(data = msg_data_alloc())) {
 			return -1;
 		};
@@ -509,7 +576,7 @@ static int msg_set_var_full(struct ast_msg *msg, const char *name, const char *v
 	return 0;
 }
 
-static int msg_set_var_outbound(struct ast_msg *msg, const char *name, const char *value)
+int ast_msg_set_var_outbound(struct ast_msg *msg, const char *name, const char *value)
 {
 	return msg_set_var_full(msg, name, value, 1);
 }
@@ -522,12 +589,20 @@ int ast_msg_set_var(struct ast_msg *msg, const char *name, const char *value)
 const char *ast_msg_get_var(struct ast_msg *msg, const char *name)
 {
 	struct msg_data *data;
+	const char *val = NULL;
 
 	if (!(data = msg_data_find(msg->vars, name))) {
 		return NULL;
 	}
 
-	return data->value;
+	/* Yep, this definitely looks like val would be a dangling pointer
+	 * after the ref count is decremented.  As long as the message structure
+	 * is used in a thread safe manner, this will not be the case though.
+	 * The ast_msg holds a reference to this object in the msg->vars container. */
+	val = data->value;
+	ao2_ref(data, -1);
+
+	return val;
 }
 
 struct ast_msg_var_iterator {
@@ -601,7 +676,7 @@ static struct ast_channel *create_msg_q_chan(void)
 
 	ast_channel_unlink(chan);
 
-	chan->tech = &msg_chan_tech_hack;
+	ast_channel_tech_set(chan, &msg_chan_tech_hack);
 
 	if (!(ds = ast_datastore_alloc(&msg_datastore, NULL))) {
 		ast_hangup(chan);
@@ -661,14 +736,14 @@ static void chan_cleanup(struct ast_channel *chan)
 	/*
 	 * Destroy all other datastores.
 	 */
-	while ((ds = AST_LIST_REMOVE_HEAD(&chan->datastores, entry))) {
+	while ((ds = AST_LIST_REMOVE_HEAD(ast_channel_datastores(chan), entry))) {
 		ast_datastore_free(ds);
 	}
 
 	/*
 	 * Destroy all channel variables.
 	 */
-	headp = &chan->varshead;
+	headp = ast_channel_varshead(chan);
 	while ((vardata = AST_LIST_REMOVE_HEAD(headp, entries))) {
 		ast_var_delete(vardata);
 	}
@@ -679,11 +754,26 @@ static void chan_cleanup(struct ast_channel *chan)
 	if (msg_ds) {
 		ast_channel_datastore_add(chan, msg_ds);
 	}
+	/*
+	 * Clear softhangup flags.
+	 */
+	ast_channel_clear_softhangup(chan, AST_SOFTHANGUP_ALL);
 
 	ast_channel_unlock(chan);
 }
 
-AST_THREADSTORAGE(msg_q_chan);
+static void destroy_msg_q_chan(void *data)
+{
+	struct ast_channel **chan = data;
+
+	if (!*chan) {
+		return;
+	}
+
+	ast_channel_release(*chan);
+}
+
+AST_THREADSTORAGE_CUSTOM(msg_q_chan, NULL, destroy_msg_q_chan);
 
 /*!
  * \internal
@@ -742,7 +832,7 @@ int ast_msg_queue(struct ast_msg *msg)
 /*!
  * \internal
  * \brief Find or create a message datastore on a channel
- * 
+ *
  * \pre chan is locked
  *
  * \param chan the relevant channel
@@ -832,6 +922,26 @@ static int msg_func_write(struct ast_channel *chan, const char *function,
 		ast_msg_set_from(msg, "%s", value);
 	} else if (!strcasecmp(data, "body")) {
 		ast_msg_set_body(msg, "%s", value);
+	} else if (!strcasecmp(data, "custom_data")) {
+		int outbound = -1;
+		if (!strcasecmp(value, "mark_all_outbound")) {
+			outbound = 1;
+		} else if (!strcasecmp(value, "clear_all_outbound")) {
+			outbound = 0;
+		} else {
+			ast_log(LOG_WARNING, "'%s' is not a valid value for custom_data\n", value);
+		}
+
+		if (outbound != -1) {
+			struct msg_data *hdr_data;
+			struct ao2_iterator iter = ao2_iterator_init(msg->vars, 0);
+
+			while ((hdr_data = ao2_iterator_next(&iter))) {
+				hdr_data->send = outbound;
+				ao2_ref(hdr_data, -1);
+			}
+			ao2_iterator_destroy(&iter);
+		}
 	} else {
 		ast_log(LOG_WARNING, "'%s' is not a valid write argument.\n", data);
 	}
@@ -892,7 +1002,7 @@ static int msg_data_func_write(struct ast_channel *chan, const char *function,
 
 	ao2_lock(msg);
 
-	msg_set_var_outbound(msg, data, value);
+	ast_msg_set_var_outbound(msg, data, value);
 
 	ao2_unlock(msg);
 	ao2_ref(msg, -1);
@@ -1023,6 +1133,120 @@ exit_cleanup:
 	return 0;
 }
 
+static int action_messagesend(struct mansession *s, const struct message *m)
+{
+	const char *to = ast_strdupa(astman_get_header(m, "To"));
+	const char *from = astman_get_header(m, "From");
+	const char *body = astman_get_header(m, "Body");
+	const char *base64body = astman_get_header(m, "Base64Body");
+	char base64decoded[1301] = { 0, };
+	char *tech_name = NULL;
+	struct ast_variable *vars = NULL;
+	struct ast_variable *data = NULL;
+	struct ast_msg_tech_holder *tech_holder = NULL;
+	struct ast_msg *msg;
+	int res = -1;
+
+	if (ast_strlen_zero(to)) {
+		astman_send_error(s, m, "No 'To' address specified.");
+		return -1;
+	}
+
+	if (!ast_strlen_zero(base64body)) {
+		ast_base64decode((unsigned char *) base64decoded, base64body, sizeof(base64decoded) - 1);
+		body = base64decoded;
+	}
+
+	tech_name = ast_strdupa(to);
+	tech_name = strsep(&tech_name, ":");
+	{
+		struct ast_msg_tech tmp_msg_tech = {
+			.name = tech_name,
+		};
+		struct ast_msg_tech_holder tmp_tech_holder = {
+			.tech = &tmp_msg_tech,
+		};
+
+		tech_holder = ao2_find(msg_techs, &tmp_tech_holder, OBJ_POINTER);
+	}
+
+	if (!tech_holder) {
+		astman_send_error(s, m, "Message technology not found.");
+		return -1;
+	}
+
+	if (!(msg = ast_msg_alloc())) {
+		ao2_ref(tech_holder, -1);
+		astman_send_error(s, m, "Internal failure\n");
+		return -1;
+	}
+
+	data = astman_get_variables(m);
+	for (vars = data; vars; vars = vars->next) {
+		ast_msg_set_var_outbound(msg, vars->name, vars->value);
+	}
+
+	ast_msg_set_body(msg, "%s", body);
+
+	ast_rwlock_rdlock(&tech_holder->tech_lock);
+	if (tech_holder->tech) {
+		res = tech_holder->tech->msg_send(msg, S_OR(to, ""), S_OR(from, ""));
+	}
+	ast_rwlock_unlock(&tech_holder->tech_lock);
+
+	ast_variables_destroy(vars);
+	ao2_ref(tech_holder, -1);
+	ao2_ref(msg, -1);
+
+	if (res) {
+		astman_send_error(s, m, "Message failed to send.");
+	} else {
+		astman_send_ack(s, m, "Message successfully sent");
+	}
+	return res;
+}
+
+int ast_msg_send(struct ast_msg *msg, const char *to, const char *from)
+{
+	char *tech_name = NULL;
+	struct ast_msg_tech_holder *tech_holder = NULL;
+	int res = -1;
+
+	if (ast_strlen_zero(to)) {
+		ao2_ref(msg, -1);
+		return -1;
+	}
+
+	tech_name = ast_strdupa(to);
+	tech_name = strsep(&tech_name, ":");
+	{
+		struct ast_msg_tech tmp_msg_tech = {
+			.name = tech_name,
+		};
+		struct ast_msg_tech_holder tmp_tech_holder = {
+			.tech = &tmp_msg_tech,
+		};
+
+		tech_holder = ao2_find(msg_techs, &tmp_tech_holder, OBJ_POINTER);
+	}
+
+	if (!tech_holder) {
+		ao2_ref(msg, -1);
+		return -1;
+	}
+
+	ast_rwlock_rdlock(&tech_holder->tech_lock);
+	if (tech_holder->tech) {
+		res = tech_holder->tech->msg_send(msg, S_OR(to, ""), S_OR(from, ""));
+	}
+	ast_rwlock_unlock(&tech_holder->tech_lock);
+
+	ao2_ref(tech_holder, -1);
+	ao2_ref(msg, -1);
+
+	return res;
+}
+
 int ast_msg_tech_register(const struct ast_msg_tech *tech)
 {
 	struct ast_msg_tech_holder tmp_tech_holder = {
@@ -1080,6 +1304,30 @@ int ast_msg_tech_unregister(const struct ast_msg_tech *tech)
 	return 0;
 }
 
+void ast_msg_shutdown(void)
+{
+	if (msg_q_tp) {
+		msg_q_tp = ast_taskprocessor_unreference(msg_q_tp);
+	}
+}
+
+/*! \internal \brief Clean up other resources on Asterisk shutdown
+ * \note This does not include the msg_q_tp object, which must be disposed
+ * of prior to Asterisk checking for channel destruction in its shutdown
+ * sequence.  The atexit handlers are executed after this occurs. */
+static void message_shutdown(void)
+{
+	ast_custom_function_unregister(&msg_function);
+	ast_custom_function_unregister(&msg_data_function);
+	ast_unregister_application(app_msg_send);
+	ast_manager_unregister("MessageSend");
+
+	if (msg_techs) {
+		ao2_ref(msg_techs, -1);
+		msg_techs = NULL;
+	}
+}
+
 /*
  * \internal
  * \brief Initialize stuff during Asterisk startup.
@@ -1107,6 +1355,9 @@ int ast_msg_init(void)
 	res = __ast_custom_function_register(&msg_function, NULL);
 	res |= __ast_custom_function_register(&msg_data_function, NULL);
 	res |= ast_register_application2(app_msg_send, msg_send_exec, NULL, NULL, NULL);
+	res |= ast_manager_register_xml_core("MessageSend", EVENT_FLAG_MESSAGE, action_messagesend);
+
+	ast_register_atexit(message_shutdown);
 
 	return res;
 }

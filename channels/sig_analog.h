@@ -223,6 +223,7 @@ struct analog_callback {
 	void (* const set_cadence)(void *pvt, int *cidrings, struct ast_channel *chan);
 	void (* const set_alarm)(void *pvt, int in_alarm);
 	void (* const set_dialing)(void *pvt, int is_dialing);
+	void (* const set_outgoing)(void *pvt, int is_outgoing);
 	void (* const set_ringtimeout)(void *pvt, int ringt);
 	void (* const set_waitingfordt)(void *pvt, struct ast_channel *ast);
 	int (* const check_waitingfordt)(void *pvt);
@@ -235,8 +236,11 @@ struct analog_callback {
 	void (* const set_new_owner)(void *pvt, struct ast_channel *new_owner);
 
 	const char *(* const get_orig_dialstring)(void *pvt);
+	int (* const have_progressdetect)(void *pvt);
 };
 
+/*! Global analog callbacks to the upper layer. */
+extern struct analog_callback analog_callbacks;
 
 
 struct analog_subchannel {
@@ -252,8 +256,6 @@ struct analog_pvt {
 	enum analog_sigtype sig;
 	/* To contain the private structure passed into the channel callbacks */
 	void *chan_pvt;
-	/* Callbacks for various functions needed by the analog API */
-	struct analog_callback *calls;
 	/* All members after this are giong to be transient, and most will probably change */
 	struct ast_channel *owner;			/*!< Our current active owner (if applicable) */
 
@@ -286,7 +288,6 @@ struct analog_pvt {
 	unsigned int use_smdi:1;
 	/*! \brief The SMDI interface to get SMDI messages from. */
 	struct ast_smdi_interface *smdi_iface;
-	const struct ast_channel_tech *chan_tech;
 
 	/* Not used for anything but log messages.  Could be just the TCID */
 	int channel;					/*!< Channel Number */
@@ -345,12 +346,12 @@ struct analog_pvt {
 	int ringt_base;
 };
 
-struct analog_pvt *analog_new(enum analog_sigtype signallingtype, struct analog_callback *c, void *private_data);
+struct analog_pvt *analog_new(enum analog_sigtype signallingtype, void *private_data);
 void analog_delete(struct analog_pvt *doomed);
 
 void analog_free(struct analog_pvt *p);
 
-int analog_call(struct analog_pvt *p, struct ast_channel *ast, char *rdest, int timeout);
+int analog_call(struct analog_pvt *p, struct ast_channel *ast, const char *rdest, int timeout);
 
 int analog_hangup(struct analog_pvt *p, struct ast_channel *ast);
 

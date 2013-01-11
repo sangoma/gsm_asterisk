@@ -23,9 +23,13 @@
  * \author David Vossel <dvossel@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 287648 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include "asterisk/channel.h"
 #include "asterisk/linkedlists.h"
@@ -90,6 +94,7 @@ static struct ast_frame *framehook_list_push_event(struct ast_framehook_list *fr
 int ast_framehook_attach(struct ast_channel *chan, struct ast_framehook_interface *i)
 {
 	struct ast_framehook *framehook;
+	struct ast_framehook_list *fh_list;
 	struct ast_frame *frame;
 	if (i->version != AST_FRAMEHOOK_INTERFACE_VERSION) {
 		ast_log(LOG_ERROR, "Version '%hu' of framehook interface not what we compiled against (%hu)\n",
@@ -103,13 +108,16 @@ int ast_framehook_attach(struct ast_channel *chan, struct ast_framehook_interfac
 	framehook->chan = chan;
 
 	/* create the framehook list if it didn't already exist */
-	if (!chan->framehooks && !(chan->framehooks = ast_calloc(1, sizeof(*chan->framehooks)))) {
-		ast_free(framehook);
-		return -1;
+	if (!ast_channel_framehooks(chan)) {
+		if (!(fh_list = ast_calloc(1, sizeof(*ast_channel_framehooks(chan))))) {
+			ast_free(framehook);
+			return -1;
+		}
+		ast_channel_framehooks_set(chan, fh_list);
 	}
 
-	framehook->id = ++chan->framehooks->id_count;
-	AST_LIST_INSERT_TAIL(&chan->framehooks->list, framehook, list);
+	framehook->id = ++ast_channel_framehooks(chan)->id_count;
+	AST_LIST_INSERT_TAIL(&ast_channel_framehooks(chan)->list, framehook, list);
 
 	/* Tell the event callback we're live and rocking */
 	frame = framehook->i.event_cb(framehook->chan, NULL, AST_FRAMEHOOK_EVENT_ATTACHED, framehook->i.data);
@@ -128,11 +136,11 @@ int ast_framehook_detach(struct ast_channel *chan, int id)
 	struct ast_framehook *framehook;
 	int res = -1;
 
-	if (!chan->framehooks) {
+	if (!ast_channel_framehooks(chan)) {
 		return res;
 	}
 
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&chan->framehooks->list, framehook, list) {
+	AST_LIST_TRAVERSE_SAFE_BEGIN(&ast_channel_framehooks(chan)->list, framehook, list) {
 		if (framehook->id == id) {
 			/* we mark for detachment rather than doing explicitly here because
 			 * it needs to be safe for this function to be called within the
@@ -152,16 +160,16 @@ int ast_framehook_list_destroy(struct ast_channel *chan)
 {
 	struct ast_framehook *framehook;
 
-	if (!chan->framehooks) {
+	if (!ast_channel_framehooks(chan)) {
 		return 0;
 	}
-	AST_LIST_TRAVERSE_SAFE_BEGIN(&chan->framehooks->list, framehook, list) {
+	AST_LIST_TRAVERSE_SAFE_BEGIN(&ast_channel_framehooks(chan)->list, framehook, list) {
 		AST_LIST_REMOVE_CURRENT(list);
 		framehook_detach_and_destroy(framehook);
 	}
 	AST_LIST_TRAVERSE_SAFE_END;
-	ast_free(chan->framehooks);
-	chan->framehooks = NULL;
+	ast_free(ast_channel_framehooks(chan));
+	ast_channel_framehooks_set(chan, NULL);
 	return 0;
 }
 

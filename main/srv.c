@@ -23,15 +23,19 @@
  * \brief DNS SRV Record Lookup Support for Asterisk
  *
  * \author Mark Spencer <markster@digium.com>
- * 
+ *
  * \arg See also \ref AstENUM
  *
  * \note Funding provided by nic.at
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321393 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include <netinet/in.h>
 #include <arpa/nameser.h>
@@ -99,14 +103,14 @@ static int parse_srv(unsigned char *answer, int len, unsigned char *msg, struct 
 
 	if (!(entry = ast_calloc(1, sizeof(*entry) + strlen(repl))))
 		return -1;
-	
+
 	entry->priority = ntohs(srv->priority);
 	entry->weight = ntohs(srv->weight);
 	entry->port = ntohs(srv->port);
 	strcpy(entry->host, repl);
 
 	*result = entry;
-	
+
 	return 0;
 }
 
@@ -286,7 +290,7 @@ int ast_get_srv(struct ast_channel *chan, char *host, int hostlen, int *port, co
 		ast_copy_string(host, current->host, hostlen);
 		*port = current->port;
 		ast_free(current);
-		ast_verb(4, "ast_get_srv: SRV lookup for '%s' mapped to host %s, port %d\n",
+		ast_debug(4, "ast_get_srv: SRV lookup for '%s' mapped to host %s, port %d\n",
 				    service, host, *port);
 	} else {
 		host[0] = '\0';

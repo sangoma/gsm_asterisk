@@ -33,7 +33,7 @@
  
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 361476 $")
 
 #include <signal.h>
 #include <fcntl.h>
@@ -97,7 +97,7 @@ static int icesencode(char *filename, int fd)
 	execl(path_BIN "ices2", "ices", filename, SENTINEL);
 	execlp("ices2", "ices", filename, SENTINEL);
 
-	ast_debug(1, "Couldn't find ices version 2, attempting to use ices version 1.");
+	ast_debug(1, "Couldn't find ices version 2, attempting to use ices version 1.\n");
 
 	execl(path_LOCAL "ices", "ices", filename, SENTINEL);
 	execl(path_BIN "ices", "ices", filename, SENTINEL);
@@ -135,7 +135,7 @@ static int ices_exec(struct ast_channel *chan, const char *data)
 	
 	ast_stopstream(chan);
 
-	if (chan->_state != AST_STATE_UP)
+	if (ast_channel_state(chan) != AST_STATE_UP)
 		res = ast_answer(chan);
 		
 	if (res) {
@@ -145,7 +145,7 @@ static int ices_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	ast_format_copy(&oreadformat, &chan->readformat);
+	ast_format_copy(&oreadformat, ast_channel_readformat(chan));
 	res = ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR);
 	if (res < 0) {
 		close(fds[0]);

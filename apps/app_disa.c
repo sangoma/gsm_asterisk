@@ -32,7 +32,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 366051 $")
 
 #include <math.h>
 #include <sys/time.h>
@@ -131,9 +131,9 @@ static void play_dialtone(struct ast_channel *chan, char *mailbox)
 	struct ast_tone_zone_sound *ts = NULL;
 
 	if (ast_app_has_voicemail(mailbox, NULL)) {
-		ts = ast_get_indication_tone(chan->zone, "dialrecall");
+		ts = ast_get_indication_tone(ast_channel_zone(chan), "dialrecall");
 	} else {
-		ts = ast_get_indication_tone(chan->zone, "dial");
+		ts = ast_get_indication_tone(ast_channel_zone(chan), "dial");
 	}
 
 	if (ts) {
@@ -147,8 +147,8 @@ static void play_dialtone(struct ast_channel *chan, char *mailbox)
 static int disa_exec(struct ast_channel *chan, const char *data)
 {
 	int i = 0, j, k = 0, did_ignore = 0, special_noanswer = 0;
-	int firstdigittimeout = (chan->pbx ? chan->pbx->rtimeoutms : 20000);
-	int digittimeout = (chan->pbx ? chan->pbx->dtimeoutms : 10000);
+	int firstdigittimeout = (ast_channel_pbx(chan) ? ast_channel_pbx(chan)->rtimeoutms : 20000);
+	int digittimeout = (ast_channel_pbx(chan) ? ast_channel_pbx(chan)->dtimeoutms : 10000);
 	struct ast_flags flags;
 	char *tmp, exten[AST_MAX_EXTENSION] = "", acctcode[20]="";
 	char pwline[256];
@@ -181,13 +181,18 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 		args.context = "disa";
 	if (ast_strlen_zero(args.mailbox))
 		args.mailbox = "";
-	if (!ast_strlen_zero(args.options))
+	if (!ast_strlen_zero(args.options)) {
 		ast_app_parse_options(app_opts, &flags, NULL, args.options);
+	} else {
+		/* Coverity - This uninit_use should be ignored since this macro initializes the flags */
+		ast_clear_flag(&flags, AST_FLAGS_ALL);
+	}
+
 
 	ast_debug(1, "Mailbox: %s\n",args.mailbox);
 
 	if (!ast_test_flag(&flags, NOANSWER_FLAG)) {
-		if (chan->_state != AST_STATE_UP) {
+		if (ast_channel_state(chan) != AST_STATE_UP) {
 			/* answer */
 			ast_answer(chan);
 		}
@@ -204,31 +209,31 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 
 	play_dialtone(chan, args.mailbox);
 
-	ast_set_flag(chan, AST_FLAG_END_DTMF_ONLY);
+	ast_set_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 
 	for (;;) {
 		  /* if outa time, give em reorder */
 		if (ast_tvdiff_ms(ast_tvnow(), lastdigittime) > ((k&2) ? digittimeout : firstdigittimeout)) {
 			ast_debug(1,"DISA %s entry timeout on chan %s\n",
-				((k&1) ? "extension" : "password"),chan->name);
+				((k&1) ? "extension" : "password"),ast_channel_name(chan));
 			break;
 		}
 
-		if ((res = ast_waitfor(chan, -1) < 0)) {
+		if ((res = ast_waitfor(chan, -1)) < 0) {
 			ast_debug(1, "Waitfor returned %d\n", res);
 			continue;
 		}
 
 		if (!(f = ast_read(chan))) {
-			ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+			ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 			return -1;
 		}
 
 		if ((f->frametype == AST_FRAME_CONTROL) && (f->subclass.integer == AST_CONTROL_HANGUP)) {
 			if (f->data.uint32)
-				chan->hangupcause = f->data.uint32;
+				ast_channel_hangupcause_set(chan, f->data.uint32);
 			ast_frfree(f);
-			ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+			ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 			return -1;
 		}
 
@@ -256,8 +261,8 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 					if (sscanf(args.passcode,"%30d",&j) < 1) { /* nope, it must be a filename */
 						fp = fopen(args.passcode,"r");
 						if (!fp) {
-							ast_log(LOG_WARNING,"DISA password file %s not found on chan %s\n",args.passcode,chan->name);
-							ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+							ast_log(LOG_WARNING,"DISA password file %s not found on chan %s\n",args.passcode,ast_channel_name(chan));
+							ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 							return -1;
 						}
 						pwline[0] = 0;
@@ -294,12 +299,12 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 					}
 					/* compare the two */
 					if (strcmp(exten,args.passcode)) {
-						ast_log(LOG_WARNING,"DISA on chan %s got bad password %s\n",chan->name,exten);
+						ast_log(LOG_WARNING,"DISA on chan %s got bad password %s\n",ast_channel_name(chan),exten);
 						goto reorder;
 
 					}
 					 /* password good, set to dial state */
-					ast_debug(1,"DISA on chan %s password is good\n",chan->name);
+					ast_debug(1,"DISA on chan %s password is good\n",ast_channel_name(chan));
 					play_dialtone(chan, args.mailbox);
 
 					k|=1; /* In number mode */
@@ -307,16 +312,16 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 					exten[sizeof(acctcode)] = 0;
 					ast_copy_string(acctcode, exten, sizeof(acctcode));
 					exten[0] = 0;
-					ast_debug(1,"Successful DISA log-in on chan %s\n", chan->name);
+					ast_debug(1,"Successful DISA log-in on chan %s\n", ast_channel_name(chan));
 					continue;
 				}
 			} else {
 				if (j == '#') { /* end of extension .. maybe */
 					if (i == 0
 						&& (ast_matchmore_extension(chan, args.context, "#", 1,
-							S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))
+							S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))
 							|| ast_exists_extension(chan, args.context, "#", 1,
-								S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) ) {
+								S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) ) {
 						/* Let the # be the part of, or the entire extension */
 					} else {
 						break;
@@ -347,20 +352,20 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 
 			/* if can do some more, do it */
 			if (!ast_matchmore_extension(chan, args.context, exten, 1,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+				S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 				break;
 			}
 		}
 	}
 
-	ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+	ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 
 	if (k == 3) {
 		int recheck = 0;
 		struct ast_flags cdr_flags = { AST_CDR_FLAG_POSTED };
 
 		if (!ast_exists_extension(chan, args.context, exten, 1,
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+			S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 			pbx_builtin_setvar_helper(chan, "INVALID_EXTEN", exten);
 			exten[0] = 'i';
 			exten[1] = '\0';
@@ -368,7 +373,7 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 		}
 		if (!recheck
 			|| ast_exists_extension(chan, args.context, exten, 1,
-				S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+				S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 			ast_playtones_stop(chan);
 			/* We're authenticated and have a target extension */
 			if (!ast_strlen_zero(args.cid)) {
@@ -377,10 +382,10 @@ static int disa_exec(struct ast_channel *chan, const char *data)
 			}
 
 			if (!ast_strlen_zero(acctcode))
-				ast_string_field_set(chan, accountcode, acctcode);
+				ast_channel_accountcode_set(chan, acctcode);
 
 			if (special_noanswer) cdr_flags.flags = 0;
-			ast_cdr_reset(chan->cdr, &cdr_flags);
+			ast_cdr_reset(ast_channel_cdr(chan), &cdr_flags);
 			ast_explicit_goto(chan, args.context, exten, 1);
 			return 0;
 		}

@@ -27,9 +27,13 @@
  *       as expected.
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 374196 $")
 
 #include "asterisk/_private.h"
 
@@ -47,10 +51,10 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
 static unsigned char cel_enabled;
 
 /*! \brief CEL is off by default */
-static const unsigned char CEL_ENALBED_DEFAULT = 0;
+#define CEL_ENABLED_DEFAULT		0
 
-/*! 
- * \brief which events we want to track 
+/*!
+ * \brief which events we want to track
  *
  * \note bit field, up to 64 events
  */
@@ -62,15 +66,15 @@ static int64_t eventset;
  */
 #define CEL_MAX_EVENT_IDS 64
 
-/*! 
+/*!
  * \brief Track no events by default.
  */
-static const int64_t CEL_DEFAULT_EVENTS = 0;
+#define CEL_DEFAULT_EVENTS	0
 
 /*!
  * \brief Number of buckets for the appset container
  */
-static const int NUM_APP_BUCKETS = 97;
+#define NUM_APP_BUCKETS		97
 
 /*!
  * \brief Container of Asterisk application names
@@ -80,6 +84,7 @@ static const int NUM_APP_BUCKETS = 97;
  * for when they start and end on a channel.
  */
 static struct ao2_container *appset;
+static struct ao2_container *linkedids;
 
 /*!
  * \brief Configured date format for event timestamps
@@ -298,7 +303,7 @@ static int do_reload(void)
 	ast_mutex_lock(&reload_lock);
 
 	/* Reset all settings before reloading configuration */
-	cel_enabled = CEL_ENALBED_DEFAULT;
+	cel_enabled = CEL_ENABLED_DEFAULT;
 	eventset = CEL_DEFAULT_EVENTS;
 	*cel_dateformat = '\0';
 	ao2_callback(appset, OBJ_UNLINK | OBJ_NODATA | OBJ_MULTIPLE, NULL, NULL);
@@ -360,60 +365,58 @@ const char *ast_cel_get_ama_flag_name(enum ast_cel_ama_flag flag)
 
 /* called whenever a channel is destroyed or a linkedid is changed to
  * potentially emit a CEL_LINKEDID_END event */
-
-struct channel_find_data {
-	const struct ast_channel *chan;
-	const char *linkedid;
-};
-
-static int linkedid_match(void *obj, void *arg, void *data, int flags)
-{
-	struct ast_channel *c = obj;
-	struct channel_find_data *find_dat = data;
-	int res;
-
-	ast_channel_lock(c);
-	res = (c != find_dat->chan && c->linkedid && !strcmp(find_dat->linkedid, c->linkedid));
-	ast_channel_unlock(c);
-
-	return res ? CMP_MATCH | CMP_STOP : 0;
-}
-
 void ast_cel_check_retire_linkedid(struct ast_channel *chan)
 {
-	const char *linkedid = chan->linkedid;
-	struct channel_find_data find_dat;
+	const char *linkedid = ast_channel_linkedid(chan);
+	char *lid;
 
 	/* make sure we need to do all this work */
 
-	if (!ast_strlen_zero(linkedid) && ast_cel_track_event(AST_CEL_LINKEDID_END)) {
-		struct ast_channel *tmp = NULL;
-		find_dat.chan = chan;
-		find_dat.linkedid = linkedid;
-		if ((tmp = ast_channel_callback(linkedid_match, NULL, &find_dat, 0))) {
-			tmp = ast_channel_unref(tmp);
-		} else {
-			ast_cel_report_event(chan, AST_CEL_LINKEDID_END, NULL, NULL, NULL);
-		}
+	if (ast_strlen_zero(linkedid) || !ast_cel_track_event(AST_CEL_LINKEDID_END)) {
+		return;
 	}
+
+	if (!(lid = ao2_find(linkedids, (void *) linkedid, OBJ_POINTER))) {
+		ast_log(LOG_ERROR, "Something weird happened, couldn't find linkedid %s\n", linkedid);
+		return;
+	}
+
+	/* We have a ref for each channel with this linkedid, the link and the above find, so if
+	 * before unreffing the channel we have a refcount of 3, we're done. Unlink and report. */
+	if (ao2_ref(lid, -1) == 3) {
+		ao2_unlink(linkedids, lid);
+		ast_cel_report_event(chan, AST_CEL_LINKEDID_END, NULL, NULL, NULL);
+	}
+	ao2_ref(lid, -1);
 }
+
+/* Note that no 'chan_fixup' function is provided for this datastore type,
+ * because the channels that will use it will never be involved in masquerades.
+ */
+static const struct ast_datastore_info fabricated_channel_datastore = {
+	.type = "CEL fabricated channel",
+	.destroy = ast_free_ptr,
+};
 
 struct ast_channel *ast_cel_fabricate_channel_from_event(const struct ast_event *event)
 {
 	struct varshead *headp;
 	struct ast_var_t *newvariable;
+	const char *mixed_name;
 	char timebuf[30];
 	struct ast_channel *tchan;
 	struct ast_cel_event_record record = {
 		.version = AST_CEL_EVENT_RECORD_VERSION,
 	};
+	struct ast_datastore *datastore;
+	char *app_data;
 
 	/* do not call ast_channel_alloc because this is not really a real channel */
 	if (!(tchan = ast_dummy_channel_alloc())) {
 		return NULL;
 	}
 
-	headp = &tchan->varshead;
+	headp = ast_channel_varshead(tchan);
 
 	/* first, get the variables from the event */
 	if (ast_cel_fill_record(event, &record)) {
@@ -422,7 +425,9 @@ struct ast_channel *ast_cel_fabricate_channel_from_event(const struct ast_event 
 	}
 
 	/* next, fill the channel with their data */
-	if ((newvariable = ast_var_assign("eventtype", record.event_name))) {
+	mixed_name = (record.event_type == AST_CEL_USER_DEFINED)
+		? record.user_defined_name : record.event_name;
+	if ((newvariable = ast_var_assign("eventtype", mixed_name))) {
 		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
 	}
 
@@ -439,36 +444,100 @@ struct ast_channel *ast_cel_fabricate_channel_from_event(const struct ast_event 
 		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
 	}
 
+	if ((newvariable = ast_var_assign("eventenum", record.event_name))) {
+		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
+	}
+	if ((newvariable = ast_var_assign("userdeftype", record.user_defined_name))) {
+		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
+	}
 	if ((newvariable = ast_var_assign("eventextra", record.extra))) {
 		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
 	}
 
-	tchan->caller.id.name.valid = 1;
-	tchan->caller.id.name.str = ast_strdup(record.caller_id_name);
-	tchan->caller.id.number.valid = 1;
-	tchan->caller.id.number.str = ast_strdup(record.caller_id_num);
-	tchan->caller.ani.number.valid = 1;
-	tchan->caller.ani.number.str = ast_strdup(record.caller_id_ani);
-	tchan->redirecting.from.number.valid = 1;
-	tchan->redirecting.from.number.str = ast_strdup(record.caller_id_rdnis);
-	tchan->dialed.number.str = ast_strdup(record.caller_id_dnid);
+	ast_channel_caller(tchan)->id.name.valid = 1;
+	ast_channel_caller(tchan)->id.name.str = ast_strdup(record.caller_id_name);
+	ast_channel_caller(tchan)->id.number.valid = 1;
+	ast_channel_caller(tchan)->id.number.str = ast_strdup(record.caller_id_num);
+	ast_channel_caller(tchan)->ani.number.valid = 1;
+	ast_channel_caller(tchan)->ani.number.str = ast_strdup(record.caller_id_ani);
+	ast_channel_redirecting(tchan)->from.number.valid = 1;
+	ast_channel_redirecting(tchan)->from.number.str = ast_strdup(record.caller_id_rdnis);
+	ast_channel_dialed(tchan)->number.str = ast_strdup(record.caller_id_dnid);
 
-	ast_copy_string(tchan->exten, record.extension, sizeof(tchan->exten));
-	ast_copy_string(tchan->context, record.context, sizeof(tchan->context));
-	ast_string_field_set(tchan, name, record.channel_name);
-	ast_string_field_set(tchan, uniqueid, record.unique_id);
-	ast_string_field_set(tchan, linkedid, record.linked_id);
-	ast_string_field_set(tchan, accountcode, record.account_code);
-	ast_string_field_set(tchan, peeraccount, record.peer_account);
-	ast_string_field_set(tchan, userfield, record.user_field);
+	ast_channel_exten_set(tchan, record.extension);
+	ast_channel_context_set(tchan, record.context);
+	ast_channel_name_set(tchan, record.channel_name);
+	ast_channel_uniqueid_set(tchan, record.unique_id);
+	ast_channel_linkedid_set(tchan, record.linked_id);
+	ast_channel_accountcode_set(tchan, record.account_code);
+	ast_channel_peeraccount_set(tchan, record.peer_account);
+	ast_channel_userfield_set(tchan, record.user_field);
 
-	pbx_builtin_setvar_helper(tchan, "BRIDGEPEER", record.peer);
+	if ((newvariable = ast_var_assign("BRIDGEPEER", record.peer))) {
+		AST_LIST_INSERT_HEAD(headp, newvariable, entries);
+	}
 
-	tchan->appl = ast_strdup(record.application_name);
-	tchan->data = ast_strdup(record.application_data);
-	tchan->amaflags = record.amaflag;
+	ast_channel_amaflags_set(tchan, record.amaflag);
+
+	/* We need to store an 'application name' and 'application
+	 * data' on the channel for logging purposes, but the channel
+	 * structure only provides a place to store pointers, and it
+	 * expects these pointers to be pointing to data that does not
+	 * need to be freed. This means that the channel's destructor
+	 * does not attempt to free any storage that these pointers
+	 * point to. However, we can't provide data in that form directly for
+	 * these structure members. In order to ensure that these data
+	 * elements have a lifetime that matches the channel's
+	 * lifetime, we'll put them in a datastore attached to the
+	 * channel, and set's the channel's pointers to point into the
+	 * datastore.  The datastore will then be automatically destroyed
+	 * when the channel is destroyed.
+	 */
+
+	if (!(datastore = ast_datastore_alloc(&fabricated_channel_datastore, NULL))) {
+		ast_channel_unref(tchan);
+		return NULL;
+	}
+
+	if (!(app_data = ast_malloc(strlen(record.application_name) + strlen(record.application_data) + 2))) {
+		ast_datastore_free(datastore);
+		ast_channel_unref(tchan);
+		return NULL;
+	}
+
+	ast_channel_appl_set(tchan, strcpy(app_data, record.application_name));
+	ast_channel_data_set(tchan, strcpy(app_data + strlen(record.application_name) + 1,
+		record.application_data));
+
+	datastore->data = app_data;
+	ast_channel_datastore_add(tchan, datastore);
 
 	return tchan;
+}
+
+int ast_cel_linkedid_ref(const char *linkedid)
+{
+	char *lid;
+
+	if (ast_strlen_zero(linkedid)) {
+		ast_log(LOG_ERROR, "The linkedid should never be empty\n");
+		return -1;
+	}
+
+	if (!(lid = ao2_find(linkedids, (void *) linkedid, OBJ_POINTER))) {
+		if (!(lid = ao2_alloc(strlen(linkedid) + 1, NULL))) {
+			return -1;
+		}
+		strcpy(lid, linkedid);
+		if (!ao2_link(linkedids, lid)) {
+			ao2_ref(lid, -1);
+			return -1;
+		}
+		/* Leave both the link and the alloc refs to show a count of 1 + the link */
+	}
+	/* If we've found, go ahead and keep the ref to increment count of how many channels
+	 * have this linkedid. We'll clean it up in check_retire */
+	return 0;
 }
 
 int ast_cel_report_event(struct ast_channel *chan, enum ast_cel_event_type event_type,
@@ -478,6 +547,37 @@ int ast_cel_report_event(struct ast_channel *chan, enum ast_cel_event_type event
 	struct ast_event *ev;
 	const char *peername = "";
 	struct ast_channel *peer;
+	char *linkedid = ast_strdupa(ast_channel_linkedid(chan));
+
+	/* Make sure a reload is not occurring while we're checking to see if this
+	 * is an event that we care about.  We could lose an important event in this
+	 * process otherwise. */
+	ast_mutex_lock(&reload_lock);
+
+	/* Record the linkedid of new channels if we are tracking LINKEDID_END even if we aren't
+	 * reporting on CHANNEL_START so we can track when to send LINKEDID_END */
+	if (cel_enabled && ast_cel_track_event(AST_CEL_LINKEDID_END) && event_type == AST_CEL_CHANNEL_START && linkedid) {
+		if (ast_cel_linkedid_ref(linkedid)) {
+			ast_mutex_unlock(&reload_lock);
+			return -1;
+		}
+	}
+
+	if (!cel_enabled || !ast_cel_track_event(event_type)) {
+		ast_mutex_unlock(&reload_lock);
+		return 0;
+	}
+
+	if (event_type == AST_CEL_APP_START || event_type == AST_CEL_APP_END) {
+		char *app;
+		if (!(app = ao2_find(appset, (char *) ast_channel_appl(chan), OBJ_POINTER))) {
+			ast_mutex_unlock(&reload_lock);
+			return 0;
+		}
+		ao2_ref(app, -1);
+	}
+
+	ast_mutex_unlock(&reload_lock);
 
 	ast_channel_lock(chan);
 	peer = ast_bridged_channel(chan);
@@ -486,40 +586,13 @@ int ast_cel_report_event(struct ast_channel *chan, enum ast_cel_event_type event
 	}
 	ast_channel_unlock(chan);
 
-	/* Make sure a reload is not occurring while we're checking to see if this
-	 * is an event that we care about.  We could lose an important event in this
-	 * process otherwise. */
-	ast_mutex_lock(&reload_lock);
-
-	if (!cel_enabled || !ast_cel_track_event(event_type)) {
-		ast_mutex_unlock(&reload_lock);
-		if (peer) {
-			ast_channel_unref(peer);
-		}
-		return 0;
-	}
-
-	if (event_type == AST_CEL_APP_START || event_type == AST_CEL_APP_END) {
-		char *app;
-		if (!(app = ao2_find(appset, (char *) chan->appl, OBJ_POINTER))) {
-			ast_mutex_unlock(&reload_lock);
-			if (peer) {
-				ast_channel_unref(peer);
-			}
-			return 0;
-		}
-		ao2_ref(app, -1);
-	}
-
-	ast_mutex_unlock(&reload_lock);
-
 	if (peer) {
 		ast_channel_lock(peer);
-		peername = ast_strdupa(peer->name);
+		peername = ast_strdupa(ast_channel_name(peer));
 		ast_channel_unlock(peer);
 	} else if (peer2) {
 		ast_channel_lock(peer2);
-		peername = ast_strdupa(peer2->name);
+		peername = ast_strdupa(ast_channel_name(peer2));
 		ast_channel_unlock(peer2);
 	}
 
@@ -541,26 +614,26 @@ int ast_cel_report_event(struct ast_channel *chan, enum ast_cel_event_type event
 		AST_EVENT_IE_CEL_EVENT_TIME_USEC, AST_EVENT_IE_PLTYPE_UINT, eventtime.tv_usec,
 		AST_EVENT_IE_CEL_USEREVENT_NAME, AST_EVENT_IE_PLTYPE_STR, userdefevname,
 		AST_EVENT_IE_CEL_CIDNAME, AST_EVENT_IE_PLTYPE_STR,
-			S_COR(chan->caller.id.name.valid, chan->caller.id.name.str, ""),
+			S_COR(ast_channel_caller(chan)->id.name.valid, ast_channel_caller(chan)->id.name.str, ""),
 		AST_EVENT_IE_CEL_CIDNUM, AST_EVENT_IE_PLTYPE_STR,
-			S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, ""),
+			S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
 		AST_EVENT_IE_CEL_CIDANI, AST_EVENT_IE_PLTYPE_STR,
-			S_COR(chan->caller.ani.number.valid, chan->caller.ani.number.str, ""),
+			S_COR(ast_channel_caller(chan)->ani.number.valid, ast_channel_caller(chan)->ani.number.str, ""),
 		AST_EVENT_IE_CEL_CIDRDNIS, AST_EVENT_IE_PLTYPE_STR,
-			S_COR(chan->redirecting.from.number.valid, chan->redirecting.from.number.str, ""),
+			S_COR(ast_channel_redirecting(chan)->from.number.valid, ast_channel_redirecting(chan)->from.number.str, ""),
 		AST_EVENT_IE_CEL_CIDDNID, AST_EVENT_IE_PLTYPE_STR,
-			S_OR(chan->dialed.number.str, ""),
-		AST_EVENT_IE_CEL_EXTEN, AST_EVENT_IE_PLTYPE_STR, chan->exten,
-		AST_EVENT_IE_CEL_CONTEXT, AST_EVENT_IE_PLTYPE_STR, chan->context,
-		AST_EVENT_IE_CEL_CHANNAME, AST_EVENT_IE_PLTYPE_STR, chan->name,
-		AST_EVENT_IE_CEL_APPNAME, AST_EVENT_IE_PLTYPE_STR, S_OR(chan->appl, ""),
-		AST_EVENT_IE_CEL_APPDATA, AST_EVENT_IE_PLTYPE_STR, S_OR(chan->data, ""),
-		AST_EVENT_IE_CEL_AMAFLAGS, AST_EVENT_IE_PLTYPE_UINT, chan->amaflags,
-		AST_EVENT_IE_CEL_ACCTCODE, AST_EVENT_IE_PLTYPE_STR, chan->accountcode,
-		AST_EVENT_IE_CEL_PEERACCT, AST_EVENT_IE_PLTYPE_STR, chan->peeraccount,
-		AST_EVENT_IE_CEL_UNIQUEID, AST_EVENT_IE_PLTYPE_STR, chan->uniqueid,
-		AST_EVENT_IE_CEL_LINKEDID, AST_EVENT_IE_PLTYPE_STR, chan->linkedid,
-		AST_EVENT_IE_CEL_USERFIELD, AST_EVENT_IE_PLTYPE_STR, chan->userfield,
+			S_OR(ast_channel_dialed(chan)->number.str, ""),
+		AST_EVENT_IE_CEL_EXTEN, AST_EVENT_IE_PLTYPE_STR, ast_channel_exten(chan),
+		AST_EVENT_IE_CEL_CONTEXT, AST_EVENT_IE_PLTYPE_STR, ast_channel_context(chan),
+		AST_EVENT_IE_CEL_CHANNAME, AST_EVENT_IE_PLTYPE_STR, ast_channel_name(chan),
+		AST_EVENT_IE_CEL_APPNAME, AST_EVENT_IE_PLTYPE_STR, S_OR(ast_channel_appl(chan), ""),
+		AST_EVENT_IE_CEL_APPDATA, AST_EVENT_IE_PLTYPE_STR, S_OR(ast_channel_data(chan), ""),
+		AST_EVENT_IE_CEL_AMAFLAGS, AST_EVENT_IE_PLTYPE_UINT, ast_channel_amaflags(chan),
+		AST_EVENT_IE_CEL_ACCTCODE, AST_EVENT_IE_PLTYPE_STR, ast_channel_accountcode(chan),
+		AST_EVENT_IE_CEL_PEERACCT, AST_EVENT_IE_PLTYPE_STR, ast_channel_peeraccount(chan),
+		AST_EVENT_IE_CEL_UNIQUEID, AST_EVENT_IE_PLTYPE_STR, ast_channel_uniqueid(chan),
+		AST_EVENT_IE_CEL_LINKEDID, AST_EVENT_IE_PLTYPE_STR, ast_channel_linkedid(chan),
+		AST_EVENT_IE_CEL_USERFIELD, AST_EVENT_IE_PLTYPE_STR, ast_channel_userfield(chan),
 		AST_EVENT_IE_CEL_EXTRA, AST_EVENT_IE_PLTYPE_STR, extra,
 		AST_EVENT_IE_CEL_PEER, AST_EVENT_IE_PLTYPE_STR, peername,
 		AST_EVENT_IE_END);
@@ -593,13 +666,11 @@ int ast_cel_fill_record(const struct ast_event *e, struct ast_cel_event_record *
 	r->event_time.tv_sec = ast_event_get_ie_uint(e, AST_EVENT_IE_CEL_EVENT_TIME);
 	r->event_time.tv_usec = ast_event_get_ie_uint(e, AST_EVENT_IE_CEL_EVENT_TIME_USEC);
 
-	r->user_defined_name = "";
-
+	r->event_name = ast_cel_get_type_name(r->event_type);
 	if (r->event_type == AST_CEL_USER_DEFINED) {
 		r->user_defined_name = ast_event_get_ie_str(e, AST_EVENT_IE_CEL_USEREVENT_NAME);
-		r->event_name = r->user_defined_name;
 	} else {
-		r->event_name = ast_cel_get_type_name(r->event_type);
+		r->user_defined_name = "";
 	}
 
 	r->caller_id_name   = S_OR(ast_event_get_ie_str(e, AST_EVENT_IE_CEL_CIDNAME), "");
@@ -636,11 +707,18 @@ static int app_cmp(void *obj, void *arg, int flags)
 	return !strcasecmp(app1, app2) ? CMP_MATCH | CMP_STOP : 0;
 }
 
+#define lid_hash app_hash
+#define lid_cmp app_cmp
+
 static void ast_cel_engine_term(void)
 {
 	if (appset) {
 		ao2_ref(appset, -1);
 		appset = NULL;
+	}
+	if (linkedids) {
+		ao2_ref(linkedids, -1);
+		linkedids = NULL;
 	}
 }
 
@@ -649,16 +727,16 @@ int ast_cel_engine_init(void)
 	if (!(appset = ao2_container_alloc(NUM_APP_BUCKETS, app_hash, app_cmp))) {
 		return -1;
 	}
-
-	if (do_reload()) {
+	if (!(linkedids = ao2_container_alloc(NUM_APP_BUCKETS, lid_hash, lid_cmp))) {
 		ao2_ref(appset, -1);
-		appset = NULL;
 		return -1;
 	}
 
-	if (ast_cli_register(&cli_status)) {
+	if (do_reload() || ast_cli_register(&cli_status)) {
 		ao2_ref(appset, -1);
 		appset = NULL;
+		ao2_ref(linkedids, -1);
+		linkedids = NULL;
 		return -1;
 	}
 

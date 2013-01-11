@@ -20,12 +20,16 @@
  *
  * \brief Translate via the use of pseudo channels
  *
- * \author Mark Spencer <markster@digium.com> 
+ * \author Mark Spencer <markster@digium.com>
  */
+
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 308624 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370055 $")
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -141,7 +145,7 @@ static int add_format2index(enum ast_format_id id)
 	return 0;
 }
 
-/*! 
+/*!
  * \internal
  * \brief converts index value back to format id
  */
@@ -1282,12 +1286,22 @@ unsigned int ast_translate_path_steps(struct ast_format *dst_format, struct ast_
 void ast_translate_available_formats(struct ast_format_cap *dest, struct ast_format_cap *src, struct ast_format_cap *result)
 {
 	struct ast_format tmp_fmt;
-	struct ast_format cur_src;
+	struct ast_format cur_dest, cur_src;
 	int src_audio = 0;
 	int src_video = 0;
 	int index;
 
-	ast_format_cap_copy(result, dest);
+	ast_format_cap_iter_start(dest);
+	while (!ast_format_cap_iter_next(dest, &cur_dest)) {
+		/* We give preference to a joint format structure if possible */
+		if (ast_format_cap_get_compatible_format(src, &cur_dest, &tmp_fmt)) {
+			ast_format_cap_add(result, &tmp_fmt);
+		} else {
+			/* Otherwise we just use the destination format */
+			ast_format_cap_add(result, &cur_dest);
+		}
+	}
+	ast_format_cap_iter_end(dest);
 
 	/* if we don't have a source format, we just have to try all
 	   possible destination formats */

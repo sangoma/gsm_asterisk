@@ -32,7 +32,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370187 $")
 
 #include <signal.h>
 
@@ -99,7 +99,7 @@ static void lock_fixup(void *data, struct ast_channel *oldchan, struct ast_chann
 static int unloading = 0;
 static pthread_t broker_tid = AST_PTHREADT_NULL;
 
-static struct ast_datastore_info lock_info = {
+static const struct ast_datastore_info lock_info = {
 	.type = "MUTEX",
 	.destroy = lock_free,
 	.chan_fixup = lock_fixup,
@@ -205,26 +205,27 @@ static void *lock_broker(void *unused)
 static int ast_channel_hash_cb(const void *obj, const int flags)
 {
 	const struct ast_channel *chan = obj;
-	return ast_str_case_hash(chan->name);
+	return ast_str_case_hash(ast_channel_name(chan));
 }
 
 static int ast_channel_cmp_cb(void *obj, void *arg, int flags)
 {
 	struct ast_channel *chan = obj, *cmp_args = arg;
-	return strcasecmp(chan->name, cmp_args->name) ? 0 : CMP_MATCH;
+	return strcasecmp(ast_channel_name(chan), ast_channel_name(cmp_args)) ? 0 : CMP_MATCH;
 }
 
-static int get_lock(struct ast_channel *chan, char *lockname, int try)
+static int get_lock(struct ast_channel *chan, char *lockname, int trylock)
 {
 	struct ast_datastore *lock_store = ast_channel_datastore_find(chan, &lock_info, NULL);
 	struct lock_frame *current;
 	struct channel_lock_frame *clframe = NULL;
 	AST_LIST_HEAD(, channel_lock_frame) *list;
 	int res = 0;
-	struct timespec three_seconds = { .tv_sec = 3 };
+	struct timespec timeout = { 0, };
+	struct timeval now;
 
 	if (!lock_store) {
-		ast_debug(1, "Channel %s has no lock datastore, so we're allocating one.\n", chan->name);
+		ast_debug(1, "Channel %s has no lock datastore, so we're allocating one.\n", ast_channel_name(chan));
 		lock_store = ast_datastore_alloc(&lock_info, NULL);
 		if (!lock_store) {
 			ast_log(LOG_ERROR, "Unable to allocate new datastore.  No locks will be obtained.\n");
@@ -233,7 +234,9 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 
 		list = ast_calloc(1, sizeof(*list));
 		if (!list) {
-			ast_log(LOG_ERROR, "Unable to allocate datastore list head.  %sLOCK will fail.\n", try ? "TRY" : "");
+			ast_log(LOG_ERROR,
+				"Unable to allocate datastore list head.  %sLOCK will fail.\n",
+				trylock ? "TRY" : "");
 			ast_datastore_free(lock_store);
 			return -1;
 		}
@@ -307,7 +310,9 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 		}
 
 		if (!(clframe = ast_calloc(1, sizeof(*clframe)))) {
-			ast_log(LOG_ERROR, "Unable to allocate channel lock frame.  %sLOCK will fail.\n", try ? "TRY" : "");
+			ast_log(LOG_ERROR,
+				"Unable to allocate channel lock frame.  %sLOCK will fail.\n",
+				trylock ? "TRY" : "");
 			AST_LIST_UNLOCK(list);
 			return -1;
 		}
@@ -345,8 +350,14 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 	pthread_kill(broker_tid, SIGURG);
 	AST_LIST_UNLOCK(&locklist);
 
-	if ((!current->owner) ||
-		(!try && !(res = ast_cond_timedwait(&current->cond, &current->mutex, &three_seconds)))) {
+	/* Wait up to three seconds from now for LOCK. */
+	now = ast_tvnow();
+	timeout.tv_sec = now.tv_sec + 3;
+	timeout.tv_nsec = now.tv_usec * 1000;
+
+	if (!current->owner
+		|| (!trylock
+			&& !(res = ast_cond_timedwait(&current->cond, &current->mutex, &timeout)))) {
 		res = 0;
 		current->owner = chan;
 		current->count++;
@@ -362,10 +373,15 @@ static int get_lock(struct ast_channel *chan, char *lockname, int try)
 
 static int unlock_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	struct ast_datastore *lock_store = ast_channel_datastore_find(chan, &lock_info, NULL);
+	struct ast_datastore *lock_store;
 	struct channel_lock_frame *clframe;
 	AST_LIST_HEAD(, channel_lock_frame) *list;
 
+	if (!chan) {
+		return -1;
+	}
+
+	lock_store = ast_channel_datastore_find(chan, &lock_info, NULL);
 	if (!lock_store) {
 		ast_log(LOG_WARNING, "No datastore for dialplan locks.  Nothing was ever locked!\n");
 		ast_copy_string(buf, "0", len);
@@ -406,26 +422,24 @@ static int unlock_read(struct ast_channel *chan, const char *cmd, char *data, ch
 
 static int lock_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	if (chan)
-		ast_autoservice_start(chan);
-
+	if (!chan) {
+		return -1;
+	}
+	ast_autoservice_start(chan);
 	ast_copy_string(buf, get_lock(chan, data, 0) ? "0" : "1", len);
-
-	if (chan)
-		ast_autoservice_stop(chan);
+	ast_autoservice_stop(chan);
 
 	return 0;
 }
 
 static int trylock_read(struct ast_channel *chan, const char *cmd, char *data, char *buf, size_t len)
 {
-	if (chan)
-		ast_autoservice_start(chan);
-
+	if (!chan) {
+		return -1;
+	}
+	ast_autoservice_start(chan);
 	ast_copy_string(buf, get_lock(chan, data, 1) ? "0" : "1", len);
-
-	if (chan)
-		ast_autoservice_stop(chan);
+	ast_autoservice_stop(chan);
 
 	return 0;
 }
@@ -475,9 +489,11 @@ static int unload_module(void)
 	ast_custom_function_unregister(&trylock_function);
 	ast_custom_function_unregister(&unlock_function);
 
-	pthread_cancel(broker_tid);
-	pthread_kill(broker_tid, SIGURG);
-	pthread_join(broker_tid, NULL);
+	if (broker_tid != AST_PTHREADT_NULL) {
+		pthread_cancel(broker_tid);
+		pthread_kill(broker_tid, SIGURG);
+		pthread_join(broker_tid, NULL);
+	}
 
 	AST_LIST_UNLOCK(&locklist);
 
@@ -489,7 +505,14 @@ static int load_module(void)
 	int res = ast_custom_function_register(&lock_function);
 	res |= ast_custom_function_register(&trylock_function);
 	res |= ast_custom_function_register(&unlock_function);
-	ast_pthread_create_background(&broker_tid, NULL, lock_broker, NULL);
+
+	if (ast_pthread_create_background(&broker_tid, NULL, lock_broker, NULL)) {
+		ast_log(LOG_ERROR, "Failed to start lock broker thread. Unloading func_lock module.\n");
+		broker_tid = AST_PTHREADT_NULL;
+		unload_module();
+		return AST_MODULE_LOAD_DECLINE;
+	}
+
 	return res;
 }
 

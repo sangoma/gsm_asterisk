@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 361042 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -46,8 +46,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 			Transfer caller to remote extension.
 		</synopsis>
 		<syntax>
-			<parameter name="dest" required="true" argsep="/">
-				<argument name="Tech" />
+			<parameter name="dest" required="true" argsep="">
+				<argument name="Tech/" />
 				<argument name="destination" required="true" />
 			</parameter>
 		</syntax>
@@ -106,14 +106,14 @@ static int transfer_exec(struct ast_channel *chan, const char *data)
 		tech = dest;
 		dest = slash + 1;
 		/* Allow execution only if the Tech/destination agrees with the type of the channel */
-		if (strncasecmp(chan->tech->type, tech, len)) {
+		if (strncasecmp(ast_channel_tech(chan)->type, tech, len)) {
 			pbx_builtin_setvar_helper(chan, "TRANSFERSTATUS", "FAILURE");
 			return 0;
 		}
 	}
 
 	/* Check if the channel supports transfer before we try it */
-	if (!chan->tech->transfer) {
+	if (!ast_channel_tech(chan)->transfer) {
 		pbx_builtin_setvar_helper(chan, "TRANSFERSTATUS", "UNSUPPORTED");
 		return 0;
 	}

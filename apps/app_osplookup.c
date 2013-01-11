@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338136 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <osp/osp.h>
 #include <osp/osputils.h>
@@ -520,7 +520,7 @@ enum osp_srvtype {
 #define OSP_HTTP_PERSISTENCE	((int)1)					/* In seconds */
 #define OSP_CUSTOMER_ID			((const char*)"")			/* OSP customer ID */
 #define OSP_DEVICE_ID			((const char*)"")			/* OSP device ID */
-#define OSP_DEF_MAXDESTS		((unsigned int)5)			/* OSP default max number of destinations */
+#define OSP_DEF_MAXDESTS		((unsigned int)12)			/* OSP default max number of destinations */
 #define OSP_DEF_TIMELIMIT		((unsigned int)0)			/* OSP default duration limit, no limit */
 #define OSP_DEF_PROTOCOL		OSP_PROT_SIP				/* OSP default signaling protocol, SIP */
 #define OSP_DEF_WORKMODE		OSP_MODE_DIRECT				/* OSP default work mode, direct */
@@ -614,14 +614,13 @@ struct osp_metrics {
 	float min;			/* Minimum */
 	float max;			/* Maximum */
 	float avg;			/* Average */
-	float ndev;			/* Normal deviation */
 	float sdev;			/* Standard deviation */
 };
 
 /* OSP Module Global Variables */
 AST_MUTEX_DEFINE_STATIC(osp_lock);							/* Lock of OSP provider list */
 static int osp_initialized = 0;								/* Init flag */
-static int osp_hardware = 0;								/* Hardware accelleration flag */
+static int osp_hardware = 0;								/* Hardware acceleration flag */
 static int osp_security = 0;								/* Using security features flag */
 static struct osp_provider* osp_providers = NULL;			/* OSP provider list */
 static unsigned int osp_tokenformat = TOKEN_ALGO_SIGNED;	/* Token format supported */
@@ -1452,7 +1451,7 @@ static int osp_create_callid(
 
 	if (callid == NULL) {
 		ast_log(LOG_ERROR, "Invalid parameters\n");
-		res = OSP_ERROR;
+		return OSP_ERROR;
 	}
 
 	callid->len = sizeof(callid->buf);
@@ -1463,6 +1462,7 @@ static int osp_create_callid(
 	case OSP_CALLID_SIP:
 	case OSP_CALLID_IAX:
 		res = OSP_FAILED;
+		break;
 	default:
 		res = OSP_ERROR;
 		break;
@@ -1529,7 +1529,7 @@ static int osp_lookup(
 
 	if (results == NULL) {
 		ast_log(LOG_ERROR, "Invalid parameters\n");
-		res = OSP_ERROR;
+		return OSP_ERROR;
 	}
 
 	osp_convert_inout(results->dest, dest, sizeof(dest));
@@ -1787,7 +1787,7 @@ static int osp_lookup(
 /*!
  * \brief OSP Lookup Next function
  * \param name OSP provider name
- * \param cause Asterisk hangup cuase
+ * \param cause Asterisk hangup cause
  * \param results Lookup results, in/output
  * \return OSP_OK Found , OSP_FAILED No route, OSP_ERROR Error
  */
@@ -1809,7 +1809,7 @@ static int osp_next(
 
 	if (results == NULL) {
 		ast_log(LOG_ERROR, "Invalid parameters\n");
-		res = OSP_ERROR;
+		return OSP_ERROR;
 	}
 
 	results->outtech[0] = '\0';
@@ -2270,10 +2270,7 @@ static int ospauth_exec(
 		AST_APP_ARG(options);
 	);
 
-	if (!(tmp = ast_strdupa(data))) {
-		ast_log(LOG_ERROR, "Out of memory\n");
-		return OSP_AST_ERROR;
-	}
+	tmp = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, tmp);
 
@@ -2282,7 +2279,7 @@ static int ospauth_exec(
 	}
 	ast_debug(1, "OSPAuth: provider '%s'\n", provider);
 
-	headp = &chan->varshead;
+	headp = ast_channel_varshead(chan);
 	AST_LIST_TRAVERSE(headp, current, entries) {
 		if (!strcasecmp(ast_var_name(current), "OSPINPEERIP")) {
 			source = ast_var_value(current);
@@ -2295,8 +2292,8 @@ static int ospauth_exec(
 	ast_debug(1, "OSPAuth: token size '%zd'\n", strlen(token));
 
 	res = osp_auth(provider, &handle, source,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL),
-		chan->exten, token, &timelimit);
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL),
+		ast_channel_exten(chan), token, &timelimit);
 	if (res > 0) {
 		status = AST_OSP_SUCCESS;
 	} else {
@@ -2336,7 +2333,7 @@ static int osplookup_exec(
 	struct ast_channel* chan,
 	const char * data)
 {
-	int res, cres;
+	int res;
 	const char* provider = OSP_DEF_PROVIDER;
 	unsigned int callidtypes = OSP_CALLID_UNDEF;
 	struct varshead* headp;
@@ -2365,10 +2362,7 @@ static int osplookup_exec(
 		return OSP_AST_ERROR;
 	}
 
-	if (!(tmp = ast_strdupa(data))) {
-		ast_log(LOG_ERROR, "Out of memory\n");
-		return OSP_AST_ERROR;
-	}
+	tmp = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, tmp);
 
@@ -2409,7 +2403,7 @@ static int osplookup_exec(
 	headers.divhost = "";
 	headers.pciuser = "";
 
-	headp = &chan->varshead;
+	headp = ast_channel_varshead(chan);
 	AST_LIST_TRAVERSE(headp, current, entries) {
 		if (!strcasecmp(ast_var_name(current), "OSPINACTUALSRC")) {
 			actualsrc = ast_var_value(current);
@@ -2504,12 +2498,12 @@ static int osplookup_exec(
 		}
 	}
 
-	if ((cres = ast_autoservice_start(chan)) < 0) {
+	if (ast_autoservice_start(chan) < 0) {
 		return OSP_AST_ERROR;
 	}
 
 	res = osp_lookup(provider, callidtypes, actualsrc, srcdev,
-		S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL),
+		S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL),
 		args.exten, snetid, &np, &headers, cinfo, &results);
 	if (res > 0) {
 		status = AST_OSP_SUCCESS;
@@ -2608,7 +2602,7 @@ static int osplookup_exec(
 		pbx_builtin_setvar_helper(chan, "OSPDIALSTR", buffer);
 	}
 
-	if ((cres = ast_autoservice_stop(chan)) < 0) {
+	if (ast_autoservice_stop(chan) < 0) {
 		return OSP_AST_ERROR;
 	}
 
@@ -2654,10 +2648,7 @@ static int ospnext_exec(
 		return OSP_AST_ERROR;
 	}
 
-	if (!(tmp = ast_strdupa(data))) {
-		ast_log(LOG_ERROR, "Out of memory\n");
-		return OSP_AST_ERROR;
-	}
+	tmp = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, tmp);
 
@@ -2676,7 +2667,7 @@ static int ospnext_exec(
 	results.intimelimit = OSP_DEF_TIMELIMIT;
 	results.numdests = 0;
 
-	headp = &chan->varshead;
+	headp = ast_channel_varshead(chan);
 	AST_LIST_TRAVERSE(headp, current, entries) {
 		if (!strcasecmp(ast_var_name(current), "OSPINHANDLE")) {
 			if (sscanf(ast_var_value(current), "%30d", &results.inhandle) != 1) {
@@ -2836,14 +2827,11 @@ static int ospfinished_exec(
 		AST_APP_ARG(options);
 	);
 
-	if (!(tmp = ast_strdupa(data))) {
-		ast_log(LOG_ERROR, "Out of memory\n");
-		return OSP_AST_ERROR;
-	}
+	tmp = ast_strdupa(data);
 
 	AST_STANDARD_APP_ARGS(args, tmp);
 
-	headp = &chan->varshead;
+	headp = ast_channel_varshead(chan);
 	AST_LIST_TRAVERSE(headp, current, entries) {
 		if (!strcasecmp(ast_var_name(current), "OSPINHANDLE")) {
 			if (sscanf(ast_var_value(current), "%30d", &inhandle) != 1) {
@@ -2878,9 +2866,9 @@ static int ospfinished_exec(
 	}
 	ast_debug(1, "OSPFinish: cause '%d'\n", cause);
 
-	if (chan->cdr) {
-		start = chan->cdr->start.tv_sec;
-		connect = chan->cdr->answer.tv_sec;
+	if (ast_channel_cdr(chan)) {
+		start = ast_channel_cdr(chan)->start.tv_sec;
+		connect = ast_channel_cdr(chan)->answer.tv_sec;
 		if (connect) {
 			end = time(NULL);
 		} else {
@@ -2982,7 +2970,7 @@ static int osp_load(int reload)
 
 		if ((cvar = ast_variable_retrieve(cfg, OSP_GENERAL_CAT, "accelerate")) && ast_true(cvar)) {
 			if ((error = OSPPInit(1)) != OSPC_ERR_NO_ERROR) {
-				ast_log(LOG_WARNING, "OSP: Unable to enable hardware accelleration\n");
+				ast_log(LOG_WARNING, "OSP: Unable to enable hardware acceleration, error='%d'\n", error);
 				OSPPInit(0);
 			} else {
 				osp_hardware = 1;

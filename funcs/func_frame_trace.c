@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 336317 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 366408 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -140,7 +140,7 @@ static struct ast_frame *hook_event_cb(struct ast_channel *chan, struct ast_fram
 	}
 
 	if (show_frame) {
-		ast_verbose("%s on Channel %s\n", event == AST_FRAMEHOOK_EVENT_READ ? "<--Read" : "--> Write", chan->name);
+		ast_verbose("%s on Channel %s\n", event == AST_FRAMEHOOK_EVENT_READ ? "<--Read" : "--> Write", ast_channel_name(chan));
 		print_frame(frame);
 	}
 	return frame;
@@ -323,6 +323,9 @@ static void print_frame(struct ast_frame *frame)
 			break;
 		case AST_CONTROL_UPDATE_RTP_PEER:
 			ast_verbose("SubClass: UPDATE_RTP_PEER\n");
+			break;
+		case AST_CONTROL_PVT_CAUSE_CODE:
+			ast_verbose("SubClass: PVT_CAUSE_CODE\n");
 			break;
 		}
 		

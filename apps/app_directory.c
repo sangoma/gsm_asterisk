@@ -31,7 +31,7 @@
  ***/
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 368751 $")
 
 #include <ctype.h>
 
@@ -248,9 +248,9 @@ static int compare(const char *text, const char *template)
 
 static int goto_exten(struct ast_channel *chan, const char *dialcontext, char *ext)
 {
-	if (!ast_goto_if_exists(chan, S_OR(dialcontext, chan->context), ext, 1) ||
-		(!ast_strlen_zero(chan->macrocontext) &&
-		!ast_goto_if_exists(chan, chan->macrocontext, ext, 1))) {
+	if (!ast_goto_if_exists(chan, S_OR(dialcontext, ast_channel_context(chan)), ext, 1) ||
+		(!ast_strlen_zero(ast_channel_macrocontext(chan)) &&
+		!ast_goto_if_exists(chan, ast_channel_macrocontext(chan), ext, 1))) {
 		return 0;
 	} else {
 		ast_log(LOG_WARNING, "Can't find extension '%s' in current context.  "
@@ -273,13 +273,13 @@ static int play_mailbox_owner(struct ast_channel *chan, const char *context,
 		/* If Option 'e' was specified, also read the extension number with the name */
 		if (ast_test_flag(flags, OPT_SAYEXTENSION)) {
 			ast_stream_and_wait(chan, "vm-extension", AST_DIGIT_ANY);
-			res = ast_say_character_str(chan, ext, AST_DIGIT_ANY, chan->language);
+			res = ast_say_character_str(chan, ext, AST_DIGIT_ANY, ast_channel_language(chan));
 		}
 	} else {
-		res = ast_say_character_str(chan, S_OR(name, ext), AST_DIGIT_ANY, chan->language);
+		res = ast_say_character_str(chan, S_OR(name, ext), AST_DIGIT_ANY, ast_channel_language(chan));
 		if (!ast_strlen_zero(name) && ast_test_flag(flags, OPT_SAYEXTENSION)) {
 			ast_stream_and_wait(chan, "vm-extension", AST_DIGIT_ANY);
-			res = ast_say_character_str(chan, ext, AST_DIGIT_ANY, chan->language);
+			res = ast_say_character_str(chan, ext, AST_DIGIT_ANY, ast_channel_language(chan));
 		}
 	}
 
@@ -292,7 +292,7 @@ static int select_entry(struct ast_channel *chan, const char *dialcontext, const
 
 	if (ast_test_flag(flags, OPT_FROMVOICEMAIL)) {
 		/* We still want to set the exten though */
-		ast_copy_string(chan->exten, item->exten, sizeof(chan->exten));
+		ast_channel_exten_set(chan, item->exten);
 	} else if (ast_goto_if_exists(chan, S_OR(dialcontext, item->context), item->exten, 1)) {
 		ast_log(LOG_WARNING,
 			"Can't find extension '%s' in context '%s'.  "
@@ -383,15 +383,15 @@ static int select_item_menu(struct ast_channel *chan, struct directory_item **it
 
 			snprintf(buf, sizeof(buf), "digits/%d", i + 1);
 			/* Press <num> for <name>, [ extension <ext> ] */
-			res = ast_streamfile(chan, "dir-multi1", chan->language);
+			res = ast_streamfile(chan, "dir-multi1", ast_channel_language(chan));
 			if (!res)
 				res = ast_waitstream(chan, AST_DIGIT_ANY);
 			if (!res)
-				res = ast_streamfile(chan, buf, chan->language);
+				res = ast_streamfile(chan, buf, ast_channel_language(chan));
 			if (!res)
 				res = ast_waitstream(chan, AST_DIGIT_ANY);
 			if (!res)
-				res = ast_streamfile(chan, "dir-multi2", chan->language);
+				res = ast_streamfile(chan, "dir-multi2", ast_channel_language(chan));
 			if (!res)
 				res = ast_waitstream(chan, AST_DIGIT_ANY);
 			if (!res)
@@ -404,7 +404,7 @@ static int select_item_menu(struct ast_channel *chan, struct directory_item **it
 
 		/* Press "9" for more names. */
 		if (!res && count > limit) {
-			res = ast_streamfile(chan, "dir-multi9", chan->language);
+			res = ast_streamfile(chan, "dir-multi9", ast_channel_language(chan));
 			if (!res)
 				res = ast_waitstream(chan, AST_DIGIT_ANY);
 		}
@@ -472,18 +472,19 @@ static struct ast_config *realtime_directory(char *context)
 
 	mailbox = NULL;
 	while ( (mailbox = ast_category_browse(rtdata, mailbox)) ) {
-		const char *context = ast_variable_retrieve(rtdata, mailbox, "context");
+		const char *ctx = ast_variable_retrieve(rtdata, mailbox, "context");
 
 		fullname = ast_variable_retrieve(rtdata, mailbox, "fullname");
-		if (ast_true((hidefromdir = ast_variable_retrieve(rtdata, mailbox, "hidefromdir")))) {
+		hidefromdir = ast_variable_retrieve(rtdata, mailbox, "hidefromdir");
+		if (ast_true(hidefromdir)) {
 			/* Skip hidden */
 			continue;
 		}
 		snprintf(tmp, sizeof(tmp), "no-password,%s", S_OR(fullname, ""));
 
 		/* Does the context exist within the config file? If not, make one */
-		if (!(cat = ast_category_get(cfg, context))) {
-			if (!(cat = ast_category_new(context, "", 99999))) {
+		if (!(cat = ast_category_get(cfg, ctx))) {
+			if (!(cat = ast_category_new(ctx, "", 99999))) {
 				ast_log(LOG_WARNING, "Out of memory\n");
 				ast_config_destroy(cfg);
 				if (rtdata) {
@@ -710,7 +711,7 @@ static int do_directory(struct ast_channel *chan, struct ast_config *vmcfg, stru
 	}
 
 	if (count < 1) {
-		res = ast_streamfile(chan, "dir-nomatch", chan->language);
+		res = ast_streamfile(chan, "dir-nomatch", ast_channel_language(chan));
 		goto exit;
 	}
 
@@ -742,7 +743,7 @@ static int do_directory(struct ast_channel *chan, struct ast_config *vmcfg, stru
 	}
 
 	if (!res) {
-		res = ast_streamfile(chan, "dir-nomore", chan->language);
+		res = ast_streamfile(chan, "dir-nomore", ast_channel_language(chan));
 	}
 
 exit:
@@ -824,7 +825,7 @@ static int directory_exec(struct ast_channel *chan, const char *data)
 	}
 	digits[7] = digit + '0';
 
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if (!ast_test_flag(&flags, OPT_NOANSWER)) {
 			/* Otherwise answer unless we're supposed to read while on-hook */
 			res = ast_answer(chan);

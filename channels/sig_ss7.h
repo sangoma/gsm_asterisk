@@ -142,6 +142,7 @@ struct sig_ss7_callback {
 	void (* const set_alarm)(void *pvt, int in_alarm);
 	void (* const set_dialing)(void *pvt, int is_dialing);
 	void (* const set_digital)(void *pvt, int is_digital);
+	void (* const set_outgoing)(void *pvt, int is_outgoing);
 	void (* const set_inservice)(void *pvt, int is_inservice);
 	void (* const set_locallyblocked)(void *pvt, int is_blocked);
 	void (* const set_remotelyblocked)(void *pvt, int is_blocked);
@@ -149,10 +150,13 @@ struct sig_ss7_callback {
 	void (* const set_dnid)(void *pvt, const char *dnid);
 
 	void (* const queue_control)(void *pvt, int subclass);
+	void (* const open_media)(void *pvt);
 };
 
+/*! Global sig_ss7 callbacks to the upper layer. */
+extern struct sig_ss7_callback sig_ss7_callbacks;
+
 struct sig_ss7_chan {
-	struct sig_ss7_callback *calls;
 	void *chan_pvt;					/*!< Private structure of the user of this module. */
 	struct sig_ss7_linkset *ss7;
 	struct ast_channel *owner;
@@ -248,7 +252,6 @@ struct sig_ss7_chan {
 struct sig_ss7_linkset {
 	pthread_t master;					/*!< Thread of master */
 	ast_mutex_t lock;					/*!< libss7 access lock */
-	struct sig_ss7_callback *calls;
 	struct ss7 *ss7;
 	struct sig_ss7_chan *pvts[SIG_SS7_MAX_CHANNELS];/*!< Member channel pvt structs */
 	int fds[SIG_SS7_NUM_DCHANS];
@@ -282,14 +285,14 @@ void sig_ss7_link_noalarm(struct sig_ss7_linkset *linkset, int which);
 int sig_ss7_add_sigchan(struct sig_ss7_linkset *linkset, int which, int ss7type, int transport, int inalarm, int networkindicator, int pointcode, int adjpointcode);
 
 int sig_ss7_available(struct sig_ss7_chan *p);
-int sig_ss7_call(struct sig_ss7_chan *p, struct ast_channel *ast, char *rdest);
+int sig_ss7_call(struct sig_ss7_chan *p, struct ast_channel *ast, const char *rdest);
 int sig_ss7_hangup(struct sig_ss7_chan *p, struct ast_channel *ast);
 int sig_ss7_answer(struct sig_ss7_chan *p, struct ast_channel *ast);
 void sig_ss7_fixup(struct ast_channel *oldchan, struct ast_channel *newchan, struct sig_ss7_chan *pchan);
 int sig_ss7_indicate(struct sig_ss7_chan *p, struct ast_channel *chan, int condition, const void *data, size_t datalen);
 struct ast_channel *sig_ss7_request(struct sig_ss7_chan *p, enum sig_ss7_law law, const struct ast_channel *requestor, int transfercapability);
 void sig_ss7_chan_delete(struct sig_ss7_chan *doomed);
-struct sig_ss7_chan *sig_ss7_chan_new(void *pvt_data, struct sig_ss7_callback *callback, struct sig_ss7_linkset *ss7);
+struct sig_ss7_chan *sig_ss7_chan_new(void *pvt_data, struct sig_ss7_linkset *ss7);
 void sig_ss7_init_linkset(struct sig_ss7_linkset *ss7);
 
 void sig_ss7_cli_show_channels_header(int fd);

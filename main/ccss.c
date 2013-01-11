@@ -21,9 +21,13 @@
  * \author Mark Michelson <mmichelson@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 321925 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 378347 $")
 
 #include "asterisk/astobj2.h"
 #include "asterisk/strings.h"
@@ -156,6 +160,7 @@ struct ast_cc_config_params {
 	unsigned int cc_max_agents;
 	unsigned int cc_max_monitors;
 	char cc_callback_macro[AST_MAX_EXTENSION];
+	char cc_callback_sub[AST_MAX_EXTENSION];
 	char cc_agent_dialstring[AST_MAX_EXTENSION];
 };
 
@@ -630,10 +635,10 @@ static void ccss_notify_device_state_change(const char *device, enum cc_state st
 	devstate = cc_state_to_devstate(state);
 
 	ast_log_dynamic_level(cc_logger_level,
-		"Notification of CCSS state change to '%s', device state '%s' for device '%s'",
+		"Notification of CCSS state change to '%s', device state '%s' for device '%s'\n",
 		cc_state_to_string(state), ast_devstate2str(devstate), device);
 
-	ast_devstate_changed(devstate, "ccss:%s", device);
+	ast_devstate_changed(devstate, AST_DEVSTATE_CACHABLE, "ccss:%s", device);
 }
 
 #define CC_OFFER_TIMER_DEFAULT			20		/* Seconds */
@@ -654,6 +659,7 @@ static const struct ast_cc_config_params cc_default_params = {
 	.cc_max_agents = CC_MAX_AGENTS_DEFAULT,
 	.cc_max_monitors = CC_MAX_MONITORS_DEFAULT,
 	.cc_callback_macro = "",
+	.cc_callback_sub = "",
 	.cc_agent_dialstring = "",
 };
 
@@ -751,6 +757,8 @@ int ast_cc_get_param(struct ast_cc_config_params *params, const char * const nam
 
 	if (!strcasecmp(name, "cc_callback_macro")) {
 		value = ast_get_cc_callback_macro(params);
+	} else if (!strcasecmp(name, "cc_callback_sub")) {
+		value = ast_get_cc_callback_sub(params);
 	} else if (!strcasecmp(name, "cc_agent_policy")) {
 		value = agent_policy_to_str(ast_get_cc_agent_policy(params));
 	} else if (!strcasecmp(name, "cc_monitor_policy")) {
@@ -800,6 +808,9 @@ int ast_cc_set_param(struct ast_cc_config_params *params, const char * const nam
 	} else if (!strcasecmp(name, "cc_callback_macro")) {
 		ast_set_cc_callback_macro(params, value);
 		return 0;
+	} else if (!strcasecmp(name, "cc_callback_sub")) {
+		ast_set_cc_callback_sub(params, value);
+		return 0;
 	}
 
 	if (!sscanf(value, "%30u", &value_as_uint) == 1) {
@@ -836,6 +847,7 @@ int ast_cc_is_config_param(const char * const name)
 				!strcasecmp(name, "cc_max_agents") ||
 				!strcasecmp(name, "cc_max_monitors") ||
 				!strcasecmp(name, "cc_callback_macro") ||
+				!strcasecmp(name, "cc_callback_sub") ||
 				!strcasecmp(name, "cc_agent_dialstring") ||
 				!strcasecmp(name, "cc_recall_timer"));
 }
@@ -978,12 +990,27 @@ const char *ast_get_cc_callback_macro(struct ast_cc_config_params *config)
 	return config->cc_callback_macro;
 }
 
+const char *ast_get_cc_callback_sub(struct ast_cc_config_params *config)
+{
+	return config->cc_callback_sub;
+}
+
 void ast_set_cc_callback_macro(struct ast_cc_config_params *config, const char * const value)
 {
+	ast_log(LOG_WARNING, "Usage of cc_callback_macro is deprecated.  Please use cc_callback_sub instead.\n");
 	if (ast_strlen_zero(value)) {
 		config->cc_callback_macro[0] = '\0';
 	} else {
 		ast_copy_string(config->cc_callback_macro, value, sizeof(config->cc_callback_macro));
+	}
+}
+
+void ast_set_cc_callback_sub(struct ast_cc_config_params *config, const char * const value)
+{
+	if (ast_strlen_zero(value)) {
+		config->cc_callback_sub[0] = '\0';
+	} else {
+		ast_copy_string(config->cc_callback_sub, value, sizeof(config->cc_callback_sub));
 	}
 }
 
@@ -1209,7 +1236,10 @@ static int generic_monitor_cmp_fn(void *obj, void *arg, int flags)
 
 static struct generic_monitor_instance_list *find_generic_monitor_instance_list(const char * const device_name)
 {
-	struct generic_monitor_instance_list finder = {.device_name = device_name};
+	struct generic_monitor_instance_list finder = {0};
+	char *uppertech = ast_strdupa(device_name);
+	ast_tech_to_upper(uppertech);
+	finder.device_name = uppertech;
 
 	return ao2_t_find(generic_monitors, &finder, OBJ_POINTER, "Finding generic monitor instance list");
 }
@@ -1231,15 +1261,18 @@ static struct generic_monitor_instance_list *create_new_generic_list(struct ast_
 {
 	struct generic_monitor_instance_list *generic_list = ao2_t_alloc(sizeof(*generic_list),
 			generic_monitor_instance_list_destructor, "allocate generic monitor instance list");
+	char * device_name;
 
 	if (!generic_list) {
 		return NULL;
 	}
 
-	if (!(generic_list->device_name = ast_strdup(monitor->interface->device_name))) {
+	if (!(device_name = ast_strdup(monitor->interface->device_name))) {
 		cc_unref(generic_list, "Failed to strdup the monitor's device name");
 		return NULL;
 	}
+	ast_tech_to_upper(device_name);
+	generic_list->device_name = device_name;
 
 	if (!(generic_list->sub = ast_event_subscribe(AST_EVENT_DEVICE_STATE,
 		generic_monitor_devstate_cb, "Requesting CC", NULL,
@@ -1981,7 +2014,7 @@ static int cc_interfaces_datastore_init(struct ast_channel *chan) {
 		return -1;
 	}
 
-	if (!(monitor = cc_extension_monitor_init(S_OR(chan->macroexten, chan->exten), S_OR(chan->macrocontext, chan->context), 0))) {
+	if (!(monitor = cc_extension_monitor_init(S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)), S_OR(ast_channel_macrocontext(chan), ast_channel_context(chan)), 0))) {
 		ast_free(interfaces);
 		return -1;
 	}
@@ -2278,7 +2311,7 @@ int ast_cc_call_init(struct ast_channel *chan, int *ignore_cc)
 		 */
 		*ignore_cc = 1;
 		ast_channel_unlock(chan);
-		ast_log_dynamic_level(cc_logger_level, "Agent policy for %s is 'never'. CC not possible\n", chan->name);
+		ast_log_dynamic_level(cc_logger_level, "Agent policy for %s is 'never'. CC not possible\n", ast_channel_name(chan));
 		return 0;
 	}
 
@@ -2298,8 +2331,8 @@ int ast_cc_call_init(struct ast_channel *chan, int *ignore_cc)
 	}
 
 	/* Situation 2 has occurred */
-	if (!(monitor = cc_extension_monitor_init(S_OR(chan->macroexten, chan->exten),
-			S_OR(chan->macrocontext, chan->context), interfaces->dial_parent_id))) {
+	if (!(monitor = cc_extension_monitor_init(S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)),
+			S_OR(ast_channel_macrocontext(chan), ast_channel_context(chan)), interfaces->dial_parent_id))) {
 		return -1;
 	}
 	monitor->core_id = interfaces->core_id;
@@ -2508,14 +2541,14 @@ static int cc_generic_agent_init(struct ast_cc_agent *agent, struct ast_channel 
 	}
 
 	generic_pvt->offer_timer_id = -1;
-	if (chan->caller.id.number.valid && chan->caller.id.number.str) {
-		ast_copy_string(generic_pvt->cid_num, chan->caller.id.number.str, sizeof(generic_pvt->cid_num));
+	if (ast_channel_caller(chan)->id.number.valid && ast_channel_caller(chan)->id.number.str) {
+		ast_copy_string(generic_pvt->cid_num, ast_channel_caller(chan)->id.number.str, sizeof(generic_pvt->cid_num));
 	}
-	if (chan->caller.id.name.valid && chan->caller.id.name.str) {
-		ast_copy_string(generic_pvt->cid_name, chan->caller.id.name.str, sizeof(generic_pvt->cid_name));
+	if (ast_channel_caller(chan)->id.name.valid && ast_channel_caller(chan)->id.name.str) {
+		ast_copy_string(generic_pvt->cid_name, ast_channel_caller(chan)->id.name.str, sizeof(generic_pvt->cid_name));
 	}
-	ast_copy_string(generic_pvt->exten, S_OR(chan->macroexten, chan->exten), sizeof(generic_pvt->exten));
-	ast_copy_string(generic_pvt->context, S_OR(chan->macrocontext, chan->context), sizeof(generic_pvt->context));
+	ast_copy_string(generic_pvt->exten, S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)), sizeof(generic_pvt->exten));
+	ast_copy_string(generic_pvt->context, S_OR(ast_channel_macrocontext(chan), ast_channel_context(chan)), sizeof(generic_pvt->context));
 	agent->private_data = generic_pvt;
 	ast_set_flag(agent, AST_CC_AGENT_SKIP_OFFER);
 	return 0;
@@ -2651,6 +2684,7 @@ static void *generic_recall(void *data)
 	int reason;
 	struct ast_channel *chan;
 	const char *callback_macro = ast_get_cc_callback_macro(agent->cc_params);
+	const char *callback_sub = ast_get_cc_callback_sub(agent->cc_params);
 	unsigned int recall_timer = ast_get_cc_recall_timer(agent->cc_params) * 1000;
 	struct ast_format tmp_fmt;
 	struct ast_format_cap *tmp_cap = ast_format_cap_alloc_nolock();
@@ -2684,9 +2718,9 @@ static void *generic_recall(void *data)
 	ast_setup_cc_recall_datastore(chan, agent->core_id);
 	ast_cc_agent_set_interfaces_chanvar(chan);
 
-	ast_copy_string(chan->exten, generic_pvt->exten, sizeof(chan->exten));
-	ast_copy_string(chan->context, generic_pvt->context, sizeof(chan->context));
-	chan->priority = 1;
+	ast_channel_exten_set(chan, generic_pvt->exten);
+	ast_channel_context_set(chan, generic_pvt->context);
+	ast_channel_priority_set(chan, 1);
 
 	pbx_builtin_setvar_helper(chan, "CC_EXTEN", generic_pvt->exten);
 	pbx_builtin_setvar_helper(chan, "CC_CONTEXT", generic_pvt->context);
@@ -2694,14 +2728,29 @@ static void *generic_recall(void *data)
 	if (!ast_strlen_zero(callback_macro)) {
 		ast_log_dynamic_level(cc_logger_level, "Core %d: There's a callback macro configured for agent %s\n",
 				agent->core_id, agent->device_name);
-		if (ast_app_run_macro(NULL, chan, callback_macro, NULL)) {
+		if (ast_app_exec_macro(NULL, chan, callback_macro)) {
 			ast_cc_failed(agent->core_id, "Callback macro to %s failed. Maybe a hangup?", agent->device_name);
 			ast_hangup(chan);
 			return NULL;
 		}
 	}
-	ast_cc_agent_recalling(agent->core_id, "Generic agent %s is recalling", agent->device_name);
-	ast_pbx_start(chan);
+
+	if (!ast_strlen_zero(callback_sub)) {
+		ast_log_dynamic_level(cc_logger_level, "Core %d: There's a callback subroutine configured for agent %s\n",
+				agent->core_id, agent->device_name);
+		if (ast_app_exec_sub(NULL, chan, callback_sub, 0)) {
+			ast_cc_failed(agent->core_id, "Callback subroutine to %s failed. Maybe a hangup?", agent->device_name);
+			ast_hangup(chan);
+			return NULL;
+		}
+	}
+	if (ast_pbx_start(chan)) {
+		ast_cc_failed(agent->core_id, "PBX failed to start for %s.", agent->device_name);
+		ast_hangup(chan);
+		return NULL;
+	}
+	ast_cc_agent_recalling(agent->core_id, "Generic agent %s is recalling",
+		agent->device_name);
 	return NULL;
 }
 
@@ -3236,7 +3285,7 @@ static void cc_recall_ds_destroy(void *data)
 	ast_free(recall_data);
 }
 
-static struct ast_datastore_info recall_ds_info = {
+static const struct ast_datastore_info recall_ds_info = {
 	.type = "cc_recall",
 	.duplicate = cc_recall_ds_duplicate,
 	.destroy = cc_recall_ds_destroy,
@@ -3395,7 +3444,7 @@ struct ast_cc_monitor *ast_cc_get_monitor_by_recall_core_id(const int core_id, c
  * \param dialstring A new dialstring to add
  * \retval void
  */
-static void cc_unique_append(struct ast_str *str, const char *dialstring)
+static void cc_unique_append(struct ast_str **str, const char *dialstring)
 {
 	char dialstring_search[AST_CHANNEL_NAME];
 
@@ -3404,10 +3453,10 @@ static void cc_unique_append(struct ast_str *str, const char *dialstring)
 		return;
 	}
 	snprintf(dialstring_search, sizeof(dialstring_search), "%s%c", dialstring, '&');
-	if (strstr(ast_str_buffer(str), dialstring_search)) {
+	if (strstr(ast_str_buffer(*str), dialstring_search)) {
 		return;
 	}
-	ast_str_append(&str, 0, "%s", dialstring_search);
+	ast_str_append(str, 0, "%s", dialstring_search);
 }
 
 /*!
@@ -3425,7 +3474,7 @@ static void cc_unique_append(struct ast_str *str, const char *dialstring)
  * \param str Where we will store CC_INTERFACES
  * \retval void
  */
-static void build_cc_interfaces_chanvar(struct ast_cc_monitor *starting_point, struct ast_str *str)
+static void build_cc_interfaces_chanvar(struct ast_cc_monitor *starting_point, struct ast_str **str)
 {
 	struct extension_monitor_pvt *extension_pvt;
 	struct extension_child_dialstring *child_dialstring;
@@ -3434,7 +3483,7 @@ static void build_cc_interfaces_chanvar(struct ast_cc_monitor *starting_point, s
 	size_t length;
 
 	/* Init to an empty string. */
-	ast_str_truncate(str, 0);
+	ast_str_truncate(*str, 0);
 
 	/* First we need to take all of the is_valid child_dialstrings from
 	 * the extension monitor we found and add them to the CC_INTERFACES
@@ -3457,9 +3506,9 @@ static void build_cc_interfaces_chanvar(struct ast_cc_monitor *starting_point, s
 	/* str will have an extra '&' tacked onto the end of it, so we need
 	 * to get rid of that.
 	 */
-	length = ast_str_strlen(str);
+	length = ast_str_strlen(*str);
 	if (length) {
-		ast_str_truncate(str, length - 1);
+		ast_str_truncate(*str, length - 1);
 	}
 	if (length <= 1) {
 		/* Nothing to recall?  This should not happen. */
@@ -3494,7 +3543,7 @@ int ast_cc_agent_set_interfaces_chanvar(struct ast_channel *chan)
 
 	AST_LIST_LOCK(interface_tree);
 	monitor = AST_LIST_FIRST(interface_tree);
-	build_cc_interfaces_chanvar(monitor, str);
+	build_cc_interfaces_chanvar(monitor, &str);
 	AST_LIST_UNLOCK(interface_tree);
 
 	pbx_builtin_setvar_helper(chan, "CC_INTERFACES", ast_str_buffer(str));
@@ -3546,7 +3595,7 @@ int ast_set_cc_interfaces_chanvar(struct ast_channel *chan, const char * const e
 		return -1;
 	}
 
-	build_cc_interfaces_chanvar(monitor_iter, str);
+	build_cc_interfaces_chanvar(monitor_iter, &str);
 	AST_LIST_UNLOCK(interface_tree);
 
 	pbx_builtin_setvar_helper(chan, "CC_INTERFACES", ast_str_buffer(str));
@@ -3608,7 +3657,7 @@ int ast_cc_offer(struct ast_channel *caller_chan)
 	ast_channel_unlock(caller_chan);
 
 	if (cc_is_offerable) {
-		res = cc_offer(core_id, "CC offered to caller %s", caller_chan->name);
+		res = cc_offer(core_id, "CC offered to caller %s", ast_channel_name(caller_chan));
 	}
 	return res;
 }
@@ -4045,7 +4094,7 @@ void ast_cc_call_failed(struct ast_channel *incoming, struct ast_channel *outgoi
 	struct cc_control_payload payload;
 	struct ast_cc_config_params *cc_params;
 
-	if (outgoing->hangupcause != AST_CAUSE_BUSY && outgoing->hangupcause != AST_CAUSE_CONGESTION) {
+	if (ast_channel_hangupcause(outgoing) != AST_CAUSE_BUSY && ast_channel_hangupcause(outgoing) != AST_CAUSE_CONGESTION) {
 		/* It doesn't make sense to try to offer CCBS to the caller if the reason for ast_call
 		 * failing is something other than busy or congestion
 		 */
@@ -4469,6 +4518,32 @@ static struct ast_cli_entry cc_cli[] = {
 	AST_CLI_DEFINE(handle_cc_kill, "Kill a CC transaction"),
 };
 
+static void cc_shutdown(void)
+{
+	ast_devstate_prov_del("ccss");
+	ast_cc_agent_unregister(&generic_agent_callbacks);
+	ast_cc_monitor_unregister(&generic_monitor_cbs);
+	ast_unregister_application(cccancel_app);
+	ast_unregister_application(ccreq_app);
+
+	if (cc_sched_context) {
+		ast_sched_context_destroy(cc_sched_context);
+		cc_sched_context = NULL;
+	}
+	if (cc_core_taskprocessor) {
+		cc_core_taskprocessor = ast_taskprocessor_unreference(cc_core_taskprocessor);
+	}
+	/* Note that core instances must be destroyed prior to the generic_monitors */
+	if (cc_core_instances) {
+		ao2_t_ref(cc_core_instances, -1, "Unref cc_core_instances container in cc_shutdown");
+		cc_core_instances = NULL;
+	}
+	if (generic_monitors) {
+		ao2_t_ref(generic_monitors, -1, "Unref generic_monitor container in cc_shutdown");
+		generic_monitors = NULL;
+	}
+}
+
 int ast_cc_init(void)
 {
 	int res;
@@ -4505,6 +4580,8 @@ int ast_cc_init(void)
 	/* Read the map and register the device state callback for generic agents */
 	initialize_cc_devstate_map();
 	res |= ast_devstate_prov_add("ccss", ccss_device_state);
+
+	ast_register_atexit(cc_shutdown);
 
 	return res;
 }

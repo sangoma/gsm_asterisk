@@ -27,7 +27,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362307 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -127,7 +127,7 @@ static int group_count_function_read(struct ast_channel *chan, const char *cmd,
 	}
 
 	if ((count = ast_app_group_get_count(group, category)) == -1) {
-		ast_log(LOG_NOTICE, "No group could be found for channel '%s'\n", chan->name);
+		ast_log(LOG_NOTICE, "No group could be found for channel '%s'\n", ast_channel_name(chan));
 	} else {
 		snprintf(buf, len, "%d", count);
 		ret = 0;
@@ -146,7 +146,6 @@ static int group_match_count_function_read(struct ast_channel *chan,
 					   const char *cmd, char *data, char *buf,
 					   size_t len)
 {
-	int count;
 	char group[80] = "";
 	char category[80] = "";
 
@@ -154,6 +153,7 @@ static int group_match_count_function_read(struct ast_channel *chan,
 				  sizeof(category));
 
 	if (!ast_strlen_zero(group)) {
+		int count;
 		count = ast_app_group_match_get_count(group, category);
 		snprintf(buf, len, "%d", count);
 		return 0;

@@ -170,23 +170,25 @@ void ooGkClientPrintConfig(ooGkClient *pGkClient)
 
 int ooGkClientDestroy(void)
 {
+   ooGkClient *pGkClient = gH323ep.gkClient;
+
    if(gH323ep.gkClient)
    {
-      if(gH323ep.gkClient->state == GkClientRegistered)
+      ast_mutex_lock(&pGkClient->Lock);
+      gH323ep.gkClient = NULL;
+      if(pGkClient->state == GkClientRegistered)
       {
          OOTRACEINFO1("Unregistering from Gatekeeper\n");
-         if(ooGkClientSendURQ(gH323ep.gkClient, NULL)!=OO_OK)
+         if(ooGkClientSendURQ(pGkClient, NULL)!=OO_OK)
             OOTRACEERR1("Error:Failed to send URQ to gatekeeper\n");
       }
       OOTRACEINFO1("Destroying Gatekeeper Client\n");
-      ooGkClientCloseChannel(gH323ep.gkClient);
-      freeContext(&gH323ep.gkClient->msgCtxt);
-      freeContext(&gH323ep.gkClient->ctxt);
-      ast_mutex_lock(&gH323ep.gkClient->Lock);
-      ast_mutex_unlock(&gH323ep.gkClient->Lock);
-      ast_mutex_destroy(&gH323ep.gkClient->Lock);
-      memFreePtr(&gH323ep.ctxt, gH323ep.gkClient);
-      gH323ep.gkClient = NULL;
+      ooGkClientCloseChannel(pGkClient);
+      freeContext(&pGkClient->msgCtxt);
+      freeContext(&pGkClient->ctxt);
+      ast_mutex_unlock(&pGkClient->Lock);
+      ast_mutex_destroy(&pGkClient->Lock);
+      memFreePtr(&gH323ep.ctxt, pGkClient);
    }
    return OO_OK;
 }
@@ -365,7 +367,7 @@ void ooGkClientFillVendor
 
 int ooGkClientReceive(ooGkClient *pGkClient)
 {
-   ASN1OCTET recvBuf[1024];
+   ASN1OCTET recvBuf[ASN_K_ENCBUFSIZ];
    int recvLen;
    char remoteHost[32];
    int iFromPort=0;
@@ -376,7 +378,7 @@ int ooGkClientReceive(ooGkClient *pGkClient)
    ast_mutex_lock(&pGkClient->Lock);
    pctxt = &pGkClient->msgCtxt;
 
-   recvLen = ooSocketRecvFrom(pGkClient->rasSocket, recvBuf, 1024, remoteHost,
+   recvLen = ooSocketRecvFrom(pGkClient->rasSocket, recvBuf, 2048, remoteHost,
                               32, &iFromPort);
    if(recvLen <0)
    {
@@ -810,6 +812,9 @@ int ooGkClientHandleGatekeeperConfirm
    if(pGatekeeperConfirm->m.gatekeeperIdentifierPresent) 
    {
       pGkClient->gkId.nchars = pGatekeeperConfirm->gatekeeperIdentifier.nchars;
+      if (pGkClient->gkId.data) {
+         memFreePtr(&pGkClient->ctxt, pGkClient->gkId.data);
+      }
       pGkClient->gkId.data = (ASN116BITCHAR*)memAlloc(&pGkClient->ctxt,
                               sizeof(ASN116BITCHAR)*pGkClient->gkId.nchars);
       if(!pGkClient->gkId.data)
@@ -859,7 +864,6 @@ int ooGkClientHandleGatekeeperConfirm
          memFreePtr(&pGkClient->ctxt, pTimer->cbData);
          ooTimerDelete(&pGkClient->ctxt, &pGkClient->timerList, pTimer);
          OOTRACEDBGA1("Deleted GRQ Timer.\n");
-         break;
       }
    }
 
@@ -1064,7 +1068,7 @@ int ooGkClientSendRRQ(ooGkClient *pGkClient, ASN1BOOL keepAlive)
          allocate storage for endpoint-identifier, and populate it from what the
          GK told us from the previous RCF. Only allocate on the first pass thru here */
       pRegReq->endpointIdentifier.data = 
-           (ASN116BITCHAR*)memAlloc(pctxt, pGkClient->gkId.nchars*sizeof(ASN116BITCHAR));
+           (ASN116BITCHAR*)memAlloc(pctxt, pGkClient->endpointId.nchars*sizeof(ASN116BITCHAR));
       if (pRegReq->endpointIdentifier.data) {
          pRegReq->endpointIdentifier.nchars = pGkClient->endpointId.nchars;
          pRegReq->m.endpointIdentifierPresent = TRUE;
@@ -1137,6 +1141,8 @@ int ooGkClientHandleRegistrationConfirm
    ooGkClientTimerCb *cbData;
    ASN1UINT regTTL=0;
    /* Extract Endpoint Id */
+   if (pGkClient->endpointId.data)
+	memFreePtr(&pGkClient->ctxt, pGkClient->endpointId.data);
    pGkClient->endpointId.nchars = 
                               pRegistrationConfirm->endpointIdentifier.nchars;
    pGkClient->endpointId.data = (ASN116BITCHAR*)memAlloc(&pGkClient->ctxt,
@@ -1279,6 +1285,8 @@ int ooGkClientHandleRegistrationReject
    unsigned int x=0;
    DListNode *pNode = NULL;
    OOTimer *pTimer = NULL;
+   ooGkClientTimerCb *cbData=NULL;
+
    /* First delete the corresponding RRQ timer */
    for(x=0; x<pGkClient->timerList.count; x++)
    {
@@ -1289,7 +1297,6 @@ int ooGkClientHandleRegistrationReject
          memFreePtr(&pGkClient->ctxt, pTimer->cbData);
          ooTimerDelete(&pGkClient->ctxt, &pGkClient->timerList, pTimer);
          OOTRACEDBGA1("Deleted RRQ Timer.\n");
-         break;
       }
    }
 
@@ -1369,8 +1376,40 @@ int ooGkClientHandleRegistrationReject
    default:
       OOTRACEINFO1("RRQ Rejected - Invalid Reason\n");
    }
-   pGkClient->state = GkClientGkErr;
+
+   /* send again GRQ/RRQ's */
+   ast_mutex_lock(&pGkClient->Lock);
+   pGkClient->state = GkClientUnregistered;
+   pGkClient->rrqRetries = 0;
+   pGkClient->grqRetries = 0;
+   pGkClient->discoveryComplete = FALSE;
+
+   cbData = (ooGkClientTimerCb*) memAlloc
+                               (&pGkClient->ctxt, sizeof(ooGkClientTimerCb));
+   if(!cbData)
+   {
+      OOTRACEERR1("Error:Failed to allocate memory to GRQ timer callback\n");
+      pGkClient->state = GkClientFailed;
+      ast_mutex_unlock(&pGkClient->Lock);
+      return OO_FAILED;
+   }
+   cbData->timerType = OO_GRQ_TIMER;
+   cbData->pGkClient = pGkClient;
+   if(!ooTimerCreate(&pGkClient->ctxt, &pGkClient->timerList,
+                     &ooGkClientGRQTimerExpired, pGkClient->grqTimeout,
+                     cbData, FALSE))
+   {
+      OOTRACEERR1("Error:Unable to create GRQ timer.\n ");
+      memFreePtr(&pGkClient->ctxt, cbData);
+      pGkClient->state = GkClientFailed;
+      ast_mutex_unlock(&pGkClient->Lock);
+      return OO_FAILED;
+   }
+
+   ast_mutex_unlock(&pGkClient->Lock);
+
    return OO_OK;
+
 }
 
 

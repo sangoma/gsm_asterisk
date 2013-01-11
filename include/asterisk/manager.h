@@ -54,8 +54,9 @@
 - \ref manager.c Main manager code file
  */
 
-#define AMI_VERSION                     "1.2"
+#define AMI_VERSION                     "1.3"
 #define DEFAULT_MANAGER_PORT 5038	/* Default port for Asterisk management via TCP */
+#define DEFAULT_MANAGER_TLS_PORT 5039	/* Default port for Asterisk management via TCP */
 
 /*! \name Constant return values
  *\note Currently, returning anything other than zero causes the session to terminate.
@@ -85,6 +86,8 @@
 #define EVENT_FLAG_CC			(1 << 15) /* Call Completion events */
 #define EVENT_FLAG_AOC			(1 << 16) /* Advice Of Charge events */
 #define EVENT_FLAG_TEST			(1 << 17) /* Test event used to signal the Asterisk Test Suite */
+/*XXX Why shifted by 30? XXX */
+#define EVENT_FLAG_MESSAGE		(1 << 30) /* MESSAGE events. */
 /*@} */
 
 /*! \brief Export manager structures */
@@ -148,6 +151,7 @@ struct manager_action {
 	int authority;
 	/*! Function to be called */
 	int (*func)(struct mansession *s, const struct message *m);
+	struct ast_module *module;		/*!< Module this action belongs to */
 	/*! Where the documentation come from. */
 	enum ast_doc_src docsrc;
 	/*! For easy linking */
@@ -163,29 +167,44 @@ struct manager_action {
 
 /*! \brief External routines may register/unregister manager callbacks this way 
  * \note  Use ast_manager_register2() to register with help text for new manager commands */
-#define ast_manager_register(a, b, c, d) ast_manager_register2(a, b, c, d, NULL)
+#define ast_manager_register(action, authority, func, synopsis) ast_manager_register2(action, authority, func, ast_module_info->self, synopsis, NULL)
 
 /*! \brief Register a manager callback using XML documentation to describe the manager. */
-#define ast_manager_register_xml(a, b, c) ast_manager_register2(a, b, c, NULL, NULL)
+#define ast_manager_register_xml(action, authority, func) ast_manager_register2(action, authority, func, ast_module_info->self, NULL, NULL)
 
-/*! \brief Register a manager command with the manager interface 
- 	\param action Name of the requested Action:
-	\param authority Required authority for this command
-	\param func Function to call for this command
-	\param synopsis Help text (one line, up to 30 chars) for CLI manager show commands
-	\param description Help text, several lines
-*/
+/*!
+ * \brief Register a manager callback using XML documentation to describe the manager.
+ *
+ * \note For Asterisk core modules that are not independently
+ * loadable.
+ *
+ * \warning If you use ast_manager_register_xml() instead when
+ * you need to use this function, Asterisk will crash on load.
+ */
+#define ast_manager_register_xml_core(action, authority, func) ast_manager_register2(action, authority, func, NULL, NULL, NULL)
+
+/*!
+ * \brief Register a manager command with the manager interface
+ * \param action Name of the requested Action:
+ * \param authority Required authority for this command
+ * \param func Function to call for this command
+ * \param module The module containing func.  (NULL if module is part of core and not loadable)
+ * \param synopsis Help text (one line, up to 30 chars) for CLI manager show commands
+ * \param description Help text, several lines
+ */
 int ast_manager_register2(
 	const char *action,
 	int authority,
 	int (*func)(struct mansession *s, const struct message *m),
+	struct ast_module *module,
 	const char *synopsis,
 	const char *description);
 
-/*! \brief Unregister a registered manager command 
-	\param action Name of registered Action:
-*/
-int ast_manager_unregister( char *action );
+/*!
+ * \brief Unregister a registered manager command
+ * \param action Name of registered Action:
+ */
+int ast_manager_unregister(const char *action);
 
 /*! 
  * \brief Verify a session's read permissions against a permission mask.  
@@ -243,6 +262,9 @@ struct ast_variable *astman_get_variables(const struct message *m);
 
 /*! \brief Send error in manager transaction */
 void astman_send_error(struct mansession *s, const struct message *m, char *error);
+
+/*! \brief Send error in manager transaction (with va_args support) */
+void __attribute__((format(printf, 3, 4))) astman_send_error_va(struct mansession *s, const struct message *m, const char *fmt, ...);
 
 /*! \brief Send response in manager transaction */
 void astman_send_response(struct mansession *s, const struct message *m, char *resp, char *msg);

@@ -38,7 +38,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337262 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370951 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -120,6 +120,14 @@ static int originate_exec(struct ast_channel *chan, const char *data)
 		goto return_cleanup;
 	}
 	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR12, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR16, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR24, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR32, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR44, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR48, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR96, 0));
+	ast_format_cap_add(cap_slin, ast_format_set(&tmpfmt, AST_FORMAT_SLINEAR192, 0));
 
 	if (ast_strlen_zero(data)) {
 		ast_log(LOG_ERROR, "Originate() requires arguments\n");
@@ -170,7 +178,7 @@ static int originate_exec(struct ast_channel *chan, const char *data)
 
 		ast_pbx_outgoing_exten(chantech, cap_slin, chandata,
 				timeout * 1000, args.arg1, exten, priority, &outgoing_status, 0, NULL,
-				NULL, NULL, NULL, NULL);
+				NULL, NULL, NULL, NULL, 0);
 	} else if (!strcasecmp(args.type, "app")) {
 		ast_debug(1, "Originating call to '%s/%s' and connecting them to %s(%s)\n",
 				chantech, chandata, args.arg1, S_OR(args.arg2, ""));

@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 378347 $")
 
 #include "asterisk/module.h"
 #include "asterisk/channel.h"
@@ -132,7 +132,7 @@ static int devstate_write(struct ast_channel *chan, const char *cmd, char *data,
 
 	ast_db_put(astdb_family, data, value);
 
-	ast_devstate_changed(state_val, "Custom:%s", data);
+	ast_devstate_changed(state_val, AST_DEVSTATE_CACHABLE, "Custom:%s", data);
 
 	return 0;
 }
@@ -187,6 +187,7 @@ static enum ast_device_state custom_devstate_callback(const char *data)
 {
 	char buf[256] = "";
 
+	/* Ignore check_return warning from Coverity fow ast_db_get below */
 	ast_db_get(astdb_family, data, buf, sizeof(buf));
 
 	return ast_devstate_val(buf);
@@ -250,7 +251,7 @@ static char *handle_cli_devstate_change(struct ast_cli_entry *e, int cmd, struct
 			"       Change a custom device to a new state.\n"
 			"       The possible values for the state are:\n"
 			"UNKNOWN | NOT_INUSE | INUSE | BUSY | INVALID | UNAVAILABLE | RINGING\n"
-			"RINGINUSE | ONHOLD\n",
+			"RINGINUSE | ONHOLD\n"
 			"\n"
 			"Examples:\n"
 			"       devstate change Custom:mystate1 INUSE\n"
@@ -294,7 +295,7 @@ static char *handle_cli_devstate_change(struct ast_cli_entry *e, int cmd, struct
 
 	ast_db_put(astdb_family, dev, state);
 
-	ast_devstate_changed(state_val, "Custom:%s", dev);
+	ast_devstate_changed(state_val, AST_DEVSTATE_CACHABLE, "Custom:%s", dev);
 
 	return CLI_SUCCESS;
 }
@@ -340,7 +341,7 @@ static int load_module(void)
 		if (dev_name <= (const char *) 1)
 			continue;
 		ast_devstate_changed(ast_devstate_val(db_entry->data),
-			"Custom:%s\n", dev_name);
+			AST_DEVSTATE_CACHABLE, "Custom:%s\n", dev_name);
 	}
 	ast_db_freetree(db_tree);
 	db_tree = NULL;

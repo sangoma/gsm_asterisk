@@ -25,9 +25,13 @@
  * \author Russell Bryant <russell@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332844 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370598 $");
 
 #include "asterisk/_private.h"
 
@@ -38,7 +42,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332844 $");
 #include "asterisk/utils.h"
 #include "asterisk/cli.h"
 #include "asterisk/term.h"
-#include "asterisk/version.h"
+#include "asterisk/ast_version.h"
 #include "asterisk/paths.h"
 #include "asterisk/time.h"
 #include "asterisk/manager.h"
@@ -386,14 +390,14 @@ static int test_generate_results(const char *name, const char *category, const c
 				last_results.total_time / 1000, last_results.total_time % 1000,
 				last_results.total_tests);
 		fprintf(f_xml, "\t<properties>\n");
-		fprintf(f_xml, "\t\t<property name=\"version\" value=\"%s\"/>\n", ASTERISK_VERSION);
+		fprintf(f_xml, "\t\t<property name=\"version\" value=\"%s\"/>\n", ast_get_version());
 		fprintf(f_xml, "\t</properties>\n");
 	}
 
 	/* txt header information */
 	if (f_txt) {
-		fprintf(f_txt, "Asterisk Version:         %s\n", ASTERISK_VERSION);
-		fprintf(f_txt, "Asterisk Version Number:  %d\n", ASTERISK_VERSION_NUM);
+		fprintf(f_txt, "Asterisk Version:         %s\n", ast_get_version());
+		fprintf(f_txt, "Asterisk Version Number:  %s\n", ast_get_version_num());
 		fprintf(f_txt, "Number of Tests:          %d\n", last_results.total_tests);
 		fprintf(f_txt, "Number of Tests Executed: %d\n", (last_results.total_passed + last_results.total_failed));
 		fprintf(f_txt, "Passed Tests:             %d\n", last_results.total_passed);
@@ -549,18 +553,18 @@ static struct ast_test *test_alloc(ast_test_cb_t *cb)
 	}
 
 	if (test->info.category[0] != '/' || test->info.category[strlen(test->info.category) - 1] != '/') {
-		ast_log(LOG_WARNING, "Test category is missing a leading or trailing backslash for test %s%s\n",
+		ast_log(LOG_WARNING, "Test category '%s' for test '%s' is missing a leading or trailing slash.\n",
 				test->info.category, test->info.name);
 	}
 
 	if (ast_strlen_zero(test->info.summary)) {
-		ast_log(LOG_WARNING, "Test %s/%s has no summary, test registration refused.\n",
+		ast_log(LOG_WARNING, "Test %s%s has no summary, test registration refused.\n",
 				test->info.category, test->info.name);
 		return test_free(test);
 	}
 
 	if (ast_strlen_zero(test->info.description)) {
-		ast_log(LOG_WARNING, "Test %s/%s has no description, test registration refused.\n",
+		ast_log(LOG_WARNING, "Test %s%s has no description, test registration refused.\n",
 				test->info.category, test->info.name);
 		return test_free(test);
 	}

@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 359495 $")
 
 #include <sys/ioctl.h>
 
@@ -152,7 +152,9 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 			}
 			*number = '\0';
 			number++;
-			
+
+			status = AST_DEVICE_UNKNOWN;
+
 			if (string_compare) {
 				/* ast_parse_device_state checks for "SIP/1234" as a channel name.
 				   ast_device_state will ask the SIP driver for the channel state. */
@@ -169,8 +171,8 @@ static int chanavail_exec(struct ast_channel *chan, const char *data)
 			}
 			snprintf(tmp, sizeof(tmp), "%d", status);
 			ast_str_append(&tmp_availstat, 0, "%s%s", ast_str_strlen(tmp_availstat) ? "&" : "", tmp);
-			if ((inuse <= 1) && (tempchan = ast_request(tech, chan->nativeformats, chan, number, &status))) {
-					ast_str_append(&tmp_availchan, 0, "%s%s", ast_str_strlen(tmp_availchan) ? "&" : "", tempchan->name);
+			if ((inuse <= 1) && (tempchan = ast_request(tech, ast_channel_nativeformats(chan), chan, number, &status))) {
+					ast_str_append(&tmp_availchan, 0, "%s%s", ast_str_strlen(tmp_availchan) ? "&" : "", ast_channel_name(tempchan));
 					
 					snprintf(tmp, sizeof(tmp), "%s/%s", tech, number);
 					ast_str_append(&tmp_availorig, 0, "%s%s", ast_str_strlen(tmp_availorig) ? "&" : "", tmp);

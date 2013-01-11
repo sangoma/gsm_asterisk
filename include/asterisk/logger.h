@@ -43,6 +43,8 @@ extern "C" {
 #define VERBOSE_PREFIX_3 "    -- "
 #define VERBOSE_PREFIX_4 "       > "
 
+#define AST_CALLID_BUFFER_LENGTH 13
+
 /*! \brief Used for sending a log message
 	This is the standard logger function.  Probably the only way you will invoke it would be something like this:
 	ast_log(AST_LOG_WHATEVER, "Problem with the %s Captain.  We should get some more.  Will %d be enough?\n", "flux capacitor", 10);
@@ -60,6 +62,24 @@ extern "C" {
 void ast_log(int level, const char *file, int line, const char *function, const char *fmt, ...)
 	__attribute__((format(printf, 5, 6)));
 
+/* XXX needs documentation */
+struct ast_callid;
+
+/*! \brief Used for sending a log message with a known call_id
+	This is a modified logger function which is functionally identical to the above logger function,
+	it just include a call_id argument as well. If NULL is specified here, no attempt will be made to
+	join the log message with a call_id.
+
+	\param level	Type of log event
+	\param file	Will be provided by the AST_LOG_* macro
+	\param line	Will be provided by the AST_LOG_* macro
+	\param function	Will be provided by the AST_LOG_* macro
+	\param callid	This is the ast_callid that is associated with the log message. May be NULL.
+	\param fmt	This is what is important.  The format is the same as your favorite breed of printf.  You know how that works, right? :-)
+*/
+void ast_log_callid(int level, const char *file, int line, const char *function, struct ast_callid *callid, const char *fmt, ...)
+	__attribute__((format(printf, 6, 7)));
+
 void ast_backtrace(void);
 
 /*! \brief Reload logger without rotating log files */
@@ -68,19 +88,27 @@ int logger_reload(void);
 void __attribute__((format(printf, 5, 6))) ast_queue_log(const char *queuename, const char *callid, const char *agent, const char *event, const char *fmt, ...);
 
 /*! Send a verbose message (based on verbose level)
- 	\brief This works like ast_log, but prints verbose messages to the console depending on verbosity level set.
- 	ast_verbose(VERBOSE_PREFIX_3 "Whatever %s is happening\n", "nothing");
- 	This will print the message to the console if the verbose level is set to a level >= 3
- 	Note the abscence of a comma after the VERBOSE_PREFIX_3.  This is important.
- 	VERBOSE_PREFIX_1 through VERBOSE_PREFIX_3 are defined.
+ *	\brief This works like ast_log, but prints verbose messages to the console depending on verbosity level set.
+ *	ast_verbose(VERBOSE_PREFIX_3 "Whatever %s is happening\n", "nothing");
+ *	This will print the message to the console if the verbose level is set to a level >= 3
+ *	Note the absence of a comma after the VERBOSE_PREFIX_3.  This is important.
+ *	VERBOSE_PREFIX_1 through VERBOSE_PREFIX_4 are defined.
+ *  \version 11 added level parameter
  */
-void __attribute__((format(printf, 4, 5))) __ast_verbose(const char *file, int line, const char *func, const char *fmt, ...);
+void __attribute__((format(printf, 5, 6))) __ast_verbose(const char *file, int line, const char *func, int level, const char *fmt, ...);
 
-#define ast_verbose(...) __ast_verbose(__FILE__, __LINE__, __PRETTY_FUNCTION__,  __VA_ARGS__)
+/*! Send a verbose message (based on verbose level) with deliberately specified callid
+ *  \brief just like __ast_verbose, only __ast_verbose_callid allows you to specify which callid is being used
+ *  for the log without needing to bind it to a thread. NULL is a valid argument for this function and will
+ *  allow you to specify that a log will never display a call id even when there is a call id bound to the
+ *  thread.
+ */
+void __attribute__((format(printf, 6, 7))) __ast_verbose_callid(const char *file, int line, const char *func, int level, struct ast_callid *callid, const char *fmt, ...);
 
-void __attribute__((format(printf, 4, 0))) __ast_verbose_ap(const char *file, int line, const char *func, const char *fmt, va_list ap);
+#define ast_verbose(...) __ast_verbose(__FILE__, __LINE__, __PRETTY_FUNCTION__, -1, __VA_ARGS__)
+#define ast_verbose_callid(callid, ...) __ast_verbose_callid(__FILE__, __LINE__, __PRETTY_FUNCTION__, -1, callid, __VA_ARGS__)
 
-#define ast_verbose_ap(fmt, ap)	__ast_verbose_ap(__FILE__, __LINE__, __PRETTY_FUNCTION__, fmt, ap)
+void __attribute__((format(printf, 6, 0))) __ast_verbose_ap(const char *file, int line, const char *func, int level, struct ast_callid *callid, const char *fmt, va_list ap);
 
 void __attribute__((format(printf, 2, 3))) ast_child_verbose(int level, const char *fmt, ...);
 
@@ -107,8 +135,8 @@ void ast_console_toggle_loglevel(int fd, int level, int state);
 
 /* Note: The AST_LOG_* macros below are the same as
  * the LOG_* macros and are intended to eventually replace
- * the LOG_* macros to avoid name collisions as has been
- * seen in app_voicemail. However, please do NOT remove
+ * the LOG_* macros to avoid name collisions with the syslog(3)
+ * log levels. However, please do NOT remove
  * the LOG_* macros from the source since these may be still
  * needed for third-party modules
  */
@@ -181,7 +209,7 @@ void ast_console_toggle_loglevel(int fd, int level, int state);
 #endif
 #define AST_LOG_DTMF    __LOG_DTMF, _A_
 
-#define NUMLOGLEVELS 7
+#define NUMLOGLEVELS 32
 
 /*!
  * \brief Get the debug level for a module
@@ -215,6 +243,90 @@ int ast_logger_register_level(const char *name);
 void ast_logger_unregister_level(const char *name);
 
 /*!
+ * \brief factory function to create a new uniquely identifying callid.
+ *
+ * \retval ast_callid struct pointer containing the call id
+ *
+ * \note The newly created callid will be referenced upon creation and this function should be
+ * paired with a call to ast_callid_unref()
+ */
+struct ast_callid *ast_create_callid(void);
+
+/*!
+ * \brief extracts the callerid from the thread
+ *
+ * \retval ast_callid reference to call_id related to the thread
+ * \retval NULL if no call_id is present in the thread
+ *
+ * This reference must be unreffed before it loses scope to prevent memory leaks.
+ */
+struct ast_callid *ast_read_threadstorage_callid(void);
+
+/*!
+ * \brief Increase callid reference count
+ *
+ * \param c the ast_callid
+ *
+ * \retval c always
+ */
+#define ast_callid_ref(c) ({ ao2_ref(c, +1); (c); })
+
+/*!
+ * \brief Decrease callid reference count
+ *
+ * \param c the ast_callid
+ *
+ * \retval NULL always
+ */
+#define ast_callid_unref(c) ({ ao2_ref(c, -1); (NULL); })
+
+/*!
+ * \brief Adds a known callid to thread storage of the calling thread
+ *
+ * \retval 0 - success
+ * \retval non-zero - failure
+ */
+int ast_callid_threadassoc_add(struct ast_callid *callid);
+
+/*!
+ * \brief Removes callid from thread storage of the calling thread
+ *
+ * \retval 0 - success
+ * \retval non-zero - failure
+ */
+int ast_callid_threadassoc_remove(void);
+
+/*!
+ * \brief Checks thread storage for a callid and stores a reference if it exists.
+ *        If not, then a new one will be created, bound to the thread, and a reference
+ *        to it will be stored.
+ *
+ * \param callid pointer to struct pointer used to store the referenced callid
+ * \retval 0 - callid was found
+ * \retval 1 - callid was created
+ * \retval -1 - the function failed somehow (presumably memory problems)
+ */
+int ast_callid_threadstorage_auto(struct ast_callid **callid);
+
+/*!
+ * \brief Use in conjunction with ast_callid_threadstorage_auto. Cleans up the
+ *        references and if the callid was created by threadstorage_auto, unbinds
+ *        the callid from the threadstorage
+ * \param callid The callid set by ast_callid_threadstorage_auto
+ * \param callid_created The integer returned through ast_callid_threadstorage_auto
+ */
+void ast_callid_threadstorage_auto_clean(struct ast_callid *callid, int callid_created);
+
+/*!
+ * \brief copy a string representation of the callid into a target string
+ *
+ * \param buffer destination of callid string (should be able to store 13 characters or more)
+ * \param buffer_size maximum writable length of the string (Less than 13 will result in truncation)
+ * \param callid Callid for which string is being requested
+ */
+void ast_callid_strnprint(char *buffer, size_t buffer_size, struct ast_callid *callid);
+
+/*!
  * \brief Send a log message to a dynamically registered log level
  * \param level The log level to send the message to
  *
@@ -238,22 +350,8 @@ void ast_logger_unregister_level(const char *name);
 		ast_log(AST_LOG_DEBUG, __VA_ARGS__); \
 } while (0)
 
-#define VERBOSITY_ATLEAST(level) (option_verbose >= (level) || (ast_opt_verb_module && ast_verbose_get_by_module(AST_MODULE) >= (level)))
-
-#define ast_verb(level, ...) do { \
-	if (VERBOSITY_ATLEAST((level)) ) { \
-		if (level >= 4) \
-			ast_verbose(VERBOSE_PREFIX_4 __VA_ARGS__); \
-		else if (level == 3) \
-			ast_verbose(VERBOSE_PREFIX_3 __VA_ARGS__); \
-		else if (level == 2) \
-			ast_verbose(VERBOSE_PREFIX_2 __VA_ARGS__); \
-		else if (level == 1) \
-			ast_verbose(VERBOSE_PREFIX_1 __VA_ARGS__); \
-		else \
-			ast_verbose(__VA_ARGS__); \
-	} \
-} while (0)
+#define ast_verb(level, ...) __ast_verbose(__FILE__, __LINE__, __PRETTY_FUNCTION__, level, __VA_ARGS__)
+#define ast_verb_callid(level, callid, ...) __ast_verbose_callid(__FILE__, __LINE__, __PRETTY_FUNCTION__, level, callid, __VA_ARGS__)
 
 #ifndef _LOGGER_BACKTRACE_H
 #define _LOGGER_BACKTRACE_H

@@ -7,13 +7,14 @@
 ; In order to use this module, you start 
 ; in extconfig.conf with a configuration like this:
 ;
-; 	sipusers = ldap,"dc=myDomain,dc=myDomainExt",sip
 ; 	sippeers = ldap,"dc=myDomain,dc=myDomainExt",sip
 ; 	extensions = ldap,"dc=myDomain,dc=myDomainExt",extensions
 ; 	sip.conf = ldap,"dc=myDomain,dc=myDomainExt",config
 ;
 ; In the case of LDAP the last keyword in each line above specifies
 ; a section in this file.
+;
+; LDAP schema and ldif files can be located in contrib/scripts.
 
 ; TLS support
 ; -----------

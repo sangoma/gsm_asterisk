@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 2009, Digium, Inc.
+ * Copyright (C) 2012, Digium, Inc.
  *
  * Russell Bryant <russell@digium.com>
  *
@@ -30,12 +30,13 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 338557 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 365248 $")
 
 #include "asterisk/module.h"
 #include "asterisk/cli.h"
 #include "asterisk/utils.h"
 #include "asterisk/security_events.h"
+#include "asterisk/netsock2.h"
 
 static void evt_gen_failed_acl(void);
 static void evt_gen_inval_acct_id(void);
@@ -50,6 +51,8 @@ static void evt_gen_successful_auth(void);
 static void evt_gen_unexpected_addr(void);
 static void evt_gen_chal_resp_failed(void);
 static void evt_gen_inval_password(void);
+static void evt_gen_chal_sent(void);
+static void evt_gen_inval_transport(void);
 
 typedef void (*evt_generator)(void);
 static const evt_generator evt_generators[AST_SECURITY_EVENT_NUM_TYPES] = {
@@ -66,16 +69,15 @@ static const evt_generator evt_generators[AST_SECURITY_EVENT_NUM_TYPES] = {
 	[AST_SECURITY_EVENT_UNEXPECTED_ADDR]         = evt_gen_unexpected_addr,
 	[AST_SECURITY_EVENT_CHAL_RESP_FAILED]        = evt_gen_chal_resp_failed,
 	[AST_SECURITY_EVENT_INVAL_PASSWORD]          = evt_gen_inval_password,
+	[AST_SECURITY_EVENT_CHAL_SENT]               = evt_gen_chal_sent,
+	[AST_SECURITY_EVENT_INVAL_TRANSPORT]         = evt_gen_inval_transport,
 };
 
 static void evt_gen_failed_acl(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_failed_acl failed_acl_event = {
 		.common.event_type = AST_SECURITY_EVENT_FAILED_ACL,
@@ -86,34 +88,34 @@ static void evt_gen_failed_acl(void)
 		.common.session_id = "Session123",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 
 		.acl_name   = "TEST_ACL",
 	};
 
-	inet_aton("192.168.1.1", &sin_local.sin_addr);
-	sin_local.sin_port = htons(12121);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("192.168.1.2", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(12345);
+	ast_copy_string(localaddr, "192.168.1.1:12121", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "192.168.1.2:12345", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&failed_acl_event));
 }
 
 static void evt_gen_inval_acct_id(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_inval_acct_id inval_acct_id = {
 		.common.event_type = AST_SECURITY_EVENT_INVAL_ACCT_ID,
@@ -124,32 +126,32 @@ static void evt_gen_inval_acct_id(void)
 		.common.session_id = "Session456",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 	};
 
-	inet_aton("10.1.2.3", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4321);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.1.2.4", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(1234);
+	ast_copy_string(localaddr, "10.1.2.3:4321", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.1.2.4:123", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&inval_acct_id));
 }
 
 static void evt_gen_session_limit(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_session_limit session_limit = {
 		.common.event_type = AST_SECURITY_EVENT_SESSION_LIMIT,
@@ -160,32 +162,32 @@ static void evt_gen_session_limit(void)
 		.common.session_id = "8675309",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TLS,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TLS,
 		},
 	};
 
-	inet_aton("10.5.4.3", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4444);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.5.4.2", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(3333);
+	ast_copy_string(localaddr, "10.5.4.3:4444", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.5.4.2:3333", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&session_limit));
 }
 
 static void evt_gen_mem_limit(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_mem_limit mem_limit = {
 		.common.event_type = AST_SECURITY_EVENT_MEM_LIMIT,
@@ -196,32 +198,32 @@ static void evt_gen_mem_limit(void)
 		.common.session_id = "Session2604",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 	};
 
-	inet_aton("10.10.10.10", &sin_local.sin_addr);
-	sin_local.sin_port = htons(555);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.10.10.12", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(5656);
+	ast_copy_string(localaddr, "10.10.10.10:555", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.10.10.12:5656", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&mem_limit));
 }
 
 static void evt_gen_load_avg(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_load_avg load_avg = {
 		.common.event_type = AST_SECURITY_EVENT_LOAD_AVG,
@@ -232,32 +234,32 @@ static void evt_gen_load_avg(void)
 		.common.session_id = "XYZ123",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 	};
 
-	inet_aton("10.11.12.13", &sin_local.sin_addr);
-	sin_local.sin_port = htons(9876);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.12.11.10", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(9825);
+	ast_copy_string(localaddr, "10.11.12.13:9876", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.12.11.10:9825", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&load_avg));
 }
 
 static void evt_gen_req_no_support(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_req_no_support req_no_support = {
 		.common.event_type = AST_SECURITY_EVENT_REQ_NO_SUPPORT,
@@ -268,34 +270,34 @@ static void evt_gen_req_no_support(void)
 		.common.session_id = "asdkl23478289lasdkf",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 
 		.request_type = "MakeMeDinner",
 	};
 
-	inet_aton("10.110.120.130", &sin_local.sin_addr);
-	sin_local.sin_port = htons(9888);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.120.110.100", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(9777);
+	ast_copy_string(localaddr, "10.110.120.130:9888", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.120.110.100:9777", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&req_no_support));
 }
 
 static void evt_gen_req_not_allowed(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_req_not_allowed req_not_allowed = {
 		.common.event_type = AST_SECURITY_EVENT_REQ_NOT_ALLOWED,
@@ -306,11 +308,11 @@ static void evt_gen_req_not_allowed(void)
 		.common.session_id = "alksdjf023423h4lka0df",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 
@@ -318,23 +320,23 @@ static void evt_gen_req_not_allowed(void)
 		.request_params = "BACONNNN!",
 	};
 
-	inet_aton("10.110.120.130", &sin_local.sin_addr);
-	sin_local.sin_port = htons(9888);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.120.110.100", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(9777);
+	ast_copy_string(localaddr, "10.110.120.130:9888", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.120.110.100:9777", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&req_not_allowed));
 }
 
 static void evt_gen_auth_method_not_allowed(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_auth_method_not_allowed auth_method_not_allowed = {
 		.common.event_type = AST_SECURITY_EVENT_AUTH_METHOD_NOT_ALLOWED,
@@ -345,34 +347,34 @@ static void evt_gen_auth_method_not_allowed(void)
 		.common.session_id = "010101010101",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 
 		.auth_method = "PlainText"
 	};
 
-	inet_aton("10.110.120.135", &sin_local.sin_addr);
-	sin_local.sin_port = htons(8754);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.120.110.105", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(8745);
+	ast_copy_string(localaddr, "10.110.120.135:8754", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.120.110.105:8745", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&auth_method_not_allowed));
 }
 
 static void evt_gen_req_bad_format(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_req_bad_format req_bad_format = {
 		.common.event_type = AST_SECURITY_EVENT_REQ_BAD_FORMAT,
@@ -383,11 +385,11 @@ static void evt_gen_req_bad_format(void)
 		.common.session_id = "838383fhfhf83hf8h3f8h",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 
@@ -395,23 +397,23 @@ static void evt_gen_req_bad_format(void)
 		.request_params = "Onions,Swiss,MotorOil",
 	};
 
-	inet_aton("10.110.220.230", &sin_local.sin_addr);
-	sin_local.sin_port = htons(1212);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.120.210.200", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(2121);
+	ast_copy_string(localaddr, "10.110.220.230:1212", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.120.210.200:2121", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&req_bad_format));
 }
 
 static void evt_gen_successful_auth(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_successful_auth successful_auth = {
 		.common.event_type = AST_SECURITY_EVENT_SUCCESSFUL_AUTH,
@@ -422,35 +424,33 @@ static void evt_gen_successful_auth(void)
 		.common.session_id = "Session456",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 	};
 
-	inet_aton("10.1.2.3", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4321);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.1.2.4", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(1234);
+	ast_copy_string(localaddr, "10.1.2.3:4321", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.1.2.4:1234", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&successful_auth));
 }
 
 static void evt_gen_unexpected_addr(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_expected = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+	struct ast_sockaddr addr_expected = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_unexpected_addr unexpected_addr = {
 		.common.event_type = AST_SECURITY_EVENT_UNEXPECTED_ADDR,
@@ -461,40 +461,40 @@ static void evt_gen_unexpected_addr(void)
 		.common.session_id = "Session789",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 
 		.expected_addr = {
-			.sin = &sin_expected,
+			.addr = &addr_expected,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_UDP,
 		},
 	};
 
-	inet_aton("10.1.2.3", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4321);
+	char localaddr[53];
+	char remoteaddr[53];
+	char expectedaddr[53];
 
-	inet_aton("10.1.2.4", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(1234);
+	ast_copy_string(localaddr, "10.1.2.3:4321", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.1.2.4:1234", sizeof(remoteaddr));
+	ast_copy_string(expectedaddr, "10.1.2.5:2343", sizeof(expectedaddr));
 
-	inet_aton("10.1.2.5", &sin_expected.sin_addr);
-	sin_expected.sin_port = htons(2343);
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
+	ast_sockaddr_parse(&addr_expected, expectedaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&unexpected_addr));
 }
 
 static void evt_gen_chal_resp_failed(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_chal_resp_failed chal_resp_failed = {
 		.common.event_type = AST_SECURITY_EVENT_CHAL_RESP_FAILED,
@@ -505,11 +505,11 @@ static void evt_gen_chal_resp_failed(void)
 		.common.session_id = "Session1231231231",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 
@@ -518,23 +518,23 @@ static void evt_gen_chal_resp_failed(void)
 		.expected_response = "oiafaljhadf9834luahk3k",
 	};
 
-	inet_aton("10.1.2.3", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4321);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.1.2.4", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(1234);
+	ast_copy_string(localaddr, "10.1.2.3:4321", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.1.2.4:1234", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&chal_resp_failed));
 }
 
 static void evt_gen_inval_password(void)
 {
-	struct sockaddr_in sin_local = {
-		.sin_family = AF_INET
-	};
-	struct sockaddr_in sin_remote = {
-		.sin_family = AF_INET
-	};
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
 	struct timeval session_tv = ast_tvnow();
 	struct ast_security_event_inval_password inval_password = {
 		.common.event_type = AST_SECURITY_EVENT_INVAL_PASSWORD,
@@ -545,22 +545,102 @@ static void evt_gen_inval_password(void)
 		.common.session_id = "SessionIDGoesHere",
 		.common.session_tv = &session_tv,
 		.common.local_addr = {
-			.sin  = &sin_local,
+			.addr  = &addr_local,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
 		.common.remote_addr = {
-			.sin = &sin_remote,
+			.addr = &addr_remote,
 			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
 		},
+		.challenge          = "GoOdChAlLeNgE",
+		.received_challenge = "BaDcHaLlEnGe",
+		.received_hash      = "3ad9023adf309",
 	};
 
-	inet_aton("10.200.100.30", &sin_local.sin_addr);
-	sin_local.sin_port = htons(4321);
+	char localaddr[53];
+	char remoteaddr[53];
 
-	inet_aton("10.200.100.40", &sin_remote.sin_addr);
-	sin_remote.sin_port = htons(1234);
+	ast_copy_string(localaddr, "10.200.100.30:4321", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.200.100.40:1234", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
 
 	ast_security_event_report(AST_SEC_EVT(&inval_password));
+}
+
+static void evt_gen_chal_sent(void)
+{
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
+	struct timeval session_tv = ast_tvnow();
+	struct ast_security_event_chal_sent chal_sent = {
+		.common.event_type = AST_SECURITY_EVENT_CHAL_SENT,
+		.common.version    = AST_SECURITY_EVENT_CHAL_SENT_VERSION,
+		.common.service    = "TEST",
+		.common.module     = AST_MODULE,
+		.common.account_id = "AccountIDGoesHere",
+		.common.session_id = "SessionIDGoesHere",
+		.common.session_tv = &session_tv,
+		.common.local_addr = {
+			.addr  = &addr_local,
+			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
+		},
+		.common.remote_addr = {
+			.addr = &addr_remote,
+			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
+		},
+		.challenge         = "IcHaLlEnGeYoU",
+	};
+
+	char localaddr[53];
+	char remoteaddr[53];
+
+	ast_copy_string(localaddr, "10.200.10.30:5392", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.200.10.31:1443", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
+
+	ast_security_event_report(AST_SEC_EVT(&chal_sent));
+}
+
+static void evt_gen_inval_transport(void)
+{
+	struct ast_sockaddr addr_local = { {0,} };
+	struct ast_sockaddr addr_remote = { {0,} };
+
+	struct timeval session_tv = ast_tvnow();
+	struct ast_security_event_inval_transport inval_transport = {
+		.common.event_type = AST_SECURITY_EVENT_INVAL_TRANSPORT,
+		.common.version    = AST_SECURITY_EVENT_INVAL_TRANSPORT_VERSION,
+		.common.service    = "TEST",
+		.common.module     = AST_MODULE,
+		.common.account_id = "AccountIDGoesHere",
+		.common.session_id = "SessionIDGoesHere",
+		.common.session_tv = &session_tv,
+		.common.local_addr = {
+			.addr  = &addr_local,
+			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
+		},
+		.common.remote_addr = {
+			.addr = &addr_remote,
+			.transport  = AST_SECURITY_EVENT_TRANSPORT_TCP,
+		},
+		.transport          = "UDP",
+	};
+
+	char localaddr[53];
+	char remoteaddr[53];
+
+	ast_copy_string(localaddr, "10.200.103.45:8223", sizeof(localaddr));
+	ast_copy_string(remoteaddr, "10.200.103.44:1039", sizeof(remoteaddr));
+
+	ast_sockaddr_parse(&addr_local, localaddr, 0);
+	ast_sockaddr_parse(&addr_remote, remoteaddr, 0);
+
+	ast_security_event_report(AST_SEC_EVT(&inval_transport));
 }
 
 static void gen_events(struct ast_cli_args *a)

@@ -18,7 +18,7 @@
 #define _ASTERISK_ASTOBJ2_H
 
 #include "asterisk/compat.h"
-#include "asterisk/linkedlists.h"
+#include "asterisk/lock.h"
 
 /*! \file
  * \ref AstObj2
@@ -207,35 +207,39 @@ were called to appear in /tmp/refs, you can do this sort of thing:
 #ifdef REF_DEBUG
 #define dialog_ref(arg1,arg2) dialog_ref_debug((arg1),(arg2), __FILE__, __LINE__, __PRETTY_FUNCTION__)
 #define dialog_unref(arg1,arg2) dialog_unref_debug((arg1),(arg2), __FILE__, __LINE__, __PRETTY_FUNCTION__)
-static struct sip_pvt *dialog_ref_debug(struct sip_pvt *p, char *tag, const char *file, int line, const char *func)
+static struct sip_pvt *dialog_ref_debug(struct sip_pvt *p, const char *tag, const char *file, int line, const char *func)
 {
-	if (p)
+	if (p) {
 		ao2_ref_debug(p, 1, tag, file, line, func);
-	else
+	} else {
 		ast_log(LOG_ERROR, "Attempt to Ref a null pointer\n");
+	}
 	return p;
 }
 
-static struct sip_pvt *dialog_unref_debug(struct sip_pvt *p, char *tag, const char *file, int line, const char *func)
+static struct sip_pvt *dialog_unref_debug(struct sip_pvt *p, const char *tag, const char *file, int line, const char *func)
 {
-	if (p)
+	if (p) {
 		ao2_ref_debug(p, -1, tag, file, line, func);
+	}
 	return NULL;
 }
 #else
-static struct sip_pvt *dialog_ref(struct sip_pvt *p, char *tag)
+static struct sip_pvt *dialog_ref(struct sip_pvt *p, const char *tag)
 {
-	if (p)
+	if (p) {
 		ao2_ref(p, 1);
-	else
+	} else {
 		ast_log(LOG_ERROR, "Attempt to Ref a null pointer\n");
+	}
 	return p;
 }
 
-static struct sip_pvt *dialog_unref(struct sip_pvt *p, char *tag)
+static struct sip_pvt *dialog_unref(struct sip_pvt *p, const char *tag)
 {
-	if (p)
+	if (p) {
 		ao2_ref(p, -1);
+	}
 	return NULL;
 }
 #endif
@@ -332,19 +336,22 @@ Example:
 
 	*//* Unlink us from the owner (channel) if we have one *//*
 	if (dialog->owner) {
-		if (lockowner)
+		if (lockowner) {
 			ast_channel_lock(dialog->owner);
+		}
 		ast_debug(1, "Detaching from channel %s\n", dialog->owner->name);
 		dialog->owner->tech_pvt = dialog_unref(dialog->owner->tech_pvt, "resetting channel dialog ptr in unlink_all");
-		if (lockowner)
+		if (lockowner) {
 			ast_channel_unlock(dialog->owner);
+		}
 	}
 	if (dialog->registry) {
-		if (dialog->registry->call == dialog)
+		if (dialog->registry->call == dialog) {
 			dialog->registry->call = dialog_unref(dialog->registry->call, "nulling out the registry's call dialog field in unlink_all");
+		}
 		dialog->registry = registry_unref(dialog->registry, "delete dialog->registry");
 	}
-    ...
+	...
  	dialog_unref(dialog, "Let's unbump the count in the unlink so the poor pvt can disappear if it is time");
 
 In the above code, the ao2_t_unlink could end up destroying the dialog
@@ -383,15 +390,28 @@ murf
  */
 typedef void (*ao2_destructor_fn)(void *);
 
+/*! \brief Options available when allocating an ao2 object. */
+enum ao2_alloc_opts {
+	/*! The ao2 object has a recursive mutex lock associated with it. */
+	AO2_ALLOC_OPT_LOCK_MUTEX = (0 << 0),
+	/*! The ao2 object has a non-recursive read/write lock associated with it. */
+	AO2_ALLOC_OPT_LOCK_RWLOCK = (1 << 0),
+	/*! The ao2 object has no lock associated with it. */
+	AO2_ALLOC_OPT_LOCK_NOLOCK = (2 << 0),
+	/*! The ao2 object locking option field mask. */
+	AO2_ALLOC_OPT_LOCK_MASK = (3 << 0),
+};
 
-/*! \brief
- * Allocate and initialize an object.
+/*!
+ * \brief Allocate and initialize an object.
  *
  * \param data_size The sizeof() of the user-defined structure.
  * \param destructor_fn The destructor function (can be NULL)
- * \param debug_msg
+ * \param options The ao2 object options (See enum ao2_alloc_opts)
+ * \param debug_msg An ao2 object debug tracing message.
  * \return A pointer to user-data.
  *
+ * \details
  * Allocates a struct astobj2 with sufficient space for the
  * user-defined structure.
  * \note
@@ -405,24 +425,45 @@ typedef void (*ao2_destructor_fn)(void *);
 
 #if defined(REF_DEBUG)
 
-#define ao2_t_alloc(data_size, destructor_fn, debug_msg) __ao2_alloc_debug((data_size), (destructor_fn), (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
-#define ao2_alloc(data_size, destructor_fn)              __ao2_alloc_debug((data_size), (destructor_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_t_alloc_options(data_size, destructor_fn, options, debug_msg) \
+	__ao2_alloc_debug((data_size), (destructor_fn), (options), (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_alloc_options(data_size, destructor_fn, options) \
+	__ao2_alloc_debug((data_size), (destructor_fn), (options), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+
+#define ao2_t_alloc(data_size, destructor_fn, debug_msg) \
+	__ao2_alloc_debug((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX, (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_alloc(data_size, destructor_fn) \
+	__ao2_alloc_debug((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
 
 #elif defined(__AST_DEBUG_MALLOC)
 
-#define ao2_t_alloc(data_size, destructor_fn, debug_msg) __ao2_alloc_debug((data_size), (destructor_fn), (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
-#define ao2_alloc(data_size, destructor_fn)              __ao2_alloc_debug((data_size), (destructor_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_t_alloc_options(data_size, destructor_fn, options, debug_msg) \
+	__ao2_alloc_debug((data_size), (destructor_fn), (options), (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_alloc_options(data_size, destructor_fn, options) \
+	__ao2_alloc_debug((data_size), (destructor_fn), (options), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+
+#define ao2_t_alloc(data_size, destructor_fn, debug_msg) \
+	__ao2_alloc_debug((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX, (debug_msg),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_alloc(data_size, destructor_fn) \
+	__ao2_alloc_debug((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
 
 #else
 
-#define ao2_t_alloc(data_size, destructor_fn, debug_msg) __ao2_alloc((data_size), (destructor_fn))
-#define ao2_alloc(data_size, destructor_fn)              __ao2_alloc((data_size), (destructor_fn))
+#define ao2_t_alloc_options(data_size, destructor_fn, options, debug_msg) \
+	__ao2_alloc((data_size), (destructor_fn), (options))
+#define ao2_alloc_options(data_size, destructor_fn, options) \
+	__ao2_alloc((data_size), (destructor_fn), (options))
+
+#define ao2_t_alloc(data_size, destructor_fn, debug_msg) \
+	__ao2_alloc((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX)
+#define ao2_alloc(data_size, destructor_fn) \
+	__ao2_alloc((data_size), (destructor_fn), AO2_ALLOC_OPT_LOCK_MUTEX)
 
 #endif
 
-void *__ao2_alloc_debug(const size_t data_size, ao2_destructor_fn destructor_fn, char *tag,
-			const char *file, int line, const char *funcname, int ref_debug);
-void *__ao2_alloc(const size_t data_size, ao2_destructor_fn destructor_fn);
+void *__ao2_alloc_debug(size_t data_size, ao2_destructor_fn destructor_fn, unsigned int options, const char *tag,
+	const char *file, int line, const char *func, int ref_debug);
+void *__ao2_alloc(size_t data_size, ao2_destructor_fn destructor_fn, unsigned int options);
 
 /*! @} */
 
@@ -462,10 +503,20 @@ void *__ao2_alloc(const size_t data_size, ao2_destructor_fn destructor_fn);
 
 #endif
 
-int __ao2_ref_debug(void *o, int delta, char *tag, char *file, int line, const char *funcname);
+int __ao2_ref_debug(void *o, int delta, const char *tag, const char *file, int line, const char *func);
 int __ao2_ref(void *o, int delta);
 
 /*! @} */
+
+/*! \brief Which lock to request. */
+enum ao2_lock_req {
+	/*! Request the mutex lock be acquired. */
+	AO2_LOCK_REQ_MUTEX,
+	/*! Request the read lock be acquired. */
+	AO2_LOCK_REQ_RDLOCK,
+	/*! Request the write lock be acquired. */
+	AO2_LOCK_REQ_WRLOCK,
+};
 
 /*! \brief
  * Lock an object.
@@ -473,8 +524,10 @@ int __ao2_ref(void *o, int delta);
  * \param a A pointer to the object we want to lock.
  * \return 0 on success, other values on error.
  */
-int __ao2_lock(void *a, const char *file, const char *func, int line, const char *var);
-#define ao2_lock(a) __ao2_lock(a, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+int __ao2_lock(void *a, enum ao2_lock_req lock_how, const char *file, const char *func, int line, const char *var);
+#define ao2_lock(a) __ao2_lock(a, AO2_LOCK_REQ_MUTEX, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+#define ao2_rdlock(a) __ao2_lock(a, AO2_LOCK_REQ_RDLOCK, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+#define ao2_wrlock(a) __ao2_lock(a, AO2_LOCK_REQ_WRLOCK, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
 
 /*! \brief
  * Unlock an object.
@@ -491,14 +544,16 @@ int __ao2_unlock(void *a, const char *file, const char *func, int line, const ch
  * \param a A pointer to the object we want to lock.
  * \return 0 on success, other values on error.
  */
-int __ao2_trylock(void *a, const char *file, const char *func, int line, const char *var);
-#define ao2_trylock(a) __ao2_trylock(a, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+int __ao2_trylock(void *a, enum ao2_lock_req lock_how, const char *file, const char *func, int line, const char *var);
+#define ao2_trylock(a) __ao2_trylock(a, AO2_LOCK_REQ_MUTEX, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+#define ao2_tryrdlock(a) __ao2_trylock(a, AO2_LOCK_REQ_RDLOCK, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
+#define ao2_trywrlock(a) __ao2_trylock(a, AO2_LOCK_REQ_WRLOCK, __FILE__, __PRETTY_FUNCTION__, __LINE__, #a)
 
 /*!
- * \brief Return the lock address of an object
+ * \brief Return the mutex lock address of an object
  *
  * \param[in] obj A pointer to the object we want.
- * \return the address of the lock, else NULL.
+ * \return the address of the mutex lock, else NULL.
  *
  * This function comes in handy mainly for debugging locking
  * situations, where the locking trace code reports the
@@ -509,6 +564,136 @@ int __ao2_trylock(void *a, const char *file, const char *func, int line, const c
  */
 void *ao2_object_get_lockaddr(void *obj);
 
+
+/*! Global ao2 object holder structure. */
+struct ao2_global_obj {
+	/*! Access lock to the held ao2 object. */
+	ast_rwlock_t lock;
+	/*! Global ao2 object. */
+	void *obj;
+};
+
+/*!
+ * \brief Define a global object holder to be used to hold an ao2 object, statically initialized.
+ * \since 11.0
+ *
+ * \param name This will be the name of the object holder.
+ *
+ * \details
+ * This macro creates a global object holder that can be used to
+ * hold an ao2 object accessible using the API.  The structure is
+ * allocated and initialized to be empty.
+ *
+ * Example usage:
+ * \code
+ * static AO2_GLOBAL_OBJ_STATIC(global_cfg);
+ * \endcode
+ *
+ * This defines global_cfg, intended to hold an ao2 object
+ * accessible using an API.
+ */
+#ifndef HAVE_PTHREAD_RWLOCK_INITIALIZER
+#define AO2_GLOBAL_OBJ_STATIC(name)										\
+	struct ao2_global_obj name;											\
+	static void  __attribute__((constructor)) __init_##name(void)		\
+	{																	\
+		ast_rwlock_init(&name.lock);									\
+		name.obj = NULL;												\
+	}																	\
+	static void  __attribute__((destructor)) __fini_##name(void)		\
+	{																	\
+		if (name.obj) {													\
+			ao2_ref(name.obj, -1);										\
+			name.obj = NULL;											\
+		}																\
+		ast_rwlock_destroy(&name.lock);									\
+	}																	\
+	struct __dummy_##name
+#else
+#define AO2_GLOBAL_OBJ_STATIC(name)										\
+	struct ao2_global_obj name = {										\
+		.lock = AST_RWLOCK_INIT_VALUE,									\
+	}
+#endif
+
+/*!
+ * \brief Release the ao2 object held in the global holder.
+ * \since 11.0
+ *
+ * \param holder Global ao2 object holder.
+ * \param tag used for debugging
+ *
+ * \return Nothing
+ */
+#define ao2_t_global_obj_release(holder, tag)	\
+	__ao2_global_obj_release(&holder, (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+#define ao2_global_obj_release(holder)	\
+	__ao2_global_obj_release(&holder, "", __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+
+void __ao2_global_obj_release(struct ao2_global_obj *holder, const char *tag, const char *file, int line, const char *func, const char *name);
+
+/*!
+ * \brief Replace an ao2 object in the global holder.
+ * \since 11.0
+ *
+ * \param holder Global ao2 object holder.
+ * \param obj Object to put into the holder.  Can be NULL.
+ * \param tag used for debugging
+ *
+ * \note This function automatically increases the reference
+ * count to account for the reference that the global holder now
+ * holds to the object.
+ *
+ * \retval Reference to previous global ao2 object stored.
+ * \retval NULL if no object available.
+ */
+#define ao2_t_global_obj_replace(holder, obj, tag)	\
+	__ao2_global_obj_replace(&holder, (obj), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+#define ao2_global_obj_replace(holder, obj)	\
+	__ao2_global_obj_replace(&holder, (obj), "", __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+
+void *__ao2_global_obj_replace(struct ao2_global_obj *holder, void *obj, const char *tag, const char *file, int line, const char *func, const char *name);
+
+/*!
+ * \brief Replace an ao2 object in the global holder, throwing away any old object.
+ * \since 11.0
+ *
+ * \param holder Global ao2 object holder.
+ * \param obj Object to put into the holder.  Can be NULL.
+ * \param tag used for debugging
+ *
+ * \note This function automatically increases the reference
+ * count to account for the reference that the global holder now
+ * holds to the object.  It also decreases the reference count
+ * of any object being replaced.
+ *
+ * \retval 0 The global object was previously empty
+ * \retval 1 The global object was not previously empty
+ */
+#define ao2_t_global_obj_replace_unref(holder, obj, tag)	\
+	__ao2_global_obj_replace_unref(&holder, (obj), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+#define ao2_global_obj_replace_unref(holder, obj)	\
+	__ao2_global_obj_replace_unref(&holder, (obj), "", __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+int __ao2_global_obj_replace_unref(struct ao2_global_obj *holder, void *obj, const char *tag, const char *file, int line, const char *func, const char *name);
+
+/*!
+ * \brief Get a reference to the object stored in the global holder.
+ * \since 11.0
+ *
+ * \param holder Global ao2 object holder.
+ * \param tag used for debugging
+ *
+ * \retval Reference to current ao2 object stored in the holder.
+ * \retval NULL if no object available.
+ */
+#define ao2_t_global_obj_ref(holder, tag)	\
+	__ao2_global_obj_ref(&holder, (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+#define ao2_global_obj_ref(holder)	\
+	__ao2_global_obj_ref(&holder, "", __FILE__, __LINE__, __PRETTY_FUNCTION__, #holder)
+
+void *__ao2_global_obj_ref(struct ao2_global_obj *holder, const char *tag, const char *file, int line, const char *func, const char *name);
+
+
 /*!
  \page AstObj2_Containers AstObj2 Containers
 
@@ -518,13 +703,13 @@ Internally, objects are stored in lists, hash tables or other
 data structures depending on the needs.
 
 \note NOTA BENE: at the moment the only container we support is the
-	hash table and its degenerate form, the list.
+    hash table and its degenerate form, the list.
 
 Operations on container include:
 
   -  c = \b ao2_container_alloc(size, hash_fn, cmp_fn)
-	allocate a container with desired size and default compare
-	and hash function
+    allocate a container with desired size and default compare
+    and hash function
          -The compare function returns an int, which
          can be 0 for not found, CMP_STOP to stop end a traversal,
          or CMP_MATCH if they are equal
@@ -532,27 +717,31 @@ Operations on container include:
          takes two argument, the object pointer and a flags field,
 
   -  \b ao2_find(c, arg, flags)
-	returns zero or more element matching a given criteria
-	(specified as arg). 'c' is the container pointer. Flags
+    returns zero or more elements matching a given criteria
+    (specified as arg). 'c' is the container pointer. Flags
     can be:
-	OBJ_UNLINK - to remove the object, once found, from the container.
-	OBJ_NODATA - don't return the object if found (no ref count change)
-	OBJ_MULTIPLE - don't stop at first match
-	OBJ_POINTER	- if set, 'arg' is an object pointer, and a hash table
+    OBJ_UNLINK - to remove the object, once found, from the container.
+    OBJ_NODATA - don't return the object if found (no ref count change)
+    OBJ_MULTIPLE - don't stop at first match
+    OBJ_POINTER - if set, 'arg' is an object pointer, and a hash table
                   search will be done. If not, a traversal is done.
+    OBJ_KEY - if set, 'arg', is a hashable item that is not an object.
+              Similar to OBJ_POINTER and mutually exclusive.
 
   -  \b ao2_callback(c, flags, fn, arg)
-	apply fn(obj, arg) to all objects in the container.
-	Similar to find. fn() can tell when to stop, and
-	do anything with the object including unlinking it.
-	  - c is the container;
+    apply fn(obj, arg) to all objects in the container.
+    Similar to find. fn() can tell when to stop, and
+    do anything with the object including unlinking it.
+      - c is the container;
       - flags can be
-	     OBJ_UNLINK   - to remove the object, once found, from the container.
-	     OBJ_NODATA   - don't return the object if found (no ref count change)
-	     OBJ_MULTIPLE - don't stop at first match
-	     OBJ_POINTER  - if set, 'arg' is an object pointer, and a hash table
+         OBJ_UNLINK   - to remove the object, once found, from the container.
+         OBJ_NODATA   - don't return the object if found (no ref count change)
+         OBJ_MULTIPLE - don't stop at first match
+         OBJ_POINTER  - if set, 'arg' is an object pointer, and a hash table
                         search will be done. If not, a traversal is done through
                         all the hash table 'buckets'..
+         OBJ_KEY      - if set, 'arg', is a hashable item that is not an object.
+                        Similar to OBJ_POINTER and mutually exclusive.
       - fn is a func that returns int, and takes 3 args:
         (void *obj, void *arg, int flags);
           obj is an object
@@ -563,39 +752,39 @@ Operations on container include:
            CMP_STOP: stop search, no match
            CMP_MATCH: This object is matched.
 
-	Note that the entire operation is run with the container
-	locked, so nobody else can change its content while we work on it.
-	However, we pay this with the fact that doing
-	anything blocking in the callback keeps the container
-	blocked.
-	The mechanism is very flexible because the callback function fn()
-	can do basically anything e.g. counting, deleting records, etc.
-	possibly using arg to store the results.
+    Note that the entire operation is run with the container
+    locked, so nobody else can change its content while we work on it.
+    However, we pay this with the fact that doing
+    anything blocking in the callback keeps the container
+    blocked.
+    The mechanism is very flexible because the callback function fn()
+    can do basically anything e.g. counting, deleting records, etc.
+    possibly using arg to store the results.
 
   -  \b iterate on a container
-	this is done with the following sequence
+    this is done with the following sequence
 
 \code
 
-	    struct ao2_container *c = ... // our container
-	    struct ao2_iterator i;
-	    void *o;
+        struct ao2_container *c = ... // our container
+        struct ao2_iterator i;
+        void *o;
 
-	    i = ao2_iterator_init(c, flags);
+        i = ao2_iterator_init(c, flags);
 
-	    while ((o = ao2_iterator_next(&i))) {
-		... do something on o ...
-		ao2_ref(o, -1);
-	    }
+        while ((o = ao2_iterator_next(&i))) {
+            ... do something on o ...
+            ao2_ref(o, -1);
+        }
 
-	    ao2_iterator_destroy(&i);
+        ao2_iterator_destroy(&i);
 \endcode
 
-	The difference with the callback is that the control
-	on how to iterate is left to us.
+    The difference with the callback is that the control
+    on how to iterate is left to us.
 
     - \b ao2_ref(c, -1)
-	dropping a reference to a container destroys it, very simple!
+    dropping a reference to a container destroys it, very simple!
 
 Containers are ao2 objects themselves, and this is why their
 implementation is simple too.
@@ -631,8 +820,8 @@ typedef int (ao2_callback_fn)(void *obj, void *arg, int flags);
  */
 typedef int (ao2_callback_data_fn)(void *obj, void *arg, void *data, int flags);
 
-/*! \brief a very common callback is one that matches by address. */
-ao2_callback_fn ao2_match_by_addr;
+/*! \brief A common ao2_callback is one that matches by address. */
+int ao2_match_by_addr(void *obj, void *arg, int flags);
 
 /*! \brief
  * A callback function will return a combination of CMP_MATCH and CMP_STOP.
@@ -647,25 +836,31 @@ enum _cb_results {
  * Flags passed to ao2_callback() and ao2_hash_fn() to modify its behaviour.
  */
 enum search_flags {
-	/*! Unlink the object for which the callback function
-	 *  returned CMP_MATCH.
+	/*!
+	 * Unlink the object for which the callback function returned
+	 * CMP_MATCH.
 	 */
-	OBJ_UNLINK	 = (1 << 0),
-	/*! On match, don't return the object hence do not increase
-	 *  its refcount.
+	OBJ_UNLINK = (1 << 0),
+	/*!
+	 * On match, don't return the object hence do not increase its
+	 * refcount.
 	 */
-	OBJ_NODATA	 = (1 << 1),
-	/*! Don't stop at the first match in ao2_callback() unless the result of
-	 *  of the callback function == (CMP_STOP | CMP_MATCH).
+	OBJ_NODATA = (1 << 1),
+	/*!
+	 * Don't stop at the first match in ao2_callback() unless the
+	 * result of of the callback function has the CMP_STOP bit set.
 	 */
 	OBJ_MULTIPLE = (1 << 2),
-	/*! obj is an object of the same type as the one being searched for,
-	 *  so use the object's hash function for optimized searching.
-	 *  The search function is unaffected (i.e. use the one passed as
-	 *  argument, or match_by_addr if none specified).
+	/*!
+	 * The given obj is an object of the same type as the one being
+	 * searched for, so use the object's hash function for optimized
+	 * searching.
+	 *
+	 * The matching function is unaffected (i.e. The cb_fn argument
+	 * to ao2_callback).
 	 */
-	OBJ_POINTER	 = (1 << 3),
-	/*! 
+	OBJ_POINTER = (1 << 3),
+	/*!
 	 * \brief Continue if a match is not found in the hashed out bucket
 	 *
 	 * This flag is to be used in combination with OBJ_POINTER.  This tells
@@ -673,23 +868,33 @@ enum search_flags {
 	 * buckets if a match is not found in the starting bucket defined by
 	 * the hash value on the argument.
 	 */
-	OBJ_CONTINUE     = (1 << 4),
-	/*! 
-	 * \brief By using this flag, the ao2_container being searched will _NOT_
-	 * be locked.  Only use this flag if the ao2_container is being protected
-	 * by another mechanism other that the internal ao2_lock.
+	OBJ_CONTINUE = (1 << 4),
+	/*!
+	 * \brief Assume that the ao2_container is already locked.
+	 *
+	 * \note For ao2_containers that have mutexes, no locking will
+	 * be done.
+	 *
+	 * \note For ao2_containers that have RWLOCKs, the lock will be
+	 * promoted to write mode as needed.  The lock will be returned
+	 * to the original locked state.
+	 *
+	 * \note Only use this flag if the ao2_container is manually
+	 * locked already.
 	 */
-	OBJ_NOLOCK     = (1 << 5),
+	OBJ_NOLOCK = (1 << 5),
 	/*!
 	 * \brief The data is hashable, but is not an object.
 	 *
+	 * \details
 	 * This can be used when you want to be able to pass custom data
-	 * to a hash function that is not a full object, but perhaps just
-	 * a string.
+	 * to the container's stored ao2_hash_fn and ao2_find
+	 * ao2_callback_fn functions that is not a full object, but
+	 * perhaps just a string.
 	 *
 	 * \note OBJ_KEY and OBJ_POINTER are mutually exclusive options.
 	 */
-	OBJ_KEY        = (1 << 6),
+	OBJ_KEY = (1 << 6),
 };
 
 /*!
@@ -697,7 +902,7 @@ enum search_flags {
  * flags is ignored at the moment. Eventually, it will include the
  * value of OBJ_POINTER passed to ao2_callback().
  */
-typedef int (ao2_hash_fn)(const void *obj, const int flags);
+typedef int (ao2_hash_fn)(const void *obj, int flags);
 
 /*! \name Object Containers
  * Here start declarations of containers.
@@ -705,17 +910,18 @@ typedef int (ao2_hash_fn)(const void *obj, const int flags);
 /*@{ */
 struct ao2_container;
 
-/*! \brief
- * Allocate and initialize a container
- * with the desired number of buckets.
+/*!
+ * \brief Allocate and initialize a hash container with the desired number of buckets.
  *
+ * \details
  * We allocate space for a struct astobj_container, struct container
  * and the buckets[] array.
  *
- * \param arg1 Number of buckets for hash
- * \param arg2 Pointer to a function computing a hash value.
- * \param arg3 Pointer to a compare function used by ao2_find. (NULL to match everything)
- * \param arg4 used for debugging.
+ * \param options Container ao2 object options (See enum ao2_alloc_opts)
+ * \param n_buckets Number of buckets for hash
+ * \param hash_fn Pointer to a function computing a hash value. (NULL if everyting goes in first bucket.)
+ * \param cmp_fn Pointer to a compare function used by ao2_find. (NULL to match everything)
+ * \param tag used for debugging.
  *
  * \return A pointer to a struct container.
  *
@@ -724,32 +930,104 @@ struct ao2_container;
 
 #if defined(REF_DEBUG)
 
-#define ao2_t_container_alloc(arg1,arg2,arg3,arg4) __ao2_container_alloc_debug((arg1), (arg2), (arg3), (arg4),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
-#define ao2_container_alloc(arg1,arg2,arg3)        __ao2_container_alloc_debug((arg1), (arg2), (arg3), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_t_container_alloc_options(options, n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc_debug((options), (n_buckets), (hash_fn), (cmp_fn), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_container_alloc_options(options, n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc_debug((options), (n_buckets), (hash_fn), (cmp_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+
+#define ao2_t_container_alloc(n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc_debug(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_container_alloc(n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc_debug(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
 
 #elif defined(__AST_DEBUG_MALLOC)
 
-#define ao2_t_container_alloc(arg1,arg2,arg3,arg4) __ao2_container_alloc_debug((arg1), (arg2), (arg3), (arg4),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
-#define ao2_container_alloc(arg1,arg2,arg3)        __ao2_container_alloc_debug((arg1), (arg2), (arg3), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_t_container_alloc_options(options, n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc_debug((options), (n_buckets), (hash_fn), (cmp_fn), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_container_alloc_options(options, n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc_debug((options), (n_buckets), (hash_fn), (cmp_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+
+#define ao2_t_container_alloc(n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc_debug(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_container_alloc(n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc_debug(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
 
 #else
 
-#define ao2_t_container_alloc(arg1,arg2,arg3,arg4) __ao2_container_alloc((arg1), (arg2), (arg3))
-#define ao2_container_alloc(arg1,arg2,arg3)        __ao2_container_alloc((arg1), (arg2), (arg3))
+#define ao2_t_container_alloc_options(options, n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc((options), (n_buckets), (hash_fn), (cmp_fn))
+#define ao2_container_alloc_options(options, n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc((options), (n_buckets), (hash_fn), (cmp_fn))
+
+#define ao2_t_container_alloc(n_buckets, hash_fn, cmp_fn, tag) \
+	__ao2_container_alloc(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn))
+#define ao2_container_alloc(n_buckets, hash_fn, cmp_fn) \
+	__ao2_container_alloc(AO2_ALLOC_OPT_LOCK_MUTEX, (n_buckets), (hash_fn), (cmp_fn))
 
 #endif
 
-struct ao2_container *__ao2_container_alloc(const unsigned int n_buckets,
-					    ao2_hash_fn *hash_fn, ao2_callback_fn *cmp_fn);
-struct ao2_container *__ao2_container_alloc_debug(const unsigned int n_buckets,
-						  ao2_hash_fn *hash_fn, ao2_callback_fn *cmp_fn,
-						  char *tag, char *file, int line, const char *funcname,
-						  int ref_debug);
+struct ao2_container *__ao2_container_alloc(unsigned int options,
+	unsigned int n_buckets, ao2_hash_fn *hash_fn, ao2_callback_fn *cmp_fn);
+struct ao2_container *__ao2_container_alloc_debug(unsigned int options,
+	unsigned int n_buckets, ao2_hash_fn *hash_fn, ao2_callback_fn *cmp_fn,
+	const char *tag, const char *file, int line, const char *func, int ref_debug);
 
 /*! \brief
  * Returns the number of elements in a container.
  */
 int ao2_container_count(struct ao2_container *c);
+
+/*!
+ * \brief Copy all object references in the src container into the dest container.
+ * \since 11.0
+ *
+ * \param dest Container to copy src object references into.
+ * \param src Container to copy all object references from.
+ * \param flags OBJ_NOLOCK if a lock is already held on both containers.
+ *    Otherwise, the src container is locked first.
+ *
+ * \pre The dest container must be empty.  If the duplication fails, the
+ * dest container will be returned empty.
+ *
+ * \note This can potentially be expensive because a malloc is
+ * needed for every object in the src container.
+ *
+ * \retval 0 on success.
+ * \retval -1 on error.
+ */
+int ao2_container_dup(struct ao2_container *dest, struct ao2_container *src, enum search_flags flags);
+
+/*!
+ * \brief Create a clone/copy of the given container.
+ * \since 11.0
+ *
+ * \param orig Container to copy all object references from.
+ * \param flags OBJ_NOLOCK if a lock is already held on the container.
+ *
+ * \note This can potentially be expensive because a malloc is
+ * needed for every object in the orig container.
+ *
+ * \retval Clone container on success.
+ * \retval NULL on error.
+ */
+struct ao2_container *__ao2_container_clone(struct ao2_container *orig, enum search_flags flags);
+struct ao2_container *__ao2_container_clone_debug(struct ao2_container *orig, enum search_flags flags, const char *tag, const char *file, int line, const char *func, int ref_debug);
+#if defined(REF_DEBUG)
+
+#define ao2_t_container_clone(orig, flags, tag)	__ao2_container_clone_debug(orig, flags, tag, __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+#define ao2_container_clone(orig, flags)		__ao2_container_clone_debug(orig, flags, "", __FILE__, __LINE__, __PRETTY_FUNCTION__, 1)
+
+#elif defined(__AST_DEBUG_MALLOC)
+
+#define ao2_t_container_clone(orig, flags, tag)	__ao2_container_clone_debug(orig, flags, tag, __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+#define ao2_container_clone(orig, flags)		__ao2_container_clone_debug(orig, flags, "", __FILE__, __LINE__, __PRETTY_FUNCTION__, 0)
+
+#else
+
+#define ao2_t_container_clone(orig, flags, tag)	__ao2_container_clone(orig, flags)
+#define ao2_container_clone(orig, flags)		__ao2_container_clone(orig, flags)
+
+#endif
 
 /*@} */
 
@@ -764,12 +1042,13 @@ int ao2_container_count(struct ao2_container *c);
 /*!
  * \brief Add an object to a container.
  *
- * \param arg1 the container to operate on.
- * \param arg2 the object to be added.
- * \param arg3 used for debugging.
+ * \param container The container to operate on.
+ * \param obj The object to be added.
+ * \param flags search_flags to control linking the object.  (OBJ_NOLOCK)
+ * \param tag used for debugging.
  *
  * \retval NULL on errors.
- * \retval newobj on success.
+ * \retval !NULL on success.
  *
  * This function inserts an object in a container according its key.
  *
@@ -780,29 +1059,32 @@ int ao2_container_count(struct ao2_container *c);
  */
 #ifdef REF_DEBUG
 
-#define ao2_t_link(arg1, arg2, arg3)        __ao2_link_debug((arg1), (arg2), 0, (arg3),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_link(arg1, arg2)                __ao2_link_debug((arg1), (arg2), 0, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_t_link_nolock(arg1, arg2, arg3) __ao2_link_debug((arg1), (arg2), OBJ_NOLOCK, (arg3),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_link_nolock(arg1, arg2)         __ao2_link_debug((arg1), (arg2), OBJ_NOLOCK, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_link(container, obj, tag)					__ao2_link_debug((container), (obj), 0, (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_link(container, obj)						__ao2_link_debug((container), (obj), 0, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+
+#define ao2_t_link_flags(container, obj, flags, tag)	__ao2_link_debug((container), (obj), (flags), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_link_flags(container, obj, flags)			__ao2_link_debug((container), (obj), (flags), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_link(arg1, arg2, arg3)        __ao2_link((arg1), (arg2), 0)
-#define ao2_link(arg1, arg2)                __ao2_link((arg1), (arg2), 0)
-#define ao2_t_link_nolock(arg1, arg2, arg3) __ao2_link((arg1), (arg2), OBJ_NOLOCK)
-#define ao2_link_nolock(arg1, arg2)         __ao2_link((arg1), (arg2), OBJ_NOLOCK)
+#define ao2_t_link(container, obj, tag)					__ao2_link((container), (obj), 0)
+#define ao2_link(container, obj)						__ao2_link((container), (obj), 0)
+
+#define ao2_t_link_flags(container, obj, flags, tag)	__ao2_link((container), (obj), (flags))
+#define ao2_link_flags(container, obj, flags)			__ao2_link((container), (obj), (flags))
 
 #endif
 
-void *__ao2_link_debug(struct ao2_container *c, void *new_obj, int flags, char *tag, char *file, int line, const char *funcname);
-void *__ao2_link(struct ao2_container *c, void *newobj, int flags);
+void *__ao2_link_debug(struct ao2_container *c, void *obj_new, int flags, const char *tag, const char *file, int line, const char *func);
+void *__ao2_link(struct ao2_container *c, void *obj_new, int flags);
 
 /*!
  * \brief Remove an object from a container
  *
- * \param arg1 the container
- * \param arg2 the object to unlink
- * \param arg3 tag for debugging
+ * \param container The container to operate on.
+ * \param obj The object to unlink.
+ * \param flags search_flags to control unlinking the object.  (OBJ_NOLOCK)
+ * \param tag used for debugging.
  *
  * \retval NULL, always
  *
@@ -816,21 +1098,23 @@ void *__ao2_link(struct ao2_container *c, void *newobj, int flags);
  */
 #ifdef REF_DEBUG
 
-#define ao2_t_unlink(arg1, arg2, arg3)          __ao2_unlink_debug((arg1), (arg2), 0, (arg3),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_unlink(arg1, arg2)                  __ao2_unlink_debug((arg1), (arg2), 0, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_t_unlink_nolock(arg1, arg2, arg3)   __ao2_unlink_debug((arg1), (arg2), OBJ_NOLOCK, (arg3),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_unlink_nolock(arg1, arg2)           __ao2_unlink_debug((arg1), (arg2), OBJ_NOLOCK, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_unlink(container, obj, tag)				__ao2_unlink_debug((container), (obj), 0, (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_unlink(container, obj)						__ao2_unlink_debug((container), (obj), 0, "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+
+#define ao2_t_unlink_flags(container, obj, flags, tag)	__ao2_unlink_debug((container), (obj), (flags), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_unlink_flags(container, obj, flags)			__ao2_unlink_debug((container), (obj), (flags), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_unlink(arg1, arg2, arg3)          __ao2_unlink((arg1), (arg2), 0)
-#define ao2_unlink(arg1, arg2)                  __ao2_unlink((arg1), (arg2), 0)
-#define ao2_t_unlink_nolock(arg1, arg2, arg3)   __ao2_unlink((arg1), (arg2), OBJ_NOLOCK)
-#define ao2_unlink_nolock(arg1, arg2)           __ao2_unlink((arg1), (arg2), OBJ_NOLOCK)
+#define ao2_t_unlink(container, obj, tag)				__ao2_unlink((container), (obj), 0)
+#define ao2_unlink(container, obj)						__ao2_unlink((container), (obj), 0)
+
+#define ao2_t_unlink_flags(container, obj, flags, tag)	__ao2_unlink((container), (obj), (flags))
+#define ao2_unlink_flags(container, obj, flags)			__ao2_unlink((container), (obj), (flags))
 
 #endif
 
-void *__ao2_unlink_debug(struct ao2_container *c, void *obj, int flags, char *tag, char *file, int line, const char *funcname);
+void *__ao2_unlink_debug(struct ao2_container *c, void *obj, int flags, const char *tag, const char *file, int line, const char *func);
 void *__ao2_unlink(struct ao2_container *c, void *obj, int flags);
 
 
@@ -842,36 +1126,39 @@ void *__ao2_unlink(struct ao2_container *c, void *obj, int flags);
  *
  * \param c A pointer to the container to operate on.
  * \param flags A set of flags specifying the operation to perform,
-	partially used by the container code, but also passed to
-	the callback.
-     - If OBJ_NODATA is set, ao2_callback will return NULL. No refcounts
-       of any of the traversed objects will be incremented.
-       On the converse, if it is NOT set (the default), The ref count
-       of each object for which CMP_MATCH was set will be incremented,
-       and you will have no way of knowing which those are, until
-       the multiple-object-return functionality is implemented.
-     - If OBJ_POINTER is set, the traversed items will be restricted
-       to the objects in the bucket that the object key hashes to.
+ *  partially used by the container code, but also passed to
+ *  the callback.
+ *   - If OBJ_NODATA is set, ao2_callback will return NULL. No refcounts
+ *     of any of the traversed objects will be incremented.
+ *     On the converse, if it is NOT set (the default), the ref count
+ *     of the first matching object will be incremented and returned.  If
+ *     OBJ_MULTIPLE is set, the ref count of all matching objects will
+ *     be incremented in an iterator for a temporary container and returned.
+ *   - If OBJ_POINTER is set, the traversed items will be restricted
+ *     to the objects in the bucket that the object key hashes to.
  * \param cb_fn A function pointer, that will be called on all
-    objects, to see if they match. This function returns CMP_MATCH
-    if the object is matches the criteria; CMP_STOP if the traversal
-    should immediately stop, or both (via bitwise ORing), if you find a
-    match and want to end the traversal, and 0 if the object is not a match,
-    but the traversal should continue. This is the function that is applied
-    to each object traversed. Its arguments are:
-        (void *obj, void *arg, int flags), where:
-          obj is an object
-          arg is the same as arg passed into ao2_callback
-          flags is the same as flags passed into ao2_callback (flags are
-           also used by ao2_callback).
+ *  objects, to see if they match. This function returns CMP_MATCH
+ *  if the object is matches the criteria; CMP_STOP if the traversal
+ *  should immediately stop, or both (via bitwise ORing), if you find a
+ *  match and want to end the traversal, and 0 if the object is not a match,
+ *  but the traversal should continue. This is the function that is applied
+ *  to each object traversed. Its arguments are:
+ *      (void *obj, void *arg, int flags), where:
+ *        obj is an object
+ *        arg is the same as arg passed into ao2_callback
+ *        flags is the same as flags passed into ao2_callback (flags are
+ *         also used by ao2_callback).
  * \param arg passed to the callback.
  * \param tag used for debugging.
- * \return when OBJ_MULTIPLE is not included in the flags parameter,
- *         the return value will be either the object found or NULL if no
- *         no matching object was found. if OBJ_MULTIPLE is included,
- *         the return value will be a pointer to an ao2_iterator object,
- *         which must be destroyed with ao2_iterator_destroy() when the
- *         caller no longer needs it.
+ *
+ * \retval NULL on failure or no matching object found.
+ *
+ * \retval object found if OBJ_MULTIPLE is not set in the flags
+ * parameter.
+ *
+ * \retval ao2_iterator pointer if OBJ_MULTIPLE is set in the
+ * flags parameter.  The iterator must be destroyed with
+ * ao2_iterator_destroy() when the caller no longer needs it.
  *
  * If the function returns any objects, their refcount is incremented,
  * and the caller is in charge of decrementing them once done.
@@ -885,26 +1172,27 @@ void *__ao2_unlink(struct ao2_container *c, void *obj, int flags);
  *   should not modify the object, but just return a combination of
  *   CMP_MATCH and CMP_STOP on the desired object.
  * Other usages are also possible, of course.
-
+ *
  * This function searches through a container and performs operations
  * on objects according on flags passed.
  * XXX describe better
  * The comparison is done calling the compare function set implicitly.
- * The p pointer can be a pointer to an object or to a key,
+ * The arg pointer can be a pointer to an object or to a key,
  * we can say this looking at flags value.
- * If p points to an object we will search for the object pointed
+ * If arg points to an object we will search for the object pointed
  * by this value, otherwise we search for a key value.
- * If the key is not unique we only find the first matching valued.
+ * If the key is not unique we only find the first matching value.
  *
  * The use of flags argument is the follow:
  *
- *	OBJ_UNLINK 		unlinks the object found
- *	OBJ_NODATA		on match, do return an object
- *				Callbacks use OBJ_NODATA as a default
- *				functions such as find() do
- *	OBJ_MULTIPLE		return multiple matches
- *				Default is no.
- *	OBJ_POINTER 		the pointer is an object pointer
+ *      OBJ_UNLINK              unlinks the object found
+ *      OBJ_NODATA              on match, do return an object
+ *                              Callbacks use OBJ_NODATA as a default
+ *                              functions such as find() do
+ *      OBJ_MULTIPLE            return multiple matches
+ *                              Default is no.
+ *      OBJ_POINTER             the pointer is an object pointer
+ *      OBJ_KEY                 the pointer is to a hashable key
  *
  * \note When the returned object is no longer in use, ao2_ref() should
  * be used to free the additional reference possibly created by this function.
@@ -913,18 +1201,23 @@ void *__ao2_unlink(struct ao2_container *c, void *obj, int flags);
  */
 #ifdef REF_DEBUG
 
-#define ao2_t_callback(c,flags,cb_fn,arg,tag) __ao2_callback_debug((c), (flags), (cb_fn), (arg), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_callback(c,flags,cb_fn,arg)       __ao2_callback_debug((c), (flags), (cb_fn), (arg), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_callback(c, flags, cb_fn, arg, tag) \
+	__ao2_callback_debug((c), (flags), (cb_fn), (arg), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_callback(c, flags, cb_fn, arg) \
+	__ao2_callback_debug((c), (flags), (cb_fn), (arg), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_callback(c,flags,cb_fn,arg,tag) __ao2_callback((c), (flags), (cb_fn), (arg))
-#define ao2_callback(c,flags,cb_fn,arg)       __ao2_callback((c), (flags), (cb_fn), (arg))
+#define ao2_t_callback(c, flags, cb_fn, arg, tag) \
+	__ao2_callback((c), (flags), (cb_fn), (arg))
+#define ao2_callback(c, flags, cb_fn, arg) \
+	__ao2_callback((c), (flags), (cb_fn), (arg))
 
 #endif
 
-void *__ao2_callback_debug(struct ao2_container *c, enum search_flags flags, ao2_callback_fn *cb_fn,
-			   void *arg, char *tag, char *file, int line, const char *funcname);
+void *__ao2_callback_debug(struct ao2_container *c, enum search_flags flags,
+	ao2_callback_fn *cb_fn, void *arg, const char *tag, const char *file, int line,
+	const char *func);
 void *__ao2_callback(struct ao2_container *c, enum search_flags flags, ao2_callback_fn *cb_fn, void *arg);
 
 /*! @} */
@@ -946,39 +1239,47 @@ void *__ao2_callback(struct ao2_container *c, enum search_flags flags, ao2_callb
  */
 #ifdef REF_DEBUG
 
-#define ao2_t_callback_data(arg1,arg2,arg3,arg4,arg5,arg6) __ao2_callback_data_debug((arg1), (arg2), (arg3), (arg4), (arg5), (arg6), __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_callback_data(arg1,arg2,arg3,arg4,arg5)        __ao2_callback_data_debug((arg1), (arg2), (arg3), (arg4), (arg5), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_callback_data(container, flags, cb_fn, arg, data, tag) \
+	__ao2_callback_data_debug((container), (flags), (cb_fn), (arg), (data), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_callback_data(container, flags, cb_fn, arg, data) \
+	__ao2_callback_data_debug((container), (flags), (cb_fn), (arg), (data), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_callback_data(arg1,arg2,arg3,arg4,arg5,arg6) __ao2_callback_data((arg1), (arg2), (arg3), (arg4), (arg5))
-#define ao2_callback_data(arg1,arg2,arg3,arg4,arg5)        __ao2_callback_data((arg1), (arg2), (arg3), (arg4), (arg5))
+#define ao2_t_callback_data(container, flags, cb_fn, arg, data, tag) \
+	__ao2_callback_data((container), (flags), (cb_fn), (arg), (data))
+#define ao2_callback_data(container, flags, cb_fn, arg, data) \
+	__ao2_callback_data((container), (flags), (cb_fn), (arg), (data))
 
 #endif
 
 void *__ao2_callback_data_debug(struct ao2_container *c, enum search_flags flags,
-				ao2_callback_data_fn *cb_fn, void *arg, void *data, char *tag,
-				char *file, int line, const char *funcname);
+	ao2_callback_data_fn *cb_fn, void *arg, void *data, const char *tag, const char *file,
+	int line, const char *func);
 void *__ao2_callback_data(struct ao2_container *c, enum search_flags flags,
-			  ao2_callback_data_fn *cb_fn, void *arg, void *data);
+	ao2_callback_data_fn *cb_fn, void *arg, void *data);
 
 /*! ao2_find() is a short hand for ao2_callback(c, flags, c->cmp_fn, arg)
  * XXX possibly change order of arguments ?
  */
 #ifdef REF_DEBUG
 
-#define ao2_t_find(arg1,arg2,arg3,arg4) __ao2_find_debug((arg1), (arg2), (arg3), (arg4), __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_find(arg1,arg2,arg3)        __ao2_find_debug((arg1), (arg2), (arg3), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_find(container, arg, flags, tag) \
+	__ao2_find_debug((container), (arg), (flags), (tag), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_find(container, arg, flags) \
+	__ao2_find_debug((container), (arg), (flags), "", __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_find(arg1,arg2,arg3,arg4) __ao2_find((arg1), (arg2), (arg3))
-#define ao2_find(arg1,arg2,arg3)        __ao2_find((arg1), (arg2), (arg3))
+#define ao2_t_find(container, arg, flags, tag) \
+	__ao2_find((container), (arg), (flags))
+#define ao2_find(container, arg, flags) \
+	__ao2_find((container), (arg), (flags))
 
 #endif
 
-void *__ao2_find_debug(struct ao2_container *c, const void *arg, enum search_flags flags, char *tag,
-		       char *file, int line, const char *funcname);
+void *__ao2_find_debug(struct ao2_container *c, const void *arg, enum search_flags flags,
+	const char *tag, const char *file, int line, const char *func);
 void *__ao2_find(struct ao2_container *c, const void *arg, enum search_flags flags);
 
 /*! \brief
@@ -1081,15 +1382,27 @@ struct ao2_iterator {
  * of the iterator.
  */
 enum ao2_iterator_flags {
-	/*! Prevents ao2_iterator_next() from locking the container
-	 * while retrieving the next object from it.
+	/*!
+	 * \brief Assume that the ao2_container is already locked.
+	 *
+	 * \note For ao2_containers that have mutexes, no locking will
+	 * be done.
+	 *
+	 * \note For ao2_containers that have RWLOCKs, the lock will be
+	 * promoted to write mode as needed.  The lock will be returned
+	 * to the original locked state.
+	 *
+	 * \note Only use this flag if the ao2_container is manually
+	 * locked already.
 	 */
 	AO2_ITERATOR_DONTLOCK = (1 << 0),
-	/*! Indicates that the iterator was dynamically allocated by
+	/*!
+	 * Indicates that the iterator was dynamically allocated by
 	 * astobj2 API and should be freed by ao2_iterator_destroy().
 	 */
 	AO2_ITERATOR_MALLOCD = (1 << 1),
-	/*! Indicates that before the iterator returns an object from
+	/*!
+	 * Indicates that before the iterator returns an object from
 	 * the container being iterated, the object should be unlinked
 	 * from the container.
 	 */
@@ -1117,7 +1430,7 @@ struct ao2_iterator ao2_iterator_init(struct ao2_container *c, int flags);
 /*!
  * \brief Destroy a container iterator
  *
- * \param i the iterator to destroy
+ * \param iter the iterator to destroy
  *
  * \retval none
  *
@@ -1125,24 +1438,39 @@ struct ao2_iterator ao2_iterator_init(struct ao2_container *c, int flags);
  * and any other resources it may be holding.
  *
  */
-void ao2_iterator_destroy(struct ao2_iterator *i);
-
+#if defined(TEST_FRAMEWORK)
+void ao2_iterator_destroy(struct ao2_iterator *iter) __attribute__((noinline));
+#else
+void ao2_iterator_destroy(struct ao2_iterator *iter);
+#endif
 #ifdef REF_DEBUG
 
-#define ao2_t_iterator_next(arg1, arg2) __ao2_iterator_next_debug((arg1), (arg2),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
-#define ao2_iterator_next(arg1)         __ao2_iterator_next_debug((arg1), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_t_iterator_next(iter, tag) __ao2_iterator_next_debug((iter), (tag),  __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#define ao2_iterator_next(iter)        __ao2_iterator_next_debug((iter), "",  __FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 #else
 
-#define ao2_t_iterator_next(arg1, arg2) __ao2_iterator_next((arg1))
-#define ao2_iterator_next(arg1)         __ao2_iterator_next((arg1))
+#define ao2_t_iterator_next(iter, tag) __ao2_iterator_next((iter))
+#define ao2_iterator_next(iter)        __ao2_iterator_next((iter))
 
 #endif
 
-void *__ao2_iterator_next_debug(struct ao2_iterator *a, char *tag, char *file, int line, const char *funcname);
-void *__ao2_iterator_next(struct ao2_iterator *a);
+void *__ao2_iterator_next_debug(struct ao2_iterator *iter, const char *tag, const char *file, int line, const char *func);
+void *__ao2_iterator_next(struct ao2_iterator *iter);
 
 /* extra functions */
 void ao2_bt(void);	/* backtrace */
 
+/*! gcc __attribute__(cleanup()) functions
+ * \note they must be able to handle NULL parameters because most of the
+ * allocation/find functions can fail and we don't want to try to tear
+ * down a NULL */
+void __ao2_cleanup(void *obj);
+void __ao2_cleanup_debug(void *obj, const char *file, int line, const char *function);
+#ifdef REF_DEBUG
+#define ao2_cleanup(obj) __ao2_cleanup_debug((obj), __FILE__, __LINE__, __PRETTY_FUNCTION__)
+#else
+#define ao2_cleanup(obj) __ao2_cleanup(obj)
+#endif
+void ao2_iterator_cleanup(struct ao2_iterator *iter);
 #endif /* _ASTERISK_ASTOBJ2_H */

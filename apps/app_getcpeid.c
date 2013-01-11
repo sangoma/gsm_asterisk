@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -76,7 +76,7 @@ static int cpeid_exec(struct ast_channel *chan, const char *idata)
 	unsigned int x;
 
 	for (x = 0; x < 4; x++)
-		data[x] = alloca(80);
+		data[x] = ast_alloca(80);
 
 	strcpy(data[0], "** CPE Info **");
 	strcpy(data[1], "Identifying CPE...");
@@ -87,7 +87,7 @@ static int cpeid_exec(struct ast_channel *chan, const char *idata)
 		res = ast_adsi_get_cpeid(chan, cpeid, 0);
 		if (res > 0) {
 			gotcpeid = 1;
-			ast_verb(3, "Got CPEID of '%02x:%02x:%02x:%02x' on '%s'\n", cpeid[0], cpeid[1], cpeid[2], cpeid[3], chan->name);
+			ast_verb(3, "Got CPEID of '%02x:%02x:%02x:%02x' on '%s'\n", cpeid[0], cpeid[1], cpeid[2], cpeid[3], ast_channel_name(chan));
 		}
 		if (res > -1) {
 			strcpy(data[1], "Measuring CPE...");
@@ -95,7 +95,7 @@ static int cpeid_exec(struct ast_channel *chan, const char *idata)
 			cpeid_setstatus(chan, data, 0);
 			res = ast_adsi_get_cpeinfo(chan, &width, &height, &buttons, 0);
 			if (res > -1) {
-				ast_verb(3, "CPE has %d lines, %d columns, and %d buttons on '%s'\n", height, width, buttons, chan->name);
+				ast_verb(3, "CPE has %d lines, %d columns, and %d buttons on '%s'\n", height, width, buttons, ast_channel_name(chan));
 				gotgeometry = 1;
 			}
 		}

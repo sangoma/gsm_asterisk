@@ -32,7 +32,7 @@
 #include "asterisk.h"
 #include "speex/speex_resampler.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 330941 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362307 $")
 
 #include "asterisk/module.h"
 #include "asterisk/translate.h"
@@ -137,6 +137,12 @@ static int load_module(void)
 			idx++;
 		}
 
+	}
+	/* in case ast_register_translator() failed, we call unload_module() and
+	ast_unregister_translator won't fail.*/
+	if (res) {
+		unload_module();
+		return AST_MODULE_LOAD_FAILURE;
 	}
 
 	return AST_MODULE_LOAD_SUCCESS;

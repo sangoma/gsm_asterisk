@@ -190,6 +190,19 @@ void ast_config_destroy(struct ast_config *config);
 struct ast_variable *ast_category_root(struct ast_config *config, char *cat);
 
 /*!
+ * \brief Sorts categories in a config in the order of a numerical value contained within them.
+ *
+ * \param config The config structure you wish to sort
+ * \param variable Which numerical value you wish to sort by
+ * \param descending If true, we sort highest to lowest instead of lowest to highest
+ *
+ * \details
+ * This function will assume a value of 0 for any non-numerical strings and NULL fields.
+ */
+void ast_config_sort_categories(struct ast_config *config, int descending,
+								int (*comparator)(struct ast_category *p, struct ast_category *q));
+
+/*!
  * \brief Goes through categories
  *
  * \param config Which config structure you wish to "browse"
@@ -450,6 +463,17 @@ int ast_check_realtime(const char *family);
 int ast_realtime_enabled(void);
 
 /*!
+ * \brief Duplicate variable list
+ * \param var the linked list of variables to clone
+ * \return A duplicated list which you'll need to free with
+ * ast_variables_destroy or NULL when out of memory.
+ *
+ * \note Do not depend on this to copy more than just name, value and filename
+ * (the arguments to ast_variables_new).
+ */
+struct ast_variable *ast_variables_dup(struct ast_variable *var);
+
+/*!
  * \brief Free variable list
  * \param var the linked list of variables to free
  *
@@ -469,6 +493,15 @@ int ast_config_engine_register(struct ast_config_engine *newconfig);
  * \retval 0 Always
  */
 int ast_config_engine_deregister(struct ast_config_engine *del);
+
+/*!
+ * \brief Determine if a mapping exists for a given family
+ *
+ * \param family which family you are looking to see if a mapping exists for
+ * \retval 1 if it is mapped
+ * \retval 0 if it is not
+ */
+int ast_realtime_is_mapping_defined(const char *family);
 
 /*!
  * \brief Exposed initialization method for core process
@@ -578,6 +611,63 @@ int ast_config_text_file_save(const char *filename, const struct ast_config *cfg
 int config_text_file_save(const char *filename, const struct ast_config *cfg, const char *generator) __attribute__((deprecated));
 
 struct ast_config *ast_config_internal_load(const char *configfile, struct ast_config *cfg, struct ast_flags flags, const char *suggested_incl_file, const char *who_asked);
+/*!
+ * \brief
+ * Copies the contents of one ast_config into another
+ *
+ * \note
+ * This creates a config on the heap. The caller of this must
+ * be prepared to free the memory returned.
+ *
+ * \param orig the config to copy
+ * \return The new config on success, NULL on failure.
+ */
+struct ast_config *ast_config_copy(const struct ast_config *orig);
+
+/*!
+ * \brief
+ * Flags that affect the behaviour of config hooks.
+ */
+enum config_hook_flags {
+	butt,
+};
+
+/*
+ * \brief Callback when configuration is updated
+ *
+ * \param cfg A copy of the configuration that is being changed.
+ *            This MUST be freed by the callback before returning.
+ */
+typedef int (*config_hook_cb)(struct ast_config *cfg);
+
+/*!
+ * \brief
+ * Register a config hook for a particular file and module
+ *
+ * \param name The name of the hook you are registering.
+ * \param filename The file whose config you wish to hook into.
+ * \param module The module that is reloading the config. This
+ *               can be useful if multiple modules may possibly
+ *               reload the same file, but you are only interested
+ *               when a specific module reloads the file
+ * \param flags Flags that affect the way hooks work.
+ * \param hook The callback to be called when config is loaded.
+ * return 0 Success
+ * return -1 Unsuccess, also known as UTTER AND COMPLETE FAILURE
+ */
+int ast_config_hook_register(const char *name,
+		const char *filename,
+		const char *module,
+		enum config_hook_flags flags,
+		config_hook_cb hook);
+
+/*!
+ * \brief
+ * Unregister a config hook
+ *
+ * \param name The name of the hook to unregister
+ */
+void ast_config_hook_unregister(const char *name);
 
 /*!
  * \brief Support code to parse config file arguments
@@ -633,8 +723,9 @@ enum ast_parse_flags {
 	 * the range (inclusive). An error is returned if the value
 	 * is outside or inside the range, respectively.
 	 */
-	PARSE_IN_RANGE =	0x0020,	/* accept values inside a range */
-	PARSE_OUT_RANGE =	0x0040,	/* accept values outside a range */
+	PARSE_IN_RANGE =       0x0020, /* accept values inside a range */
+	PARSE_OUT_RANGE =      0x0040, /* accept values outside a range */
+	PARSE_RANGE_DEFAULTS = 0x0080, /* default to range min/max on range error */
 
 	/* Port handling, for ast_sockaddr. accept/ignore/require/forbid
 	 * port number after the hostname or address.
@@ -650,32 +741,32 @@ enum ast_parse_flags {
  *
  * \param arg the string to parse. It is not modified.
  * \param flags combination of ast_parse_flags to specify the
- *	return type and additional checks.
+ * return type and additional checks.
  * \param result pointer to the result. NULL is valid here, and can
- *	be used to perform only the validity checks.
+ * be used to perform only the validity checks.
  * \param ... extra arguments are required according to flags.
  *
  * \retval 0 in case of success, != 0 otherwise.
  * \retval result returns the parsed value in case of success,
- *	the default value in case of error, or it is left unchanged
- *	in case of error and no default specified. Note that in certain
- *	cases (e.g. sockaddr_in, with multi-field return values) some
- *	of the fields in result may be changed even if an error occurs.
+ * the default value in case of error, or it is left unchanged
+ * in case of error and no default specified. Note that in certain
+ * cases (e.g. sockaddr_in, with multi-field return values) some
+ * of the fields in result may be changed even if an error occurs.
  *
  * \details
  * Examples of use:
- *	ast_parse_arg("223", PARSE_INT32|PARSE_IN_RANGE,
- *		&a, -1000, 1000);
- *              returns 0, a = 223
- *	ast_parse_arg("22345", PARSE_INT32|PARSE_IN_RANGE|PARSE_DEFAULT,
- *		&a, 9999, 10, 100);
- *              returns 1, a = 9999
- *      ast_parse_arg("22345ssf", PARSE_UINT32|PARSE_IN_RANGE, &b, 10, 100);
- *		returns 1, b unchanged
- *      ast_parse_arg("www.foo.biz:44", PARSE_INADDR, &sa);
- *		returns 0, sa contains address and port
- *      ast_parse_arg("www.foo.biz", PARSE_INADDR|PARSE_PORT_REQUIRE, &sa);
- *		returns 1 because port is missing, sa contains address
+ *     ast_parse_arg("223", PARSE_INT32|PARSE_IN_RANGE, &a, -1000, 1000);
+ * returns 0, a = 223
+ *     ast_parse_arg("22345", PARSE_INT32|PARSE_IN_RANGE|PARSE_DEFAULT, &a, 9999, 10, 100);
+ * returns 1, a = 9999
+ *     ast_parse_arg("22345ssf", PARSE_UINT32|PARSE_IN_RANGE, &b, 10, 100);
+ * returns 1, b unchanged
+ *    ast_parse_arg("12", PARSE_UINT32|PARSE_IN_RANGE|PARSE_RANGE_DEFAULTS, &a, 1, 10);
+ * returns 1, a = 10
+ *    ast_parse_arg("www.foo.biz:44", PARSE_INADDR, &sa);
+ * returns 0, sa contains address and port
+ *    ast_parse_arg("www.foo.biz", PARSE_INADDR|PARSE_PORT_REQUIRE, &sa);
+ * returns 1 because port is missing, sa contains address
  */
 int ast_parse_arg(const char *arg, enum ast_parse_flags flags,
         void *result, ...);
@@ -685,7 +776,7 @@ int ast_parse_arg(const char *arg, enum ast_parse_flags flags,
  * string in a switch() statement, yet we need a similar behaviour, with many
  * branches and a break on a matching one.
  * The following somehow simplifies the job: we create a block using
- * the 	CV_START and CV_END macros, and then within the block we can run
+ * the CV_START and CV_END macros, and then within the block we can run
  * actions such as "if (condition) { body; break; }"
  * Additional macros are present to run simple functions (e.g. ast_copy_string)
  * or to pass arguments to ast_parse_arg()

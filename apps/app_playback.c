@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 356042 $")
 
 #include "asterisk/file.h"
 #include "asterisk/pbx.h"
@@ -454,7 +454,7 @@ static int playback_exec(struct ast_channel *chan, const char *data)
 		if (strcasestr(args.options, "noanswer"))
 			option_noanswer = 1;
 	} 
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if (option_skip) {
 			/* At the user's option, skip if the line is not up */
 			goto done;
@@ -470,14 +470,14 @@ static int playback_exec(struct ast_channel *chan, const char *data)
 		ast_stopstream(chan);
 		while (!res && (front = strsep(&back, "&"))) {
 			if (option_say)
-				res = say_full(chan, front, "", chan->language, NULL, -1, -1);
+				res = say_full(chan, front, "", ast_channel_language(chan), NULL, -1, -1);
 			else
-				res = ast_streamfile(chan, front, chan->language);
+				res = ast_streamfile(chan, front, ast_channel_language(chan));
 			if (!res) { 
 				res = ast_waitstream(chan, "");	
 				ast_stopstream(chan);
 			} else {
-				ast_log(LOG_WARNING, "ast_streamfile failed on %s for %s\n", chan->name, (char *)data);
+				ast_log(LOG_WARNING, "ast_streamfile failed on %s for %s\n", ast_channel_name(chan), (char *)data);
 				res = 0;
 				mres = 1;
 			}

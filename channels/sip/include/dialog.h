@@ -31,11 +31,11 @@
  */
 #define dialog_ref(arg1,arg2) dialog_ref_debug((arg1),(arg2), __FILE__, __LINE__, __PRETTY_FUNCTION__)
 #define dialog_unref(arg1,arg2) dialog_unref_debug((arg1),(arg2), __FILE__, __LINE__, __PRETTY_FUNCTION__)
-struct sip_pvt *dialog_ref_debug(struct sip_pvt *p, char *tag, char *file, int line, const char *func);
-struct sip_pvt *dialog_unref_debug(struct sip_pvt *p, char *tag, char *file, int line, const char *func);
+struct sip_pvt *dialog_ref_debug(struct sip_pvt *p, const char *tag, char *file, int line, const char *func);
+struct sip_pvt *dialog_unref_debug(struct sip_pvt *p, const char *tag, char *file, int line, const char *func);
 
 struct sip_pvt *sip_alloc(ast_string_field callid, struct ast_sockaddr *sin,
-				 int useglobal_nat, const int intended_method, struct sip_request *req);
+				 int useglobal_nat, const int intended_method, struct sip_request *req, struct ast_callid *logger_callid);
 void sip_scheddestroy_final(struct sip_pvt *p, int ms);
 void sip_scheddestroy(struct sip_pvt *p, int ms);
 int sip_cancel_destroy(struct sip_pvt *p);
@@ -67,13 +67,13 @@ void dialog_unlink_all(struct sip_pvt *dialog);
 
 /*! \brief Acknowledges receipt of a packet and stops retransmission
  * called with p locked*/
-int __sip_ack(struct sip_pvt *p, int seqno, int resp, int sipmethod);
+int __sip_ack(struct sip_pvt *p, uint32_t seqno, int resp, int sipmethod);
 
 /*! \brief Pretend to ack all packets
  * called with p locked */
 void __sip_pretend_ack(struct sip_pvt *p);
 
 /*! \brief Acks receipt of packet, keep it around (used for provisional responses) */
-int __sip_semi_ack(struct sip_pvt *p, int seqno, int resp, int sipmethod);
+int __sip_semi_ack(struct sip_pvt *p, uint32_t seqno, int resp, int sipmethod);
 
 #endif /* defined(_SIP_DIALOG_H) */

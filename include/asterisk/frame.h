@@ -266,6 +266,7 @@ enum ast_control_frame_type {
 	AST_CONTROL_INCOMPLETE = 30,	/*!< Indication that the extension dialed is incomplete */
 	AST_CONTROL_MCID = 31,			/*!< Indicate that the caller is being malicious. */
 	AST_CONTROL_UPDATE_RTP_PEER = 32, /*!< Interrupt the bridge and have it update the peer */
+	AST_CONTROL_PVT_CAUSE_CODE = 33, /*!< Contains an update to the protocol-specific cause-code stored for branching dials */
 };
 
 enum ast_frame_read_action {
@@ -322,6 +323,13 @@ struct ast_control_t38_parameters {
 enum ast_control_transfer {
 	AST_TRANSFER_SUCCESS = 0, /*!< Transfer request on the channel worked */
 	AST_TRANSFER_FAILED,      /*!< Transfer request on the channel failed */
+};
+
+struct ast_control_pvt_cause_code {
+	char chan_name[AST_CHANNEL_NAME];	/*!< Name of the channel that originated the cause information */
+	unsigned int emulate_sip_cause:1;	/*!< Indicates whether this should be used to emulate SIP_CAUSE support */
+	int ast_cause;				/*!< Asterisk cause code associated with this message */
+	char code[1];				/*!< Tech-specific cause code information, beginning with the name of the tech */
 };
 
 #define AST_SMOOTHER_FLAG_G729		(1 << 0)
@@ -590,9 +598,31 @@ int ast_frame_adjust_volume(struct ast_frame *f, int adjustment);
 int ast_frame_slinear_sum(struct ast_frame *f1, struct ast_frame *f2);
 
 /*!
- * \brief Clear all audio samples from an ast_frame. The frame must be AST_FRAME_VOICE and AST_FORMAT_SLINEAR 
+ * \brief Clear all audio samples from an ast_frame. The frame must be AST_FRAME_VOICE and AST_FORMAT_SLINEAR
  */
 int ast_frame_clear(struct ast_frame *frame);
+
+/*!
+ * \brief Copy the discription of a frame's subclass into the provided string
+ *
+ * \param f The frame to get the information from
+ * \param subclass Buffer to fill with subclass information
+ * \param slen Length of subclass buffer
+ * \param moreinfo Buffer to fill with additional information
+ * \param mlen Length of moreinfo buffer
+ * \since 11
+ */
+void ast_frame_subclass2str(struct ast_frame *f, char *subclass, size_t slen, char *moreinfo, size_t mlen);
+
+/*!
+ * \brief Copy the discription of a frame type into the provided string
+ *
+ * \param frame_type The frame type to be described
+ * \param ftype Buffer to fill with frame type description
+ * \param len Length of subclass buffer
+ * \since 11
+ */
+void ast_frame_type2str(enum ast_frame_type frame_type, char *ftype, size_t len);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

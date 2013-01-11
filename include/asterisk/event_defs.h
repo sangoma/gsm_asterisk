@@ -54,8 +54,14 @@ enum ast_event_type {
 	AST_EVENT_SECURITY            = 0x08,
 	/*! Used by res_stun_monitor to alert listeners to an exernal network address change. */
 	AST_EVENT_NETWORK_CHANGE      = 0x09,
+	/*! The presence state for a presence provider */
+	AST_EVENT_PRESENCE_STATE      = 0x0a,
+	/*! Used to alert listeners when a named ACL has changed. */
+	AST_EVENT_ACL_CHANGE          = 0x0b,
+	/*! Send out a ping for debugging distributed events */
+	AST_EVENT_PING                = 0x0c,
 	/*! Number of event types.  This should be the last event type + 1 */
-	AST_EVENT_TOTAL               = 0x0a,
+	AST_EVENT_TOTAL               = 0x0d,
 };
 
 /*! \brief Event Information Element types */
@@ -287,9 +293,19 @@ enum ast_event_ie_type {
 	AST_EVENT_IE_RECEIVED_HASH       = 0x0036,
 	AST_EVENT_IE_USING_PASSWORD      = 0x0037,
 	AST_EVENT_IE_ATTEMPTED_TRANSPORT = 0x0038,
+	AST_EVENT_IE_PRESENCE_PROVIDER   = 0x0039,
+	AST_EVENT_IE_PRESENCE_STATE      = 0x003a,
+	AST_EVENT_IE_PRESENCE_SUBTYPE    = 0x003b,
+	AST_EVENT_IE_PRESENCE_MESSAGE    = 0x003c,
 
+	/*!
+	 * \brief Event non-cachability flag
+	 * Used by: All events
+	 * Payload type: UINT
+	 */
+	AST_EVENT_IE_CACHABLE            = 0x003d,
 	/*! \brief Must be the last IE value +1 */
-	AST_EVENT_IE_TOTAL               = 0x0039,
+	AST_EVENT_IE_TOTAL               = 0x003e,
 };
 
 /*!

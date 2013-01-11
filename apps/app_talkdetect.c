@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 358907 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -125,13 +125,13 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 
 	ast_debug(1, "Preparing detect of '%s', sil=%d, min=%d, max=%d, analysistime=%d\n", args.filename, sil, min, max, analysistime);
 	do {
-		if (chan->_state != AST_STATE_UP) {
+		if (ast_channel_state(chan) != AST_STATE_UP) {
 			if ((res = ast_answer(chan))) {
 				break;
 			}
 		}
 
-		ast_format_copy(&origrformat, &chan->readformat);
+		ast_format_copy(&origrformat, ast_channel_readformat(chan));
 		if ((ast_set_read_format_by_id(chan, AST_FORMAT_SLINEAR))) {
 			ast_log(LOG_WARNING, "Unable to set read format to linear!\n");
 			res = -1;
@@ -144,14 +144,14 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 			break;
 		}
 		ast_stopstream(chan);
-		if (ast_streamfile(chan, tmp, chan->language)) {
-			ast_log(LOG_WARNING, "ast_streamfile failed on %s for %s\n", chan->name, (char *)data);
+		if (ast_streamfile(chan, tmp, ast_channel_language(chan))) {
+			ast_log(LOG_WARNING, "ast_streamfile failed on %s for %s\n", ast_channel_name(chan), (char *)data);
 			break;
 		}
 		detection_start = ast_tvnow();
-		while (chan->stream) {
-			res = ast_sched_wait(chan->sched);
-			if ((res < 0) && !chan->timingfunc) {
+		while (ast_channel_stream(chan)) {
+			res = ast_sched_wait(ast_channel_sched(chan));
+			if ((res < 0) && !ast_channel_timingfunc(chan)) {
 				res = 0;
 				break;
 			}
@@ -160,7 +160,7 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 			}
 			res = ast_waitfor(chan, res);
 			if (res < 0) {
-				ast_log(LOG_WARNING, "Waitfor failed on %s\n", chan->name);
+				ast_log(LOG_WARNING, "Waitfor failed on %s\n", ast_channel_name(chan));
 				break;
 			} else if (res > 0) {
 				fr = ast_read(chan);
@@ -169,7 +169,7 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 					 * frames and the time has not expired */
 					if (ast_tvdiff_ms(ast_tvnow(), detection_start) >= analysistime) {
 						continue_analysis = 0;
-						ast_verb(3, "BackgroundDetect: Talk analysis time complete on %s.\n", chan->name);
+						ast_verb(3, "BackgroundDetect: Talk analysis time complete on %s.\n", ast_channel_name(chan));
 					}
 				}
 				
@@ -180,8 +180,8 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 					char t[2];
 					t[0] = fr->subclass.integer;
 					t[1] = '\0';
-					if (ast_canmatch_extension(chan, chan->context, t, 1,
-						S_COR(chan->caller.id.number.valid, chan->caller.id.number.str, NULL))) {
+					if (ast_canmatch_extension(chan, ast_channel_context(chan), t, 1,
+						S_COR(ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, NULL))) {
 						/* They entered a valid  extension, or might be anyhow */
 						res = fr->subclass.integer;
 						ast_frfree(fr);
@@ -207,7 +207,7 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 								snprintf(ms_str, sizeof(ms_str), "%d", ms);	
 								pbx_builtin_setvar_helper(chan, "TALK_DETECTED", ms_str);
 
-								ast_goto_if_exists(chan, chan->context, "talk", 1);
+								ast_goto_if_exists(chan, ast_channel_context(chan), "talk", 1);
 								res = 0;
 								ast_frfree(fr);
 								break;
@@ -227,7 +227,7 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 				}
 				ast_frfree(fr);
 			}
-			ast_sched_runq(chan->sched);
+			ast_sched_runq(ast_channel_sched(chan));
 		}
 		ast_stopstream(chan);
 	} while (0);
@@ -235,7 +235,7 @@ static int background_detect_exec(struct ast_channel *chan, const char *data)
 	if (res > -1) {
 		if (origrformat.id && ast_set_read_format(chan, &origrformat)) {
 			ast_log(LOG_WARNING, "Failed to restore read format for %s to %s\n", 
-				chan->name, ast_getformatname(&origrformat));
+				ast_channel_name(chan), ast_getformatname(&origrformat));
 		}
 	}
 	if (dsp) {

@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 356042 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -73,7 +73,13 @@ static const char app[] = "Authenticate";
 						<para>Set the channels' account code to the password that is entered</para>
 					</option>
 					<option name="d">
-						<para>Interpret the given path as database key, not a literal file</para>
+						<para>Interpret the given path as database key, not a literal file.</para>
+						<note>
+							<para>The value is not used at all in the authentication when using this option.
+							If the family/key is set to <literal>/pin/100</literal> (value does not matter)
+							then the password field needs to be set to <literal>/pin</literal> and the pin entered
+							by the user would be authenticated against <literal>100</literal>.</para>
+						</note>
 					</option>
 					<option name="m">
 						<para>Interpret the given path as a file which contains a list of account
@@ -127,7 +133,7 @@ static int auth_exec(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	if (chan->_state != AST_STATE_UP) {
+	if (ast_channel_state(chan) != AST_STATE_UP) {
 		if ((res = ast_answer(chan)))
 			return -1;
 	}
@@ -207,14 +213,20 @@ static int auth_exec(struct ast_channel *chan, const char *data)
 						continue;
 					ast_md5_hash(md5passwd, passwd);
 					if (!strcmp(md5passwd, md5secret)) {
-						if (ast_test_flag(&flags,OPT_ACCOUNT))
+						if (ast_test_flag(&flags,OPT_ACCOUNT)) {
+							ast_channel_lock(chan);
 							ast_cdr_setaccount(chan, buf);
+							ast_channel_unlock(chan);
+						}
 						break;
 					}
 				} else {
 					if (!strcmp(passwd, buf)) {
-						if (ast_test_flag(&flags, OPT_ACCOUNT))
+						if (ast_test_flag(&flags, OPT_ACCOUNT)) {
+							ast_channel_lock(chan);
 							ast_cdr_setaccount(chan, buf);
+							ast_channel_unlock(chan);
+						}
 						break;
 					}
 				}
@@ -236,12 +248,15 @@ static int auth_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if ((retries < 3) && !res) {
-		if (ast_test_flag(&flags,OPT_ACCOUNT) && !ast_test_flag(&flags,OPT_MULTIPLE))
+		if (ast_test_flag(&flags,OPT_ACCOUNT) && !ast_test_flag(&flags,OPT_MULTIPLE)) {
+			ast_channel_lock(chan);
 			ast_cdr_setaccount(chan, passwd);
-		if (!(res = ast_streamfile(chan, "auth-thankyou", chan->language)))
+			ast_channel_unlock(chan);
+		}
+		if (!(res = ast_streamfile(chan, "auth-thankyou", ast_channel_language(chan))))
 			res = ast_waitstream(chan, "");
 	} else {
-		if (!ast_streamfile(chan, "vm-goodbye", chan->language))
+		if (!ast_streamfile(chan, "vm-goodbye", ast_channel_language(chan)))
 			res = ast_waitstream(chan, "");
 		res = -1;
 	}

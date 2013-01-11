@@ -23,9 +23,13 @@
  * \author Russell Bryant <russell@digium.com>
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337600 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 378347 $")
 
 #include "asterisk/_private.h"
 
@@ -99,6 +103,7 @@ struct ast_event {
  */
 struct ast_event_ref {
 	struct ast_event *event;
+	unsigned int cache;
 };
 
 struct ast_event_ie_val {
@@ -137,6 +142,7 @@ static int ast_event_cmp(void *obj, void *arg, int flags);
 static int ast_event_hash_mwi(const void *obj, const int flags);
 static int ast_event_hash_devstate(const void *obj, const int flags);
 static int ast_event_hash_devstate_change(const void *obj, const int flags);
+static int ast_event_hash_presence_state_change(const void *obj, const int flags);
 
 #ifdef LOW_MEMORY
 #define NUM_CACHE_BUCKETS 17
@@ -150,7 +156,7 @@ static int ast_event_hash_devstate_change(const void *obj, const int flags);
  * \brief Event types that are kept in the cache.
  */
 static struct {
-	/*! 
+	/*!
 	 * \brief Container of cached events
 	 *
 	 * \details This gets allocated in ast_event_init() when Asterisk starts
@@ -181,6 +187,11 @@ static struct {
 		.hash_fn = ast_event_hash_devstate_change,
 		.cache_args = { AST_EVENT_IE_DEVICE, AST_EVENT_IE_EID, },
 	},
+	[AST_EVENT_PRESENCE_STATE] = {
+		.hash_fn = ast_event_hash_presence_state_change,
+		.cache_args = { AST_EVENT_IE_PRESENCE_STATE, },
+	},
+
 };
 
 /*!
@@ -267,7 +278,8 @@ static const struct ie_map {
 	[AST_EVENT_IE_RECEIVED_CHALLENGE]  = { AST_EVENT_IE_PLTYPE_STR,  "ReceivedChallenge" },
 	[AST_EVENT_IE_RECEIVED_HASH]       = { AST_EVENT_IE_PLTYPE_STR,  "ReceivedHash" },
 	[AST_EVENT_IE_USING_PASSWORD]      = { AST_EVENT_IE_PLTYPE_UINT, "UsingPassword" },
-
+	[AST_EVENT_IE_ATTEMPTED_TRANSPORT] = { AST_EVENT_IE_PLTYPE_STR,  "AttemptedTransport" },
+	[AST_EVENT_IE_CACHABLE]            = { AST_EVENT_IE_PLTYPE_UINT,  "Cachable" },
 };
 
 const char *ast_event_get_type_name(const struct ast_event *event)
@@ -415,8 +427,16 @@ static int match_sub_ie_val_to_event(const struct ast_event_ie_val *sub_ie_val, 
 		res = (sub_ie_val->payload.uint & event_ie_val->payload.uint);
 		break;
 	case AST_EVENT_IE_PLTYPE_STR:
-		res = !strcmp(sub_ie_val->payload.str, event_ie_val->payload.str);
+	{
+		const char *substr = sub_ie_val->payload.str;
+		const char *estr = event_ie_val->payload.str;
+		if (sub_ie_val->ie_type == AST_EVENT_IE_DEVICE) {
+			substr = ast_tech_to_upper(ast_strdupa(substr));
+			estr = ast_tech_to_upper(ast_strdupa(estr));
+		}
+		res = !strcmp(substr, estr);
 		break;
+	}
 	case AST_EVENT_IE_PLTYPE_RAW:
 		res = (sub_ie_val->raw_datalen == event_ie_val->raw_datalen
 			&& !memcmp(sub_ie_val->payload.raw, event_ie_val->payload.raw,
@@ -461,7 +481,7 @@ enum ast_event_subscriber_res ast_event_check_subscriber(enum ast_event_type typ
 		ie_type != AST_EVENT_IE_END;
 		ie_type = va_arg(ap, enum ast_event_ie_type))
 	{
-		struct ast_event_ie_val *ie_value = alloca(sizeof(*ie_value));
+		struct ast_event_ie_val *ie_value = ast_alloca(sizeof(*ie_value));
 		int insert = 0;
 
 		memset(ie_value, 0, sizeof(*ie_value));
@@ -485,7 +505,7 @@ enum ast_event_subscriber_res ast_event_check_subscriber(enum ast_event_type typ
 			void *data = va_arg(ap, void *);
 			size_t datalen = va_arg(ap, size_t);
 
-			ie_value->payload.raw = alloca(datalen);
+			ie_value->payload.raw = ast_alloca(datalen);
 			memcpy(ie_value->payload.raw, data, datalen);
 			ie_value->raw_datalen = datalen;
 			insert = 1;
@@ -580,8 +600,19 @@ static int match_ie_val(const struct ast_event *event,
 		}
 
 		str = event2 ? ast_event_get_ie_str(event2, ie_val->ie_type) : ie_val->payload.str;
-		if (str && !strcmp(str, ast_event_get_ie_str(event, ie_val->ie_type))) {
-			return 1;
+		if (str) {
+			const char *e1str, *e2str;
+			e1str = ast_event_get_ie_str(event, ie_val->ie_type);
+			e2str = str;
+
+			if (ie_val->ie_type == AST_EVENT_IE_DEVICE) {
+				e1str = ast_tech_to_upper(ast_strdupa(e1str));
+				e2str = ast_tech_to_upper(ast_strdupa(e2str));
+			}
+
+			if (!strcmp(e1str, e2str)) {
+				return 1;
+			}
 		}
 
 		return 0;
@@ -633,6 +664,10 @@ static int dump_cache_cb(void *obj, void *arg, int flags)
 /*! \brief Dump the event cache for the subscribed event type */
 void ast_event_dump_cache(const struct ast_event_sub *event_sub)
 {
+	if (!ast_event_cache[event_sub->type].container) {
+		return;
+	}
+
 	ao2_callback(ast_event_cache[event_sub->type].container, OBJ_NODATA,
 			dump_cache_cb, (void *) event_sub);
 }
@@ -824,7 +859,13 @@ int ast_event_sub_append_ie_str(struct ast_event_sub *sub,
 		return -1;
 	}
 
-	ie_val->payload.hash = ast_str_hash(str);
+	if (ie_type == AST_EVENT_IE_DEVICE) {
+		char *uppertech = ast_strdupa(str);
+		ast_tech_to_upper(uppertech);
+		ie_val->payload.hash = ast_str_hash(uppertech);
+	} else {
+		ie_val->payload.hash = ast_str_hash(str);
+	}
 
 	AST_LIST_INSERT_TAIL(&sub->ie_vals, ie_val, entry);
 
@@ -1117,10 +1158,16 @@ int ast_event_append_ie_str(struct ast_event **event, enum ast_event_ie_type ie_
 	size_t payload_len;
 
 	payload_len = sizeof(*str_payload) + strlen(str);
-	str_payload = alloca(payload_len);
+	str_payload = ast_alloca(payload_len);
 
 	strcpy(str_payload->str, str);
-	str_payload->hash = ast_str_hash(str);
+	if (ie_type == AST_EVENT_IE_DEVICE) {
+		char *uppertech = ast_strdupa(str);
+		ast_tech_to_upper(uppertech);
+		str_payload->hash = ast_str_hash(uppertech);
+	} else {
+		str_payload->hash = ast_str_hash(str);
+	}
 
 	return ast_event_append_ie_raw(event, ie_type, str_payload, payload_len);
 }
@@ -1169,7 +1216,6 @@ struct ast_event *ast_event_new(enum ast_event_type type, ...)
 	struct ast_event *event;
 	enum ast_event_ie_type ie_type;
 	struct ast_event_ie_val *ie_val;
-	int has_ie = 0;
 	AST_LIST_HEAD_NOLOCK_STATIC(ie_vals, ast_event_ie_val);
 
 	/* Invalid type */
@@ -1184,7 +1230,7 @@ struct ast_event *ast_event_new(enum ast_event_type type, ...)
 		ie_type != AST_EVENT_IE_END;
 		ie_type = va_arg(ap, enum ast_event_ie_type))
 	{
-		struct ast_event_ie_val *ie_value = alloca(sizeof(*ie_value));
+		struct ast_event_ie_val *ie_value = ast_alloca(sizeof(*ie_value));
 		int insert = 0;
 
 		memset(ie_value, 0, sizeof(*ie_value));
@@ -1207,7 +1253,7 @@ struct ast_event *ast_event_new(enum ast_event_type type, ...)
 		{
 			void *data = va_arg(ap, void *);
 			size_t datalen = va_arg(ap, size_t);
-			ie_value->payload.raw = alloca(datalen);
+			ie_value->payload.raw = ast_alloca(datalen);
 			memcpy(ie_value->payload.raw, data, datalen);
 			ie_value->raw_datalen = datalen;
 			insert = 1;
@@ -1220,7 +1266,6 @@ struct ast_event *ast_event_new(enum ast_event_type type, ...)
 
 		if (insert) {
 			AST_LIST_INSERT_TAIL(&ie_vals, ie_value, entry);
-			has_ie = 1;
 		} else {
 			ast_log(LOG_WARNING, "Unsupported PLTYPE(%d)\n", ie_value->ie_pltype);
 		}
@@ -1254,12 +1299,13 @@ struct ast_event *ast_event_new(enum ast_event_type type, ...)
 			break;
 		}
 
+		/* realloc inside one of the append functions failed */
 		if (!event) {
-			break;
+			return NULL;
 		}
 	}
 
-	if (has_ie && !ast_event_get_ie_raw(event, AST_EVENT_IE_EID)) {
+	if (!ast_event_get_ie_raw(event, AST_EVENT_IE_EID)) {
 		/* If the event is originating on this server, add the server's
 		 * entity ID to the event. */
 		ast_event_append_eid(&event);
@@ -1425,23 +1471,6 @@ static void event_update_cache(struct ao2_container *cache, struct ast_event *ev
 	ao2_unlock(cache);
 }
 
-int ast_event_queue_and_cache(struct ast_event *event)
-{
-	struct ao2_container *container;
-
-	container = ast_event_cache[ast_event_get_type(event)].container;
-	if (!container) {
-		ast_log(LOG_WARNING, "cache requested for non-cached event type\n");
-	} else {
-		event_update_cache(container, event);
-	}
-
-	if (ast_event_queue(event)) {
-		ast_event_destroy(event);
-	}
-	return 0;
-}
-
 static int handle_event(void *data)
 {
 	struct ast_event_ref *event_ref = data;
@@ -1451,6 +1480,16 @@ static int handle_event(void *data)
 		AST_EVENT_ALL
 	};
 	int i;
+
+	if (event_ref->cache) {
+		struct ao2_container *container;
+		container = ast_event_cache[ast_event_get_type(event_ref->event)].container;
+		if (!container) {
+			ast_log(LOG_WARNING, "cache requested for non-cached event type\n");
+		} else {
+			event_update_cache(container, event_ref->event);
+		}
+	}
 
 	for (i = 0; i < ARRAY_LEN(event_types); i++) {
 		AST_RWDLLIST_RDLOCK(&ast_event_subs[event_types[i]]);
@@ -1477,7 +1516,7 @@ static int handle_event(void *data)
 	return 0;
 }
 
-int ast_event_queue(struct ast_event *event)
+static int _ast_event_queue(struct ast_event *event, unsigned int cache)
 {
 	struct ast_event_ref *event_ref;
 	uint16_t host_event_type;
@@ -1504,6 +1543,7 @@ int ast_event_queue(struct ast_event *event)
 	}
 
 	event_ref->event = event;
+	event_ref->cache = cache;
 
 	res = ast_taskprocessor_push(event_dispatcher, handle_event, event_ref);
 	if (res) {
@@ -1511,6 +1551,16 @@ int ast_event_queue(struct ast_event *event)
 		ao2_ref(event_ref, -1);
 	}
 	return res;
+}
+
+int ast_event_queue(struct ast_event *event)
+{
+	return _ast_event_queue(event, 0);
+}
+
+int ast_event_queue_and_cache(struct ast_event *event)
+{
+	return _ast_event_queue(event, 1);
 }
 
 static int ast_event_hash_mwi(const void *obj, const int flags)
@@ -1552,6 +1602,22 @@ static int ast_event_hash_devstate_change(const void *obj, const int flags)
 	const struct ast_event *event = obj;
 
 	return ast_str_hash(ast_event_get_ie_str(event, AST_EVENT_IE_DEVICE));
+}
+
+/*!
+ * \internal
+ * \brief Hash function for AST_EVENT_PRESENCE_STATE
+ *
+ * \param[in] obj an ast_event
+ * \param[in] flags unused
+ *
+ * \return hash value
+ */
+static int ast_event_hash_presence_state_change(const void *obj, const int flags)
+{
+	const struct ast_event *event = obj;
+
+	return ast_str_hash(ast_event_get_ie_str(event, AST_EVENT_IE_PRESENCE_PROVIDER));
 }
 
 static int ast_event_hash(const void *obj, const int flags)
@@ -1745,6 +1811,38 @@ static struct ast_cli_entry event_cli[] = {
 	AST_CLI_DEFINE(event_dump_cache, "Dump the internal event cache (for debugging)"),
 };
 
+/*! \internal \brief Clean up resources on Asterisk shutdown */
+static void event_shutdown(void)
+{
+	struct ast_event_sub *sub;
+	int i;
+
+	if (event_dispatcher) {
+		event_dispatcher = ast_taskprocessor_unreference(event_dispatcher);
+	}
+
+	/* Remove any remaining subscriptions.  Note that we can't just call
+	 * unsubscribe, as it will attempt to lock the subscription list
+	 * as well */
+	for (i = 0; i < AST_EVENT_TOTAL; i++) {
+		AST_RWDLLIST_WRLOCK(&ast_event_subs[i]);
+		while ((sub = AST_RWDLLIST_REMOVE_HEAD(&ast_event_subs[i], entry))) {
+			ast_event_sub_destroy(sub);
+		}
+		AST_RWDLLIST_UNLOCK(&ast_event_subs[i]);
+		AST_RWDLLIST_HEAD_DESTROY(&ast_event_subs[i]);
+	}
+
+	for (i = 0; i < AST_EVENT_TOTAL; i++) {
+		if (!ast_event_cache[i].hash_fn) {
+			continue;
+		}
+		if (ast_event_cache[i].container) {
+			ao2_ref(ast_event_cache[i].container, -1);
+		}
+	}
+}
+
 int ast_event_init(void)
 {
 	int i;
@@ -1761,17 +1859,23 @@ int ast_event_init(void)
 
 		if (!(ast_event_cache[i].container = ao2_container_alloc(NUM_CACHE_BUCKETS,
 				ast_event_hash, ast_event_cmp))) {
-			return -1;
+			goto event_init_cleanup;
 		}
 	}
 
 	if (!(event_dispatcher = ast_taskprocessor_get("core_event_dispatcher", 0))) {
-		return -1;
+		goto event_init_cleanup;
 	}
 
 	ast_cli_register_multiple(event_cli, ARRAY_LEN(event_cli));
 
+	ast_register_atexit(event_shutdown);
+
 	return 0;
+
+event_init_cleanup:
+	event_shutdown();
+	return -1;
 }
 
 size_t ast_event_minimum_length(void)

@@ -18,7 +18,7 @@
 #include <regex.h>
 #include <limits.h>
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 358812 $")
 
 #include "asterisk/channel.h"
 #include "asterisk/ast_expr.h"
@@ -122,7 +122,7 @@ void ast_cli_unregister_multiple(void);
 void ast_context_destroy(void);
 void ast_log(int level, const char *file, int line, const char *function, const char *fmt, ...);
 char *ast_process_quotes_and_slashes(char *start, char find, char replace_with);
-void __ast_verbose(const char *file, int line, const char *func, const char *fmt, ...);
+void __ast_verbose(const char *file, int line, const char *func, int level, const char *fmt, ...);
 struct ast_app *pbx_findapp(const char *app);
 void filter_leading_space_from_exprs(char *str);
 void filter_newlines(char *str);
@@ -423,6 +423,36 @@ void ast_context_destroy(void)
 {
 	if( !no_comp)
 		printf("Executed ast_context_destroy();\n");
+}
+
+const char *ast_get_context_name(struct ast_context *con);
+const char *ast_get_context_name(struct ast_context *con)
+{
+	return con ? con->name : NULL;
+}
+
+struct ast_exten *ast_walk_context_extensions(struct ast_context *con, struct ast_exten *exten);
+struct ast_exten *ast_walk_context_extensions(struct ast_context *con, struct ast_exten *exten)
+{
+	return NULL;
+}
+
+struct ast_include *ast_walk_context_includes(struct ast_context *con, struct ast_include *inc);
+struct ast_include *ast_walk_context_includes(struct ast_context *con, struct ast_include *inc)
+{
+	return NULL;
+}
+
+struct ast_ignorepat *ast_walk_context_ignorepats(struct ast_context *con, struct ast_ignorepat *ip);
+struct ast_ignorepat *ast_walk_context_ignorepats(struct ast_context *con, struct ast_ignorepat *ip)
+{
+	return NULL;
+}
+
+struct ast_sw *ast_walk_context_switches(struct ast_context *con, struct ast_sw *sw);
+struct ast_sw *ast_walk_context_switches(struct ast_context *con, struct ast_sw *sw)
+{
+	return NULL;
 }
 
 void filter_leading_space_from_exprs(char *str)

@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 375027 $")
 
 #include <sys/time.h>
 #include <sys/signal.h>
@@ -92,7 +92,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 				<para>If not specified, this defaults to 136 years.</para>
 			</parameter>
 			<parameter name="options" required="false">
-			   <optionlist>
+				<optionlist>
 				<option name="A">
 					<argument name="x" required="true">
 						<para>The file to play to the called party</para>
@@ -108,12 +108,32 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 					channel before doing anything on the called channel. You will rarely need to use
 					this option, the default behavior is adequate in most cases.</para>
 				</option>
+				<option name="b" argsep="^">
+					<para>Before initiating an outgoing call, Gosub to the specified
+					location using the newly created channel.  The Gosub will be
+					executed for each destination channel.</para>
+					<argument name="context" required="false" />
+					<argument name="exten" required="false" />
+					<argument name="priority" required="true" hasparams="optional" argsep="^">
+						<argument name="arg1" multiple="true" required="true" />
+						<argument name="argN" />
+					</argument>
+				</option>
+				<option name="B" argsep="^">
+					<para>Before initiating the outgoing call(s), Gosub to the specified
+					location using the current channel.</para>
+					<argument name="context" required="false" />
+					<argument name="exten" required="false" />
+					<argument name="priority" required="true" hasparams="optional" argsep="^">
+						<argument name="arg1" multiple="true" required="true" />
+						<argument name="argN" />
+					</argument>
+				</option>
 				<option name="C">
 					<para>Reset the call detail record (CDR) for this call.</para>
 				</option>
 				<option name="c">
-					<para>If the Dial() application cancels this call, always set the flag to tell the channel
-					driver that the call is answered elsewhere.</para>
+					<para>If the Dial() application cancels this call, always set HANGUPCAUSE to 'answered elsewhere'</para>
 				</option>
 				<option name="d">
 					<para>Allow the calling user to dial a 1 digit extension while waiting for
@@ -203,8 +223,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 					<para>Asterisk will ignore any forwarding requests it may receive on this dial attempt.</para>
 				</option>
 				<option name="I">
-					<para>Asterisk will ignore any connected line update requests or redirecting party update
-					requests it may receiveon this dial attempt.</para>
+					<para>Asterisk will ignore any connected line update requests or any redirecting party
+					update requests it may receive on this dial attempt.</para>
 				</option>
 				<option name="k">
 					<para>Allow the called party to enable parking of the call by sending
@@ -288,15 +308,14 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 							<value name="CONTINUE">
 								Hangup the called party and allow the calling party to continue dialplan execution at the next priority
 							</value>
-							<!-- TODO: Fix this syntax up, once we've figured out how to specify the GOTO syntax -->
-							<value name="GOTO:&lt;context&gt;^&lt;exten&gt;^&lt;priority&gt;">
+							<value name="GOTO:[[&lt;context&gt;^]&lt;exten&gt;^]&lt;priority&gt;">
 								Transfer the call to the specified destination.
 							</value>
 						</variable>
 					</variablelist>
 					<note>
 						<para>You cannot use any additional action post answer options in conjunction
-						with this option. Also, pbx services are not run on the peer (called) channel,
+						with this option. Also, pbx services are run on the peer (called) channel,
 						so you will not be able to set timeouts via the TIMEOUT() function in this macro.</para>
 					</note>
 					<warning><para>Be aware of the limitations that macros have, specifically with regards to use of
@@ -304,8 +323,8 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 					Macro()</para></warning>
 				</option>
 				<option name="n">
-				        <argument name="delete">
-					        <para>With <replaceable>delete</replaceable> either not specified or set to <literal>0</literal>,
+					<argument name="delete">
+						<para>With <replaceable>delete</replaceable> either not specified or set to <literal>0</literal>,
 						the recorded introduction will not be deleted if the caller hangs up while the remote party has not
 						yet answered.</para>
 						<para>With <replaceable>delete</replaceable> set to <literal>1</literal>, the introduction will
@@ -405,16 +424,14 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 								Hangup the called party and allow the calling party
 								to continue dialplan execution at the next priority.
 							</value>
-							<!-- TODO: Fix this syntax up, once we've figured out how to specify the GOTO syntax -->
-							<value name="GOTO:&lt;context&gt;^&lt;exten&gt;^&lt;priority&gt;">
-								Transfer the call to the specified priority. Optionally, an extension, or
-								extension and priority can be specified.
+							<value name="GOTO:[[&lt;context&gt;^]&lt;exten&gt;^]&lt;priority&gt;">
+								Transfer the call to the specified destination.
 							</value>
 						</variable>
 					</variablelist>
 					<note>
 						<para>You cannot use any additional action post answer options in conjunction
-						with this option. Also, pbx services are not run on the peer (called) channel,
+						with this option. Also, pbx services are run on the peer (called) channel,
 						so you will not be able to set timeouts via the TIMEOUT() function in this routine.</para>
 					</note>
 				</option>
@@ -476,7 +493,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 339513 $")
 			<para>If the <variable>OUTBOUND_GROUP</variable> variable is set, all peer channels created by this
 			application will be put into that group (as in Set(GROUP()=...).
 			If the <variable>OUTBOUND_GROUP_ONCE</variable> variable is set, all peer channels created by this
-			application will be put into that group (as in Set(GROUP()=...). Unlike OUTBOUND_GROUP,
+			application will be put into that group (as in Set(GROUP()=...). Unlike <variable>OUTBOUND_GROUP</variable>,
 			however, the variable will be unset after use.</para>
 
 			<para>This application sets the following channel variables:</para>
@@ -590,6 +607,8 @@ enum {
 #define OPT_FORCE_CID_TAG    (1LLU << 38)
 #define OPT_FORCE_CID_PRES   (1LLU << 39)
 #define OPT_CALLER_ANSWER    (1LLU << 40)
+#define OPT_PREDIAL_CALLEE   (1LLU << 41)
+#define OPT_PREDIAL_CALLER   (1LLU << 42)
 
 enum {
 	OPT_ARG_ANNOUNCE = 0,
@@ -609,6 +628,8 @@ enum {
 	OPT_ARG_FORCECLID,
 	OPT_ARG_FORCE_CID_TAG,
 	OPT_ARG_FORCE_CID_PRES,
+	OPT_ARG_PREDIAL_CALLEE,
+	OPT_ARG_PREDIAL_CALLER,
 	/* note: this entry _MUST_ be the last one in the enum */
 	OPT_ARG_ARRAY_SIZE,
 };
@@ -616,6 +637,8 @@ enum {
 AST_APP_OPTIONS(dial_exec_options, BEGIN_OPTIONS
 	AST_APP_OPTION_ARG('A', OPT_ANNOUNCE, OPT_ARG_ANNOUNCE),
 	AST_APP_OPTION('a', OPT_CALLER_ANSWER),
+	AST_APP_OPTION_ARG('b', OPT_PREDIAL_CALLEE, OPT_ARG_PREDIAL_CALLEE),
+	AST_APP_OPTION_ARG('B', OPT_PREDIAL_CALLER, OPT_ARG_PREDIAL_CALLER),
 	AST_APP_OPTION('C', OPT_RESETCDR),
 	AST_APP_OPTION('c', OPT_CANCEL_ELSEWHERE),
 	AST_APP_OPTION('d', OPT_DTMF_EXIT),
@@ -643,9 +666,9 @@ AST_APP_OPTIONS(dial_exec_options, BEGIN_OPTIONS
 	AST_APP_OPTION_ARG('r', OPT_RINGBACK, OPT_ARG_RINGBACK),
 	AST_APP_OPTION_ARG('S', OPT_DURATION_STOP, OPT_ARG_DURATION_STOP),
 	AST_APP_OPTION_ARG('s', OPT_FORCE_CID_TAG, OPT_ARG_FORCE_CID_TAG),
-	AST_APP_OPTION_ARG('u', OPT_FORCE_CID_PRES, OPT_ARG_FORCE_CID_PRES),
 	AST_APP_OPTION('t', OPT_CALLEE_TRANSFER),
 	AST_APP_OPTION('T', OPT_CALLER_TRANSFER),
+	AST_APP_OPTION_ARG('u', OPT_FORCE_CID_PRES, OPT_ARG_FORCE_CID_PRES),
 	AST_APP_OPTION_ARG('U', OPT_CALLEE_GOSUB, OPT_ARG_CALLEE_GOSUB),
 	AST_APP_OPTION('w', OPT_CALLEE_MONITOR),
 	AST_APP_OPTION('W', OPT_CALLER_MONITOR),
@@ -658,24 +681,34 @@ END_OPTIONS );
 	OPT_CALLER_HANGUP | OPT_CALLEE_TRANSFER | OPT_CALLER_TRANSFER | \
 	OPT_CALLEE_MONITOR | OPT_CALLER_MONITOR | OPT_CALLEE_PARK |  \
 	OPT_CALLER_PARK | OPT_ANNOUNCE | OPT_CALLEE_MACRO | OPT_CALLEE_GOSUB) && \
-	!chan->audiohooks && !peer->audiohooks && \
-	ast_framehook_list_is_empty(chan->framehooks) && ast_framehook_list_is_empty(peer->framehooks))
+	!ast_channel_audiohooks(chan) && !ast_channel_audiohooks(peer) && \
+	ast_framehook_list_is_empty(ast_channel_framehooks(chan)) && ast_framehook_list_is_empty(ast_channel_framehooks(peer)))
 
 /*
  * The list of active channels
  */
 struct chanlist {
-	struct chanlist *next;
+	AST_LIST_ENTRY(chanlist) node;
 	struct ast_channel *chan;
+	/*! Channel interface dialing string (is tech/number).  (Stored in stuff[]) */
+	const char *interface;
+	/*! Channel technology name.  (Stored in stuff[]) */
+	const char *tech;
+	/*! Channel device addressing.  (Stored in stuff[]) */
+	const char *number;
 	uint64_t flags;
 	/*! Saved connected party info from an AST_CONTROL_CONNECTED_LINE. */
 	struct ast_party_connected_line connected;
 	/*! TRUE if an AST_CONTROL_CONNECTED_LINE update was saved to the connected element. */
 	unsigned int pending_connected_update:1;
 	struct ast_aoc_decoded *aoc_s_rate_list;
+	/*! The interface, tech, and number strings are stuffed here. */
+	char stuff[0];
 };
 
-static int detect_disconnect(struct ast_channel *chan, char code, struct ast_str *featurecode);
+AST_LIST_HEAD_NOLOCK(dial_head, chanlist);
+
+static int detect_disconnect(struct ast_channel *chan, char code, struct ast_str **featurecode);
 
 static void chanlist_free(struct chanlist *outgoing)
 {
@@ -684,24 +717,21 @@ static void chanlist_free(struct chanlist *outgoing)
 	ast_free(outgoing);
 }
 
-static void hanguptree(struct chanlist *outgoing, struct ast_channel *exception, int answered_elsewhere)
+static void hanguptree(struct dial_head *out_chans, struct ast_channel *exception, int answered_elsewhere)
 {
 	/* Hang up a tree of stuff */
-	struct chanlist *oo;
-	while (outgoing) {
+	struct chanlist *outgoing;
+
+	while ((outgoing = AST_LIST_REMOVE_HEAD(out_chans, node))) {
 		/* Hangup any existing lines we have open */
 		if (outgoing->chan && (outgoing->chan != exception)) {
 			if (answered_elsewhere) {
-				/* The flag is used for local channel inheritance and stuff */
-				ast_set_flag(outgoing->chan, AST_FLAG_ANSWERED_ELSEWHERE);
 				/* This is for the channel drivers */
-				outgoing->chan->hangupcause = AST_CAUSE_ANSWERED_ELSEWHERE;
+				ast_channel_hangupcause_set(outgoing->chan, AST_CAUSE_ANSWERED_ELSEWHERE);
 			}
 			ast_hangup(outgoing->chan);
 		}
-		oo = outgoing;
-		outgoing = outgoing->next;
-		chanlist_free(oo);
+		chanlist_free(outgoing);
 	}
 }
 
@@ -719,7 +749,7 @@ struct cause_args {
 
 static void handle_cause(int cause, struct cause_args *num)
 {
-	struct ast_cdr *cdr = num->chan->cdr;
+	struct ast_cdr *cdr = ast_channel_cdr(num->chan);
 
 	switch(cause) {
 	case AST_CAUSE_BUSY:
@@ -763,10 +793,10 @@ static int onedigit_goto(struct ast_channel *chan, const char *context, char ext
 		if (!ast_goto_if_exists(chan, context, rexten, pri))
 			return 1;
 	} else {
-		if (!ast_goto_if_exists(chan, chan->context, rexten, pri))
+		if (!ast_goto_if_exists(chan, ast_channel_context(chan), rexten, pri))
 			return 1;
-		else if (!ast_strlen_zero(chan->macrocontext)) {
-			if (!ast_goto_if_exists(chan, chan->macrocontext, rexten, pri))
+		else if (!ast_strlen_zero(ast_channel_macrocontext(chan))) {
+			if (!ast_goto_if_exists(chan, ast_channel_macrocontext(chan), rexten, pri))
 				return 1;
 		}
 	}
@@ -780,8 +810,8 @@ static const char *get_cid_name(char *name, int namelen, struct ast_channel *cha
 	const char *exten;
 
 	ast_channel_lock(chan);
-	context = ast_strdupa(S_OR(chan->macrocontext, chan->context));
-	exten = ast_strdupa(S_OR(chan->macroexten, chan->exten));
+	context = ast_strdupa(S_OR(ast_channel_macrocontext(chan), ast_channel_context(chan)));
+	exten = ast_strdupa(S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)));
 	ast_channel_unlock(chan);
 
 	return ast_get_hint(NULL, 0, name, namelen, chan, context, exten) ? name : "";
@@ -790,6 +820,20 @@ static const char *get_cid_name(char *name, int namelen, struct ast_channel *cha
 static void senddialevent(struct ast_channel *src, struct ast_channel *dst, const char *dialstring)
 {
 	struct ast_channel *chans[] = { src, dst };
+	/*** DOCUMENTATION
+		<managerEventInstance>
+			<synopsis>Raised when a dial action has started.</synopsis>
+			<syntax>
+				<parameter name="SubEvent">
+					<para>A sub event type, specifying whether the dial action has begun or ended.</para>
+					<enumlist>
+						<enum name="Begin"/>
+						<enum name="End"/>
+					</enumlist>
+				</parameter>
+			</syntax>
+		</managerEventInstance>
+	***/
 	ast_manager_event_multichan(EVENT_FLAG_CALL, "Dial", 2, chans,
 		"SubEvent: Begin\r\n"
 		"Channel: %s\r\n"
@@ -801,35 +845,54 @@ static void senddialevent(struct ast_channel *src, struct ast_channel *dst, cons
 		"UniqueID: %s\r\n"
 		"DestUniqueID: %s\r\n"
 		"Dialstring: %s\r\n",
-		src->name, dst->name,
-		S_COR(src->caller.id.number.valid, src->caller.id.number.str, "<unknown>"),
-		S_COR(src->caller.id.name.valid, src->caller.id.name.str, "<unknown>"),
-		S_COR(src->connected.id.number.valid, src->connected.id.number.str, "<unknown>"),
-		S_COR(src->connected.id.name.valid, src->connected.id.name.str, "<unknown>"),
-		src->uniqueid, dst->uniqueid,
+		ast_channel_name(src), ast_channel_name(dst),
+		S_COR(ast_channel_caller(src)->id.number.valid, ast_channel_caller(src)->id.number.str, "<unknown>"),
+		S_COR(ast_channel_caller(src)->id.name.valid, ast_channel_caller(src)->id.name.str, "<unknown>"),
+		S_COR(ast_channel_connected(src)->id.number.valid, ast_channel_connected(src)->id.number.str, "<unknown>"),
+		S_COR(ast_channel_connected(src)->id.name.valid, ast_channel_connected(src)->id.name.str, "<unknown>"),
+		ast_channel_uniqueid(src), ast_channel_uniqueid(dst),
 		dialstring ? dialstring : "");
 }
 
 static void senddialendevent(struct ast_channel *src, const char *dialstatus)
 {
+	/*** DOCUMENTATION
+		<managerEventInstance>
+			<synopsis>Raised when a dial action has ended.</synopsis>
+			<syntax>
+				<parameter name="DialStatus">
+					<para>The value of the <variable>DIALSTATUS</variable> channel variable.</para>
+				</parameter>
+			</syntax>
+		</managerEventInstance>
+	***/
 	ast_manager_event(src, EVENT_FLAG_CALL, "Dial",
 		"SubEvent: End\r\n"
 		"Channel: %s\r\n"
 		"UniqueID: %s\r\n"
 		"DialStatus: %s\r\n",
-		src->name, src->uniqueid, dialstatus);
+		ast_channel_name(src), ast_channel_uniqueid(src), dialstatus);
 }
 
 /*!
  * helper function for wait_for_answer()
  *
+ * \param o Outgoing call channel list.
+ * \param num Incoming call channel cause accumulation
+ * \param peerflags Dial option flags
+ * \param single TRUE if there is only one outgoing call.
+ * \param caller_entertained TRUE if the caller is being entertained by MOH or ringback.
+ * \param to Remaining call timeout time.
+ * \param forced_clid OPT_FORCECLID caller id to send
+ * \param stored_clid Caller id representing the called party if needed
+ *
  * XXX this code is highly suspicious, as it essentially overwrites
  * the outgoing channel without properly deleting it.
  *
- * \todo eventually this function should be intergrated into and replaced by ast_call_forward() 
+ * \todo eventually this function should be intergrated into and replaced by ast_call_forward()
  */
-static void do_forward(struct chanlist *o,
-	struct cause_args *num, struct ast_flags64 *peerflags, int single, int *to,
+static void do_forward(struct chanlist *o, struct cause_args *num,
+	struct ast_flags64 *peerflags, int single, int caller_entertained, int *to,
 	struct ast_party_id *forced_clid, struct ast_party_id *stored_clid)
 {
 	char tmpchan[256];
@@ -841,7 +904,7 @@ static void do_forward(struct chanlist *o,
 	int cause;
 	struct ast_party_caller caller;
 
-	ast_copy_string(tmpchan, c->call_forward, sizeof(tmpchan));
+	ast_copy_string(tmpchan, ast_channel_call_forward(c), sizeof(tmpchan));
 	if ((stuff = strchr(tmpchan, '/'))) {
 		*stuff++ = '\0';
 		tech = tmpchan;
@@ -852,35 +915,47 @@ static void do_forward(struct chanlist *o,
 		if (ast_strlen_zero(forward_context)) {
 			forward_context = NULL;
 		}
-		snprintf(tmpchan, sizeof(tmpchan), "%s@%s", c->call_forward, forward_context ? forward_context : c->context);
+		snprintf(tmpchan, sizeof(tmpchan), "%s@%s", ast_channel_call_forward(c), forward_context ? forward_context : ast_channel_context(c));
 		ast_channel_unlock(c);
 		stuff = tmpchan;
 		tech = "Local";
 	}
+	if (!strcasecmp(tech, "Local")) {
+		/*
+		 * Drop the connected line update block for local channels since
+		 * this is going to run dialplan and the user can change his
+		 * mind about what connected line information he wants to send.
+		 */
+		ast_clear_flag64(o, OPT_IGNORE_CONNECTEDLINE);
+	}
 
-	ast_cel_report_event(in, AST_CEL_FORWARD, NULL, c->call_forward, NULL);
+	ast_cel_report_event(in, AST_CEL_FORWARD, NULL, ast_channel_call_forward(c), NULL);
 
 	/* Before processing channel, go ahead and check for forwarding */
-	ast_verb(3, "Now forwarding %s to '%s/%s' (thanks to %s)\n", in->name, tech, stuff, c->name);
+	ast_verb(3, "Now forwarding %s to '%s/%s' (thanks to %s)\n", ast_channel_name(in), tech, stuff, ast_channel_name(c));
 	/* If we have been told to ignore forwards, just set this channel to null and continue processing extensions normally */
 	if (ast_test_flag64(peerflags, OPT_IGNORE_FORWARDING)) {
-		ast_verb(3, "Forwarding %s to '%s/%s' prevented.\n", in->name, tech, stuff);
+		ast_verb(3, "Forwarding %s to '%s/%s' prevented.\n", ast_channel_name(in), tech, stuff);
 		c = o->chan = NULL;
 		cause = AST_CAUSE_BUSY;
 	} else {
 		/* Setup parameters */
-		c = o->chan = ast_request(tech, in->nativeformats, in, stuff, &cause);
+		c = o->chan = ast_request(tech, ast_channel_nativeformats(in), in, stuff, &cause);
 		if (c) {
-			if (single)
+			if (single && !caller_entertained) {
 				ast_channel_make_compatible(o->chan, in);
+			}
+			ast_channel_lock_both(in, o->chan);
 			ast_channel_inherit_variables(in, o->chan);
 			ast_channel_datastore_inherit(in, o->chan);
+			ast_channel_unlock(in);
+			ast_channel_unlock(o->chan);
 			/* When a call is forwarded, we don't want to track new interfaces
 			 * dialed for CC purposes. Setting the done flag will ensure that
 			 * any Dial operations that happen later won't record CC interfaces.
 			 */
 			ast_ignore_cc(o->chan);
-			ast_log(LOG_NOTICE, "Not accepting call completion offers from call-forward recipient %s\n", o->chan->name);
+			ast_log(LOG_NOTICE, "Not accepting call completion offers from call-forward recipient %s\n", ast_channel_name(o->chan));
 		} else
 			ast_log(LOG_NOTICE,
 				"Forwarding failed to create channel to dial '%s/%s' (cause = %d)\n",
@@ -891,45 +966,50 @@ static void do_forward(struct chanlist *o,
 		handle_cause(cause, num);
 		ast_hangup(original);
 	} else {
-		struct ast_party_redirecting redirecting;
+		ast_channel_lock_both(c, original);
+		ast_party_redirecting_copy(ast_channel_redirecting(c),
+			ast_channel_redirecting(original));
+		ast_channel_unlock(c);
+		ast_channel_unlock(original);
 
-		if (single && CAN_EARLY_BRIDGE(peerflags, c, in)) {
+		ast_channel_lock_both(c, in);
+
+		if (single && !caller_entertained && CAN_EARLY_BRIDGE(peerflags, c, in)) {
 			ast_rtp_instance_early_bridge_make_compatible(c, in);
 		}
 
-		ast_channel_set_redirecting(c, &original->redirecting, NULL);
-		ast_channel_lock(c);
-		while (ast_channel_trylock(in)) {
-			CHANNEL_DEADLOCK_AVOIDANCE(c);
-		}
-		if (!c->redirecting.from.number.valid
-			|| ast_strlen_zero(c->redirecting.from.number.str)) {
+		if (!ast_channel_redirecting(c)->from.number.valid
+			|| ast_strlen_zero(ast_channel_redirecting(c)->from.number.str)) {
 			/*
 			 * The call was not previously redirected so it is
 			 * now redirected from this number.
 			 */
-			ast_party_number_free(&c->redirecting.from.number);
-			ast_party_number_init(&c->redirecting.from.number);
-			c->redirecting.from.number.valid = 1;
-			c->redirecting.from.number.str =
-				ast_strdup(S_OR(in->macroexten, in->exten));
+			ast_party_number_free(&ast_channel_redirecting(c)->from.number);
+			ast_party_number_init(&ast_channel_redirecting(c)->from.number);
+			ast_channel_redirecting(c)->from.number.valid = 1;
+			ast_channel_redirecting(c)->from.number.str =
+				ast_strdup(S_OR(ast_channel_macroexten(in), ast_channel_exten(in)));
 		}
 
-		c->dialed.transit_network_select = in->dialed.transit_network_select;
+		ast_channel_dialed(c)->transit_network_select = ast_channel_dialed(in)->transit_network_select;
 
 		/* Determine CallerID to store in outgoing channel. */
-		ast_party_caller_set_init(&caller, &c->caller);
+		ast_party_caller_set_init(&caller, ast_channel_caller(c));
 		if (ast_test_flag64(peerflags, OPT_ORIGINAL_CLID)) {
 			caller.id = *stored_clid;
 			ast_channel_set_caller_event(c, &caller, NULL);
-		} else if (ast_strlen_zero(S_COR(c->caller.id.number.valid,
-			c->caller.id.number.str, NULL))) {
+			ast_set_flag64(o, DIAL_CALLERID_ABSENT);
+		} else if (ast_strlen_zero(S_COR(ast_channel_caller(c)->id.number.valid,
+			ast_channel_caller(c)->id.number.str, NULL))) {
 			/*
 			 * The new channel has no preset CallerID number by the channel
 			 * driver.  Use the dialplan extension and hint name.
 			 */
 			caller.id = *stored_clid;
 			ast_channel_set_caller_event(c, &caller, NULL);
+			ast_set_flag64(o, DIAL_CALLERID_ABSENT);
+		} else {
+			ast_clear_flag64(o, DIAL_CALLERID_ABSENT);
 		}
 
 		/* Determine CallerID for outgoing channel to send. */
@@ -938,31 +1018,42 @@ static void do_forward(struct chanlist *o,
 
 			ast_party_connected_line_init(&connected);
 			connected.id = *forced_clid;
-			ast_party_connected_line_copy(&c->connected, &connected);
+			ast_party_connected_line_copy(ast_channel_connected(c), &connected);
 		} else {
-			ast_connected_line_copy_from_caller(&c->connected, &in->caller);
+			ast_connected_line_copy_from_caller(ast_channel_connected(c), ast_channel_caller(in));
 		}
 
-		ast_string_field_set(c, accountcode, in->accountcode);
+		ast_channel_accountcode_set(c, ast_channel_accountcode(in));
 
-		c->appl = "AppDial";
-		c->data = "(Outgoing Line)";
-		/*
-		 * We must unlock c before calling ast_channel_redirecting_macro, because
-		 * we put c into autoservice there. That is pretty much a guaranteed
-		 * deadlock. This is why the handling of c's lock may seem a bit unusual
-		 * here.
-		 */
-		ast_party_redirecting_init(&redirecting);
-		ast_party_redirecting_copy(&redirecting, &c->redirecting);
-		ast_channel_unlock(c);
-		if (ast_channel_redirecting_macro(c, in, &redirecting, 1, 0)) {
-			ast_channel_update_redirecting(in, &redirecting, NULL);
-		}
-		ast_party_redirecting_free(&redirecting);
+		ast_channel_appl_set(c, "AppDial");
+		ast_channel_data_set(c, "(Outgoing Line)");
+
 		ast_channel_unlock(in);
+		if (single && !ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)) {
+			struct ast_party_redirecting redirecting;
 
-		ast_clear_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE);
+			/*
+			 * Redirecting updates to the caller make sense only on single
+			 * calls.
+			 *
+			 * We must unlock c before calling
+			 * ast_channel_redirecting_macro, because we put c into
+			 * autoservice there.  That is pretty much a guaranteed
+			 * deadlock.  This is why the handling of c's lock may seem a
+			 * bit unusual here.
+			 */
+			ast_party_redirecting_init(&redirecting);
+			ast_party_redirecting_copy(&redirecting, ast_channel_redirecting(c));
+			ast_channel_unlock(c);
+			if (ast_channel_redirecting_sub(c, in, &redirecting, 0) &&
+				ast_channel_redirecting_macro(c, in, &redirecting, 1, 0)) {
+				ast_channel_update_redirecting(in, &redirecting, NULL);
+			}
+			ast_party_redirecting_free(&redirecting);
+		} else {
+			ast_channel_unlock(c);
+		}
+
 		if (ast_test_flag64(peerflags, OPT_CANCEL_TIMEOUT)) {
 			*to = -1;
 		}
@@ -976,17 +1067,14 @@ static void do_forward(struct chanlist *o,
 			c = o->chan = NULL;
 			num->nochan++;
 		} else {
-			ast_channel_lock(c);
-			while (ast_channel_trylock(in)) {
-				CHANNEL_DEADLOCK_AVOIDANCE(c);
-			}
+			ast_channel_lock_both(c, in);
 			senddialevent(in, c, stuff);
 			ast_channel_unlock(in);
 			ast_channel_unlock(c);
 			/* Hangup the original channel now, in case we needed it */
 			ast_hangup(original);
 		}
-		if (single) {
+		if (single && !caller_entertained) {
 			ast_indicate(in, -1);
 		}
 	}
@@ -1002,7 +1090,7 @@ struct privacy_args {
 };
 
 static struct ast_channel *wait_for_answer(struct ast_channel *in,
-	struct chanlist *outgoing, int *to, struct ast_flags64 *peerflags,
+	struct dial_head *out_chans, int *to, struct ast_flags64 *peerflags,
 	char *opt_args[],
 	struct privacy_args *pa,
 	const struct cause_args *num_in, int *result, char *dtmf_progress,
@@ -1013,11 +1101,14 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 	int prestart = num.busy + num.congestion + num.nochan;
 	int orig = *to;
 	struct ast_channel *peer = NULL;
-	/* single is set if only one destination is enabled */
-	int single = outgoing && !outgoing->next;
 #ifdef HAVE_EPOLL
 	struct chanlist *epollo;
 #endif
+	struct chanlist *outgoing = AST_LIST_FIRST(out_chans);
+	/* single is set if only one destination is enabled */
+	int single = outgoing && !AST_LIST_NEXT(outgoing, node);
+	int caller_entertained = outgoing
+		&& ast_test_flag64(outgoing, OPT_MUSICBACK | OPT_RINGBACK);
 	struct ast_party_connected_line connected_caller;
 	struct ast_str *featurecode = ast_str_alloca(FEATURE_MAX_LEN + 1);
 	int cc_recall_core_id;
@@ -1028,7 +1119,7 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 	ast_party_connected_line_init(&connected_caller);
 	if (single) {
 		/* Turn off hold music, etc */
-		if (!ast_test_flag64(outgoing, OPT_MUSICBACK | OPT_RINGBACK)) {
+		if (!caller_entertained) {
 			ast_deactivate_generator(in);
 			/* If we are calling a single channel, and not providing ringback or music, */
 			/* then, make them compatible for in-band tone purpose */
@@ -1039,17 +1130,21 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 				 */
 				*to = -1;
 				strcpy(pa->status, "CONGESTION");
-				ast_cdr_failed(in->cdr);
+				ast_cdr_failed(ast_channel_cdr(in));
 				return NULL;
 			}
 		}
 
-		if (!ast_test_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE) && !ast_test_flag64(outgoing, DIAL_CALLERID_ABSENT)) {
+		if (!ast_test_flag64(outgoing, OPT_IGNORE_CONNECTEDLINE)
+			&& !ast_test_flag64(outgoing, DIAL_CALLERID_ABSENT)) {
 			ast_channel_lock(outgoing->chan);
-			ast_connected_line_copy_from_caller(&connected_caller, &outgoing->chan->caller);
+			ast_connected_line_copy_from_caller(&connected_caller, ast_channel_caller(outgoing->chan));
 			ast_channel_unlock(outgoing->chan);
 			connected_caller.source = AST_CONNECTED_LINE_UPDATE_SOURCE_ANSWER;
-			ast_channel_update_connected_line(in, &connected_caller, NULL);
+			if (ast_channel_connected_line_sub(outgoing->chan, in, &connected_caller, 0) &&
+				ast_channel_connected_line_macro(outgoing->chan, in, &connected_caller, 1, 0)) {
+				ast_channel_update_connected_line(in, &connected_caller, NULL);
+			}
 			ast_party_connected_line_free(&connected_caller);
 		}
 	}
@@ -1057,8 +1152,9 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 	is_cc_recall = ast_cc_is_recall(in, &cc_recall_core_id, NULL);
 
 #ifdef HAVE_EPOLL
-	for (epollo = outgoing; epollo; epollo = epollo->next)
+	AST_LIST_TRAVERSE(out_chans, epollo, node) {
 		ast_poll_channel_add(in, epollo->chan);
+	}
 #endif
 
 	while (*to && !peer) {
@@ -1069,7 +1165,7 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 		struct ast_channel *watchers[AST_MAX_WATCHERS];
 
 		watchers[pos++] = in;
-		for (o = outgoing; o; o = o->next) {
+		AST_LIST_TRAVERSE(out_chans, o, node) {
 			/* Keep track of important channels */
 			if (ast_test_flag64(o, DIAL_STILLGOING) && o->chan)
 				watchers[pos++] = o->chan;
@@ -1094,26 +1190,30 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 			return NULL;
 		}
 		winner = ast_waitfor_n(watchers, pos, to);
-		for (o = outgoing; o; o = o->next) {
+		AST_LIST_TRAVERSE(out_chans, o, node) {
 			struct ast_frame *f;
 			struct ast_channel *c = o->chan;
 
 			if (c == NULL)
 				continue;
-			if (ast_test_flag64(o, DIAL_STILLGOING) && c->_state == AST_STATE_UP) {
+			if (ast_test_flag64(o, DIAL_STILLGOING) && ast_channel_state(c) == AST_STATE_UP) {
 				if (!peer) {
-					ast_verb(3, "%s answered %s\n", c->name, in->name);
-					if (!single && !ast_test_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE)) {
+					ast_verb(3, "%s answered %s\n", ast_channel_name(c), ast_channel_name(in));
+					if (!single && !ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)) {
 						if (o->pending_connected_update) {
-							if (ast_channel_connected_line_macro(c, in, &o->connected, 1, 0)) {
+							if (ast_channel_connected_line_sub(c, in, &o->connected, 0) &&
+								ast_channel_connected_line_macro(c, in, &o->connected, 1, 0)) {
 								ast_channel_update_connected_line(in, &o->connected, NULL);
 							}
 						} else if (!ast_test_flag64(o, DIAL_CALLERID_ABSENT)) {
 							ast_channel_lock(c);
-							ast_connected_line_copy_from_caller(&connected_caller, &c->caller);
+							ast_connected_line_copy_from_caller(&connected_caller, ast_channel_caller(c));
 							ast_channel_unlock(c);
 							connected_caller.source = AST_CONNECTED_LINE_UPDATE_SOURCE_ANSWER;
-							ast_channel_update_connected_line(in, &connected_caller, NULL);
+							if (ast_channel_connected_line_sub(c, in, &connected_caller, 0) &&
+								ast_channel_connected_line_macro(c, in, &connected_caller, 1, 0)) {
+								ast_channel_update_connected_line(in, &connected_caller, NULL);
+							}
 							ast_party_connected_line_free(&connected_caller);
 						}
 					}
@@ -1133,15 +1233,15 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 						OPT_CALLEE_PARK | OPT_CALLER_PARK |
 						OPT_CALLEE_MIXMONITOR | OPT_CALLER_MIXMONITOR |
 						DIAL_NOFORWARDHTML);
-					ast_string_field_set(c, dialcontext, "");
-					ast_copy_string(c->exten, "", sizeof(c->exten));
+					ast_channel_dialcontext_set(c, "");
+					ast_channel_exten_set(c, "");
 				}
 				continue;
 			}
 			if (c != winner)
 				continue;
 			/* here, o->chan == c == winner */
-			if (!ast_strlen_zero(c->call_forward)) {
+			if (!ast_strlen_zero(ast_channel_call_forward(c))) {
 				pa->sentringing = 0;
 				if (!ignore_cc && (f = ast_read(c))) {
 					if (f->frametype == AST_FRAME_CONTROL && f->subclass.integer == AST_CONTROL_CC) {
@@ -1152,38 +1252,73 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					}
 					ast_frfree(f);
 				}
-				do_forward(o, &num, peerflags, single, to, forced_clid, stored_clid);
+
+				if (o->pending_connected_update) {
+					/*
+					 * Re-seed the chanlist's connected line information with
+					 * previously acquired connected line info from the incoming
+					 * channel.  The previously acquired connected line info could
+					 * have been set through the CONNECTED_LINE dialplan function.
+					 */
+					o->pending_connected_update = 0;
+					ast_channel_lock(in);
+					ast_party_connected_line_copy(&o->connected, ast_channel_connected(in));
+					ast_channel_unlock(in);
+				}
+
+				do_forward(o, &num, peerflags, single, caller_entertained, to,
+					forced_clid, stored_clid);
+
+				if (single && o->chan
+					&& !ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)
+					&& !ast_test_flag64(o, DIAL_CALLERID_ABSENT)) {
+					ast_channel_lock(o->chan);
+					ast_connected_line_copy_from_caller(&connected_caller,
+						ast_channel_caller(o->chan));
+					ast_channel_unlock(o->chan);
+					connected_caller.source = AST_CONNECTED_LINE_UPDATE_SOURCE_ANSWER;
+					if (ast_channel_connected_line_sub(o->chan, in, &connected_caller, 0) &&
+						ast_channel_connected_line_macro(o->chan, in, &connected_caller, 1, 0)) {
+						ast_channel_update_connected_line(in, &connected_caller, NULL);
+					}
+					ast_party_connected_line_free(&connected_caller);
+				}
 				continue;
 			}
 			f = ast_read(winner);
 			if (!f) {
-				in->hangupcause = c->hangupcause;
+				ast_channel_hangupcause_set(in, ast_channel_hangupcause(c));
 #ifdef HAVE_EPOLL
 				ast_poll_channel_del(in, c);
 #endif
 				ast_hangup(c);
 				c = o->chan = NULL;
 				ast_clear_flag64(o, DIAL_STILLGOING);
-				handle_cause(in->hangupcause, &num);
+				handle_cause(ast_channel_hangupcause(in), &num);
 				continue;
 			}
-			if (f->frametype == AST_FRAME_CONTROL) {
+			switch (f->frametype) {
+			case AST_FRAME_CONTROL:
 				switch (f->subclass.integer) {
 				case AST_CONTROL_ANSWER:
 					/* This is our guy if someone answered. */
 					if (!peer) {
-						ast_verb(3, "%s answered %s\n", c->name, in->name);
-						if (!single && !ast_test_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE)) {
+						ast_verb(3, "%s answered %s\n", ast_channel_name(c), ast_channel_name(in));
+						if (!single && !ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)) {
 							if (o->pending_connected_update) {
-								if (ast_channel_connected_line_macro(c, in, &o->connected, 1, 0)) {
+								if (ast_channel_connected_line_sub(c, in, &o->connected, 0) &&
+									ast_channel_connected_line_macro(c, in, &o->connected, 1, 0)) {
 									ast_channel_update_connected_line(in, &o->connected, NULL);
 								}
 							} else if (!ast_test_flag64(o, DIAL_CALLERID_ABSENT)) {
 								ast_channel_lock(c);
-								ast_connected_line_copy_from_caller(&connected_caller, &c->caller);
+								ast_connected_line_copy_from_caller(&connected_caller, ast_channel_caller(c));
 								ast_channel_unlock(c);
 								connected_caller.source = AST_CONNECTED_LINE_UPDATE_SOURCE_ANSWER;
-								ast_channel_update_connected_line(in, &connected_caller, NULL);
+								if (ast_channel_connected_line_sub(c, in, &connected_caller, 0) &&
+									ast_channel_connected_line_macro(c, in, &connected_caller, 1, 0)) {
+									ast_channel_update_connected_line(in, &connected_caller, NULL);
+								}
 								ast_party_connected_line_free(&connected_caller);
 							}
 						}
@@ -1196,9 +1331,9 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 							}
 						}
 						peer = c;
-						if (peer->cdr) {
-							peer->cdr->answer = ast_tvnow();
-							peer->cdr->disposition = AST_CDR_ANSWERED;
+						if (ast_channel_cdr(peer)) {
+							ast_channel_cdr(peer)->answer = ast_tvnow();
+							ast_channel_cdr(peer)->disposition = AST_CDR_ANSWERED;
 						}
 						ast_copy_flags64(peerflags, o,
 							OPT_CALLEE_TRANSFER | OPT_CALLER_TRANSFER |
@@ -1207,27 +1342,27 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 							OPT_CALLEE_PARK | OPT_CALLER_PARK |
 							OPT_CALLEE_MIXMONITOR | OPT_CALLER_MIXMONITOR |
 							DIAL_NOFORWARDHTML);
-						ast_string_field_set(c, dialcontext, "");
-						ast_copy_string(c->exten, "", sizeof(c->exten));
+						ast_channel_dialcontext_set(c, "");
+						ast_channel_exten_set(c, "");
 						if (CAN_EARLY_BRIDGE(peerflags, in, peer))
 							/* Setup early bridge if appropriate */
 							ast_channel_early_bridge(in, peer);
 					}
 					/* If call has been answered, then the eventual hangup is likely to be normal hangup */
-					in->hangupcause = AST_CAUSE_NORMAL_CLEARING;
-					c->hangupcause = AST_CAUSE_NORMAL_CLEARING;
+					ast_channel_hangupcause_set(in, AST_CAUSE_NORMAL_CLEARING);
+					ast_channel_hangupcause_set(c, AST_CAUSE_NORMAL_CLEARING);
 					break;
 				case AST_CONTROL_BUSY:
-					ast_verb(3, "%s is busy\n", c->name);
-					in->hangupcause = c->hangupcause;
+					ast_verb(3, "%s is busy\n", ast_channel_name(c));
+					ast_channel_hangupcause_set(in, ast_channel_hangupcause(c));
 					ast_hangup(c);
 					c = o->chan = NULL;
 					ast_clear_flag64(o, DIAL_STILLGOING);
 					handle_cause(AST_CAUSE_BUSY, &num);
 					break;
 				case AST_CONTROL_CONGESTION:
-					ast_verb(3, "%s is circuit-busy\n", c->name);
-					in->hangupcause = c->hangupcause;
+					ast_verb(3, "%s is circuit-busy\n", ast_channel_name(c));
+					ast_channel_hangupcause_set(in, ast_channel_hangupcause(c));
 					ast_hangup(c);
 					c = o->chan = NULL;
 					ast_clear_flag64(o, DIAL_STILLGOING);
@@ -1261,10 +1396,12 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					 */
 					++num_ringing;
 					if (ignore_cc || cc_frame_received || num_ringing == numlines) {
-						ast_verb(3, "%s is ringing\n", c->name);
+						ast_verb(3, "%s is ringing\n", ast_channel_name(c));
 						/* Setup early media if appropriate */
-						if (single && CAN_EARLY_BRIDGE(peerflags, in, c))
+						if (single && !caller_entertained
+							&& CAN_EARLY_BRIDGE(peerflags, in, c)) {
 							ast_channel_early_bridge(in, c);
+						}
 						if (!(pa->sentringing) && !ast_test_flag64(outgoing, OPT_MUSICBACK) && ast_strlen_zero(opt_args[OPT_ARG_RINGBACK])) {
 							ast_indicate(in, AST_CONTROL_RINGING);
 							pa->sentringing++;
@@ -1272,10 +1409,12 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					}
 					break;
 				case AST_CONTROL_PROGRESS:
-					ast_verb(3, "%s is making progress passing it to %s\n", c->name, in->name);
+					ast_verb(3, "%s is making progress passing it to %s\n", ast_channel_name(c), ast_channel_name(in));
 					/* Setup early media if appropriate */
-					if (single && CAN_EARLY_BRIDGE(peerflags, in, c))
+					if (single && !caller_entertained
+						&& CAN_EARLY_BRIDGE(peerflags, in, c)) {
 						ast_channel_early_bridge(in, c);
+					}
 					if (!ast_test_flag64(outgoing, OPT_RINGBACK)) {
 						if (single || (!single && !pa->sentringing)) {
 							ast_indicate(in, AST_CONTROL_PROGRESS);
@@ -1289,28 +1428,35 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					}
 					break;
 				case AST_CONTROL_VIDUPDATE:
-					ast_verb(3, "%s requested a video update, passing it to %s\n", c->name, in->name);
-					ast_indicate(in, AST_CONTROL_VIDUPDATE);
-					break;
 				case AST_CONTROL_SRCUPDATE:
-					ast_verb(3, "%s requested a source update, passing it to %s\n", c->name, in->name);
-					ast_indicate(in, AST_CONTROL_SRCUPDATE);
+				case AST_CONTROL_SRCCHANGE:
+					if (!single || caller_entertained) {
+						break;
+					}
+					ast_verb(3, "%s requested media update control %d, passing it to %s\n",
+						ast_channel_name(c), f->subclass.integer, ast_channel_name(in));
+					ast_indicate(in, f->subclass.integer);
 					break;
 				case AST_CONTROL_CONNECTED_LINE:
-					if (ast_test_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE)) {
-						ast_verb(3, "Connected line update to %s prevented.\n", in->name);
-					} else if (!single) {
+					if (ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)) {
+						ast_verb(3, "Connected line update to %s prevented.\n", ast_channel_name(in));
+						break;
+					}
+					if (!single) {
 						struct ast_party_connected_line connected;
-						ast_verb(3, "%s connected line has changed. Saving it until answer for %s\n", c->name, in->name);
+
+						ast_verb(3, "%s connected line has changed. Saving it until answer for %s\n",
+							ast_channel_name(c), ast_channel_name(in));
 						ast_party_connected_line_set_init(&connected, &o->connected);
 						ast_connected_line_parse_data(f->data.ptr, f->datalen, &connected);
 						ast_party_connected_line_set(&o->connected, &connected, NULL);
 						ast_party_connected_line_free(&connected);
 						o->pending_connected_update = 1;
-					} else {
-						if (ast_channel_connected_line_macro(c, in, f, 1, 1)) {
-							ast_indicate_data(in, AST_CONTROL_CONNECTED_LINE, f->data.ptr, f->datalen);
-						}
+						break;
+					}
+					if (ast_channel_connected_line_sub(c, in, f, 1) &&
+						ast_channel_connected_line_macro(c, in, f, 1, 1)) {
+						ast_indicate_data(in, AST_CONTROL_CONNECTED_LINE, f->data.ptr, f->datalen);
 					}
 					break;
 				case AST_CONTROL_AOC:
@@ -1325,29 +1471,42 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					}
 					break;
 				case AST_CONTROL_REDIRECTING:
-					if (ast_test_flag64(peerflags, OPT_IGNORE_CONNECTEDLINE)) {
-						ast_verb(3, "Redirecting update to %s prevented.\n", in->name);
-					} else if (single) {
-						ast_verb(3, "%s redirecting info has changed, passing it to %s\n", c->name, in->name);
-						if (ast_channel_redirecting_macro(c, in, f, 1, 1)) {
-							ast_indicate_data(in, AST_CONTROL_REDIRECTING, f->data.ptr, f->datalen);
-						}
-						pa->sentringing = 0;
+					if (!single) {
+						/*
+						 * Redirecting updates to the caller make sense only on single
+						 * calls.
+						 */
+						break;
 					}
+					if (ast_test_flag64(o, OPT_IGNORE_CONNECTEDLINE)) {
+						ast_verb(3, "Redirecting update to %s prevented.\n", ast_channel_name(in));
+						break;
+					}
+					ast_verb(3, "%s redirecting info has changed, passing it to %s\n",
+						ast_channel_name(c), ast_channel_name(in));
+					if (ast_channel_redirecting_sub(c, in, f, 1) &&
+						ast_channel_redirecting_macro(c, in, f, 1, 1)) {
+						ast_indicate_data(in, AST_CONTROL_REDIRECTING, f->data.ptr, f->datalen);
+					}
+					pa->sentringing = 0;
 					break;
 				case AST_CONTROL_PROCEEDING:
-					ast_verb(3, "%s is proceeding passing it to %s\n", c->name, in->name);
-					if (single && CAN_EARLY_BRIDGE(peerflags, in, c))
+					ast_verb(3, "%s is proceeding passing it to %s\n", ast_channel_name(c), ast_channel_name(in));
+					if (single && !caller_entertained
+						&& CAN_EARLY_BRIDGE(peerflags, in, c)) {
 						ast_channel_early_bridge(in, c);
+					}
 					if (!ast_test_flag64(outgoing, OPT_RINGBACK))
 						ast_indicate(in, AST_CONTROL_PROCEEDING);
 					break;
 				case AST_CONTROL_HOLD:
-					ast_verb(3, "Call on %s placed on hold\n", c->name);
-					ast_indicate(in, AST_CONTROL_HOLD);
+					/* XXX this should be saved like AST_CONTROL_CONNECTED_LINE for !single || caller_entertained */
+					ast_verb(3, "Call on %s placed on hold\n", ast_channel_name(c));
+					ast_indicate_data(in, AST_CONTROL_HOLD, f->data.ptr, f->datalen);
 					break;
 				case AST_CONTROL_UNHOLD:
-					ast_verb(3, "Call on %s left from hold\n", c->name);
+					/* XXX this should be saved like AST_CONTROL_CONNECTED_LINE for !single || caller_entertained */
+					ast_verb(3, "Call on %s left from hold\n", ast_channel_name(c));
 					ast_indicate(in, AST_CONTROL_UNHOLD);
 					break;
 				case AST_CONTROL_OFFHOOK:
@@ -1360,35 +1519,41 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 						cc_frame_received = 1;
 					}
 					break;
+				case AST_CONTROL_PVT_CAUSE_CODE:
+					ast_indicate_data(in, AST_CONTROL_PVT_CAUSE_CODE, f->data.ptr, f->datalen);
+					break;
 				case -1:
-					if (!ast_test_flag64(outgoing, OPT_RINGBACK | OPT_MUSICBACK)) {
-						ast_verb(3, "%s stopped sounds\n", c->name);
+					if (single && !caller_entertained) {
+						ast_verb(3, "%s stopped sounds\n", ast_channel_name(c));
 						ast_indicate(in, -1);
 						pa->sentringing = 0;
 					}
 					break;
 				default:
 					ast_debug(1, "Dunno what to do with control type %d\n", f->subclass.integer);
-				}
-			} else if (single) {
-				switch (f->frametype) {
-				case AST_FRAME_VOICE:
-				case AST_FRAME_IMAGE:
-				case AST_FRAME_TEXT:
-					if (!ast_test_flag64(outgoing, OPT_RINGBACK | OPT_MUSICBACK) && ast_write(in, f)) {
-						ast_log(LOG_WARNING, "Unable to write frametype: %d\n",
-							f->frametype);
-					}
-					break;
-				case AST_FRAME_HTML:
-					if (!ast_test_flag64(outgoing, DIAL_NOFORWARDHTML)
-						&& ast_channel_sendhtml(in, f->subclass.integer, f->data.ptr, f->datalen) == -1) {
-						ast_log(LOG_WARNING, "Unable to send URL\n");
-					}
-					break;
-				default:
 					break;
 				}
+				break;
+			case AST_FRAME_VOICE:
+			case AST_FRAME_IMAGE:
+				if (caller_entertained) {
+					break;
+				}
+				/* Fall through */
+			case AST_FRAME_TEXT:
+				if (single && ast_write(in, f)) {
+					ast_log(LOG_WARNING, "Unable to write frametype: %d\n",
+						f->frametype);
+				}
+				break;
+			case AST_FRAME_HTML:
+				if (single && !ast_test_flag64(outgoing, DIAL_NOFORWARDHTML)
+					&& ast_channel_sendhtml(in, f->subclass.integer, f->data.ptr, f->datalen) == -1) {
+					ast_log(LOG_WARNING, "Unable to send URL\n");
+				}
+				break;
+			default:
+				break;
 			}
 			ast_frfree(f);
 		} /* end for */
@@ -1404,10 +1569,10 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 				/* Got hung up */
 				*to = -1;
 				strcpy(pa->status, "CANCEL");
-				ast_cdr_noanswer(in->cdr);
+				ast_cdr_noanswer(ast_channel_cdr(in));
 				if (f) {
 					if (f->data.uint32) {
-						in->hangupcause = f->data.uint32;
+						ast_channel_hangupcause_set(in, f->data.uint32);
 					}
 					ast_frfree(f);
 				}
@@ -1426,7 +1591,7 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					if (onedigit_goto(in, context, (char) f->subclass.integer, 1)) {
 						ast_verb(3, "User hit %c to disconnect call.\n", f->subclass.integer);
 						*to = 0;
-						ast_cdr_noanswer(in->cdr);
+						ast_cdr_noanswer(ast_channel_cdr(in));
 						*result = f->subclass.integer;
 						strcpy(pa->status, "CANCEL");
 						ast_frfree(f);
@@ -1440,11 +1605,11 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 				}
 
 				if (ast_test_flag64(peerflags, OPT_CALLER_HANGUP) &&
-					detect_disconnect(in, f->subclass.integer, featurecode)) {
+					detect_disconnect(in, f->subclass.integer, &featurecode)) {
 					ast_verb(3, "User requested call disconnect.\n");
 					*to = 0;
 					strcpy(pa->status, "CANCEL");
-					ast_cdr_noanswer(in->cdr);
+					ast_cdr_noanswer(ast_channel_cdr(in));
 					ast_frfree(f);
 					if (is_cc_recall) {
 						ast_cc_completed(in, "CC completed, but the caller hung up with DTMF");
@@ -1454,7 +1619,7 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 			}
 
 			/* Send the frame from the in channel to all outgoing channels. */
-			for (o = outgoing; o; o = o->next) {
+			AST_LIST_TRAVERSE(out_chans, o, node) {
 				if (!o->chan || !ast_test_flag64(o, DIAL_STILLGOING)) {
 					/* This outgoing channel has died so don't send the frame to it. */
 					continue;
@@ -1469,6 +1634,15 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 					break;
 				case AST_FRAME_VOICE:
 				case AST_FRAME_IMAGE:
+					if (!single || caller_entertained) {
+						/*
+						 * We are calling multiple parties or caller is being
+						 * entertained and has thus not been made compatible.
+						 * No need to check any other called parties.
+						 */
+						goto skip_frame;
+					}
+					/* Fall through */
 				case AST_FRAME_TEXT:
 				case AST_FRAME_DTMF_BEGIN:
 				case AST_FRAME_DTMF_END:
@@ -1480,41 +1654,61 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 				case AST_FRAME_CONTROL:
 					switch (f->subclass.integer) {
 					case AST_CONTROL_HOLD:
+						ast_verb(3, "Call on %s placed on hold\n", ast_channel_name(o->chan));
+						ast_indicate_data(o->chan, AST_CONTROL_HOLD, f->data.ptr, f->datalen);
+						break;
 					case AST_CONTROL_UNHOLD:
+						ast_verb(3, "Call on %s left from hold\n", ast_channel_name(o->chan));
+						ast_indicate(o->chan, AST_CONTROL_UNHOLD);
+						break;
 					case AST_CONTROL_VIDUPDATE:
 					case AST_CONTROL_SRCUPDATE:
-						ast_verb(3, "%s requested special control %d, passing it to %s\n",
-							in->name, f->subclass.integer, o->chan->name);
-						ast_indicate_data(o->chan, f->subclass.integer, f->data.ptr, f->datalen);
+					case AST_CONTROL_SRCCHANGE:
+						if (!single || caller_entertained) {
+							/*
+							 * We are calling multiple parties or caller is being
+							 * entertained and has thus not been made compatible.
+							 * No need to check any other called parties.
+							 */
+							goto skip_frame;
+						}
+						ast_verb(3, "%s requested media update control %d, passing it to %s\n",
+							ast_channel_name(in), f->subclass.integer, ast_channel_name(o->chan));
+						ast_indicate(o->chan, f->subclass.integer);
 						break;
 					case AST_CONTROL_CONNECTED_LINE:
-						if (ast_channel_connected_line_macro(in, o->chan, f, 0, 1)) {
+						if (ast_channel_connected_line_sub(in, o->chan, f, 1) &&
+							ast_channel_connected_line_macro(in, o->chan, f, 0, 1)) {
 							ast_indicate_data(o->chan, f->subclass.integer, f->data.ptr, f->datalen);
 						}
 						break;
 					case AST_CONTROL_REDIRECTING:
-						if (ast_channel_redirecting_macro(in, o->chan, f, 0, 1)) {
+						if (ast_channel_redirecting_sub(in, o->chan, f, 1) &&
+							ast_channel_redirecting_macro(in, o->chan, f, 0, 1)) {
 							ast_indicate_data(o->chan, f->subclass.integer, f->data.ptr, f->datalen);
 						}
 						break;
 					default:
-						break;
+						/* We are not going to do anything with this frame. */
+						goto skip_frame;
 					}
 					break;
 				default:
-					break;
+					/* We are not going to do anything with this frame. */
+					goto skip_frame;
 				}
 			}
+skip_frame:;
 			ast_frfree(f);
 		}
 		if (!*to)
 			ast_verb(3, "Nobody picked up in %d ms\n", orig);
 		if (!*to || ast_check_hangup(in))
-			ast_cdr_noanswer(in->cdr);
+			ast_cdr_noanswer(ast_channel_cdr(in));
 	}
 
 #ifdef HAVE_EPOLL
-	for (epollo = outgoing; epollo; epollo = epollo->next) {
+	AST_LIST_TRAVERSE(out_chans, epollo, node) {
 		if (epollo->chan)
 			ast_poll_channel_del(in, epollo->chan);
 	}
@@ -1526,31 +1720,24 @@ static struct ast_channel *wait_for_answer(struct ast_channel *in,
 	return peer;
 }
 
-static int detect_disconnect(struct ast_channel *chan, char code, struct ast_str *featurecode)
+static int detect_disconnect(struct ast_channel *chan, char code, struct ast_str **featurecode)
 {
 	struct ast_flags features = { AST_FEATURE_DISCONNECT }; /* only concerned with disconnect feature */
 	struct ast_call_feature feature = { 0, };
 	int res;
 
-	ast_str_append(&featurecode, 1, "%c", code);
+	ast_str_append(featurecode, 1, "%c", code);
 
-	res = ast_feature_detect(chan, &features, ast_str_buffer(featurecode), &feature);
+	res = ast_feature_detect(chan, &features, ast_str_buffer(*featurecode), &feature);
 
 	if (res != AST_FEATURE_RETURN_STOREDIGITS) {
-		ast_str_reset(featurecode);
+		ast_str_reset(*featurecode);
 	}
 	if (feature.feature_mask & AST_FEATURE_DISCONNECT) {
 		return 1;
 	}
 
 	return 0;
-}
-
-static void replace_macro_delimiter(char *s)
-{
-	for (; *s; s++)
-		if (*s == '^')
-			*s = ',';
 }
 
 /* returns true if there is a valid privacy reply */
@@ -1581,11 +1768,11 @@ static int do_privacy(struct ast_channel *chan, struct ast_channel *peer,
 	   time and make the caller believe the peer hasn't picked up yet */
 
 	if (ast_test_flag64(opts, OPT_MUSICBACK) && !ast_strlen_zero(opt_args[OPT_ARG_MUSICBACK])) {
-		char *original_moh = ast_strdupa(chan->musicclass);
+		char *original_moh = ast_strdupa(ast_channel_musicclass(chan));
 		ast_indicate(chan, -1);
-		ast_string_field_set(chan, musicclass, opt_args[OPT_ARG_MUSICBACK]);
+		ast_channel_musicclass_set(chan, opt_args[OPT_ARG_MUSICBACK]);
 		ast_moh_start(chan, opt_args[OPT_ARG_MUSICBACK], NULL);
-		ast_string_field_set(chan, musicclass, original_moh);
+		ast_channel_musicclass_set(chan, original_moh);
 	} else if (ast_test_flag64(opts, OPT_RINGBACK)) {
 		ast_indicate(chan, AST_CONTROL_RINGING);
 		pa->sentringing++;
@@ -1694,7 +1881,8 @@ static int do_privacy(struct ast_channel *chan, struct ast_channel *peer,
 		}
 		return 0; /* the good exit path */
 	} else {
-		ast_hangup(peer); /* hang up on the callee -- he didn't want to talk anyway! */
+		/* hang up on the callee -- he didn't want to talk anyway! */
+		ast_autoservice_chan_hangup_peer(chan, peer);
 		return -1;
 	}
 }
@@ -1706,11 +1894,10 @@ static int setup_privacy_args(struct privacy_args *pa,
 	char callerid[60];
 	int res;
 	char *l;
-	int silencethreshold;
 
-	if (chan->caller.id.number.valid
-		&& !ast_strlen_zero(chan->caller.id.number.str)) {
-		l = ast_strdupa(chan->caller.id.number.str);
+	if (ast_channel_caller(chan)->id.number.valid
+		&& !ast_strlen_zero(ast_channel_caller(chan)->id.number.str)) {
+		l = ast_strdupa(ast_channel_caller(chan)->id.number.str);
 		ast_shrink_phone_number(l);
 		if (ast_test_flag64(opts, OPT_PRIVACY) ) {
 			ast_verb(3, "Privacy DB is '%s', clid is '%s'\n", opt_args[OPT_ARG_PRIVACY], l);
@@ -1722,7 +1909,7 @@ static int setup_privacy_args(struct privacy_args *pa,
 	} else {
 		char *tnam, *tn2;
 
-		tnam = ast_strdupa(chan->name);
+		tnam = ast_strdupa(ast_channel_name(chan));
 		/* clean the channel name so slashes don't try to end up in disk file name */
 		for (tn2 = tnam; *tn2; tn2++) {
 			if (*tn2 == '/')  /* any other chars to be afraid of? */
@@ -1730,7 +1917,7 @@ static int setup_privacy_args(struct privacy_args *pa,
 		}
 		ast_verb(3, "Privacy-- callerid is empty\n");
 
-		snprintf(callerid, sizeof(callerid), "NOCALLERID_%s%s", chan->exten, tnam);
+		snprintf(callerid, sizeof(callerid), "NOCALLERID_%s%s", ast_channel_exten(chan), tnam);
 		l = callerid;
 		pa->privdb_val = AST_PRIVACY_UNKNOWN;
 	}
@@ -1781,7 +1968,7 @@ static int setup_privacy_args(struct privacy_args *pa,
 			   "At the tone, please say your name:"
 
 			*/
-			silencethreshold = ast_dsp_get_threshold_from_settings(THRESHOLD_SILENCE);
+			int silencethreshold = ast_dsp_get_threshold_from_settings(THRESHOLD_SILENCE);
 			ast_answer(chan);
 			res = ast_play_and_record(chan, "priv-recordintro", pa->privintro, 4, "sln", &duration, NULL, silencethreshold, 2000, 0);  /* NOTE: I've reduced the total time to 4 sec */
 									/* don't think we'll need a lock removed, we took care of
@@ -1795,7 +1982,7 @@ static int setup_privacy_args(struct privacy_args *pa,
 					ast_verb(3, "Successfully deleted %s intro file\n", pa->privintro);
 				return -1;
 			}
-			if (!ast_streamfile(chan, "vm-dialout", chan->language) )
+			if (!ast_streamfile(chan, "vm-dialout", ast_channel_language(chan)) )
 				ast_waitstream(chan, "");
 		}
 	}
@@ -1808,20 +1995,20 @@ static void end_bridge_callback(void *data)
 	time_t end;
 	struct ast_channel *chan = data;
 
-	if (!chan->cdr) {
+	if (!ast_channel_cdr(chan)) {
 		return;
 	}
 
 	time(&end);
 
 	ast_channel_lock(chan);
-	if (chan->cdr->answer.tv_sec) {
-		snprintf(buf, sizeof(buf), "%ld", (long) end - chan->cdr->answer.tv_sec);
+	if (ast_channel_cdr(chan)->answer.tv_sec) {
+		snprintf(buf, sizeof(buf), "%ld", (long) end - ast_channel_cdr(chan)->answer.tv_sec);
 		pbx_builtin_setvar_helper(chan, "ANSWEREDTIME", buf);
 	}
 
-	if (chan->cdr->start.tv_sec) {
-		snprintf(buf, sizeof(buf), "%ld", (long) end - chan->cdr->start.tv_sec);
+	if (ast_channel_cdr(chan)->start.tv_sec) {
+		snprintf(buf, sizeof(buf), "%ld", (long) end - ast_channel_cdr(chan)->start.tv_sec);
 		pbx_builtin_setvar_helper(chan, "DIALEDTIME", buf);
 	}
 	ast_channel_unlock(chan);
@@ -1842,7 +2029,7 @@ static int dial_handle_playtones(struct ast_channel *chan, const char *data)
 		return -1;
 	}
 
-	ts = ast_get_indication_tone(chan->zone, str);
+	ts = ast_get_indication_tone(ast_channel_zone(chan), str);
 
 	if (ts && ts->data[0]) {
 		res = ast_playtones_start(chan, 0, ts->data, 0);
@@ -1865,12 +2052,13 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 {
 	int res = -1; /* default: error */
 	char *rest, *cur; /* scan the list of destinations */
-	struct chanlist *outgoing = NULL; /* list of destinations */
+	struct dial_head out_chans = AST_LIST_HEAD_NOLOCK_INIT_VALUE; /* list of destinations */
+	struct chanlist *outgoing;
+	struct chanlist *tmp;
 	struct ast_channel *peer;
 	int to; /* timeout */
 	struct cause_args num = { chan, 0, 0, 0 };
 	int cause;
-	char numsubst[256];
 
 	struct ast_bridge_config config = { { 0, } };
 	struct timeval calldurationlimit = { 0, };
@@ -1930,7 +2118,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 	pbx_builtin_setvar_helper(chan, "DIALEDTIME", "");
 
 	if (ast_strlen_zero(data)) {
-		ast_log(LOG_WARNING, "Dial requires an argument (technology/number)\n");
+		ast_log(LOG_WARNING, "Dial requires an argument (technology/resource)\n");
 		pbx_builtin_setvar_helper(chan, "DIALSTATUS", pa.status);
 		return -1;
 	}
@@ -1946,7 +2134,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 	}
 
 	if (ast_strlen_zero(args.peers)) {
-		ast_log(LOG_WARNING, "Dial requires an argument (technology/number)\n");
+		ast_log(LOG_WARNING, "Dial requires an argument (technology/resource)\n");
 		pbx_builtin_setvar_helper(chan, "DIALSTATUS", pa.status);
 		goto done;
 	}
@@ -2000,7 +2188,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 	if (ast_test_flag64(&opts, OPT_FORCECLID)) {
 		if (ast_strlen_zero(opt_args[OPT_ARG_FORCECLID])) {
 			ast_channel_lock(chan);
-			forced_clid.number.str = ast_strdupa(S_OR(chan->macroexten, chan->exten));
+			forced_clid.number.str = ast_strdupa(S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)));
 			ast_channel_unlock(chan);
 			forced_clid_name[0] = '\0';
 			forced_clid.name.str = (char *) get_cid_name(forced_clid_name,
@@ -2038,18 +2226,18 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 	if (ast_test_flag64(&opts, OPT_ORIGINAL_CLID)) {
 		if (ast_strlen_zero(opt_args[OPT_ARG_ORIGINAL_CLID])) {
 			ast_channel_lock(chan);
-			ast_party_id_set_init(&stored_clid, &chan->caller.id);
-			if (!ast_strlen_zero(chan->caller.id.name.str)) {
-				stored_clid.name.str = ast_strdupa(chan->caller.id.name.str);
+			ast_party_id_set_init(&stored_clid, &ast_channel_caller(chan)->id);
+			if (!ast_strlen_zero(ast_channel_caller(chan)->id.name.str)) {
+				stored_clid.name.str = ast_strdupa(ast_channel_caller(chan)->id.name.str);
 			}
-			if (!ast_strlen_zero(chan->caller.id.number.str)) {
-				stored_clid.number.str = ast_strdupa(chan->caller.id.number.str);
+			if (!ast_strlen_zero(ast_channel_caller(chan)->id.number.str)) {
+				stored_clid.number.str = ast_strdupa(ast_channel_caller(chan)->id.number.str);
 			}
-			if (!ast_strlen_zero(chan->caller.id.subaddress.str)) {
-				stored_clid.subaddress.str = ast_strdupa(chan->caller.id.subaddress.str);
+			if (!ast_strlen_zero(ast_channel_caller(chan)->id.subaddress.str)) {
+				stored_clid.subaddress.str = ast_strdupa(ast_channel_caller(chan)->id.subaddress.str);
 			}
-			if (!ast_strlen_zero(chan->caller.id.tag)) {
-				stored_clid.tag = ast_strdupa(chan->caller.id.tag);
+			if (!ast_strlen_zero(ast_channel_caller(chan)->id.tag)) {
+				stored_clid.tag = ast_strdupa(ast_channel_caller(chan)->id.tag);
 			}
 			ast_channel_unlock(chan);
 		} else {
@@ -2077,15 +2265,15 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 			stored_clid.name.valid = 1;
 		}
 		ast_channel_lock(chan);
-		stored_clid.number.str = ast_strdupa(S_OR(chan->macroexten, chan->exten));
+		stored_clid.number.str = ast_strdupa(S_OR(ast_channel_macroexten(chan), ast_channel_exten(chan)));
 		stored_clid.number.valid = 1;
 		ast_channel_unlock(chan);
 	}
 
-	if (ast_test_flag64(&opts, OPT_RESETCDR) && chan->cdr)
-		ast_cdr_reset(chan->cdr, NULL);
+	if (ast_test_flag64(&opts, OPT_RESETCDR) && ast_channel_cdr(chan))
+		ast_cdr_reset(ast_channel_cdr(chan), NULL);
 	if (ast_test_flag64(&opts, OPT_PRIVACY) && ast_strlen_zero(opt_args[OPT_ARG_PRIVACY]))
-		opt_args[OPT_ARG_PRIVACY] = ast_strdupa(chan->exten);
+		opt_args[OPT_ARG_PRIVACY] = ast_strdupa(ast_channel_exten(chan));
 
 	if (ast_test_flag64(&opts, OPT_PRIVACY) || ast_test_flag64(&opts, OPT_SCREENING)) {
 		res = setup_privacy_args(&pa, &opts, opt_args, chan);
@@ -2101,35 +2289,65 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 
 	ast_channel_lock(chan);
 	if ((outbound_group = pbx_builtin_getvar_helper(chan, "OUTBOUND_GROUP_ONCE"))) {
-		outbound_group = ast_strdupa(outbound_group);	
+		outbound_group = ast_strdupa(outbound_group);
 		pbx_builtin_setvar_helper(chan, "OUTBOUND_GROUP_ONCE", NULL);
 	} else if ((outbound_group = pbx_builtin_getvar_helper(chan, "OUTBOUND_GROUP"))) {
 		outbound_group = ast_strdupa(outbound_group);
 	}
-	ast_channel_unlock(chan);	
-	ast_copy_flags64(peerflags, &opts, OPT_DTMF_EXIT | OPT_GO_ON | OPT_ORIGINAL_CLID | OPT_CALLER_HANGUP | OPT_IGNORE_FORWARDING | OPT_IGNORE_CONNECTEDLINE |
-			 OPT_CANCEL_TIMEOUT | OPT_ANNOUNCE | OPT_CALLEE_MACRO | OPT_CALLEE_GOSUB | OPT_FORCECLID);
+	ast_channel_unlock(chan);
+
+	/* Set per dial instance flags.  These flags are also passed back to RetryDial. */
+	ast_copy_flags64(peerflags, &opts, OPT_DTMF_EXIT | OPT_GO_ON | OPT_ORIGINAL_CLID
+		| OPT_CALLER_HANGUP | OPT_IGNORE_FORWARDING | OPT_CANCEL_TIMEOUT
+		| OPT_ANNOUNCE | OPT_CALLEE_MACRO | OPT_CALLEE_GOSUB | OPT_FORCECLID);
+
+	/* PREDIAL: Run gosub on the caller's channel */
+	if (ast_test_flag64(&opts, OPT_PREDIAL_CALLER)
+		&& !ast_strlen_zero(opt_args[OPT_ARG_PREDIAL_CALLER])) {
+		ast_replace_subargument_delimiter(opt_args[OPT_ARG_PREDIAL_CALLER]);
+		ast_app_exec_sub(NULL, chan, opt_args[OPT_ARG_PREDIAL_CALLER], 0);
+	}
 
 	/* loop through the list of dial destinations */
 	rest = args.peers;
 	while ((cur = strsep(&rest, "&")) ) {
-		struct chanlist *tmp;
 		struct ast_channel *tc; /* channel for this destination */
-		/* Get a technology/[device:]number pair */
+		/* Get a technology/resource pair */
 		char *number = cur;
-		char *interface = ast_strdupa(number);
 		char *tech = strsep(&number, "/");
+		size_t tech_len;
+		size_t number_len;
 		/* find if we already dialed this interface */
 		struct ast_dialed_interface *di;
-		AST_LIST_HEAD(, ast_dialed_interface) *dialed_interfaces;
+		AST_LIST_HEAD(,ast_dialed_interface) *dialed_interfaces;
+
 		num_dialed++;
 		if (ast_strlen_zero(number)) {
-			ast_log(LOG_WARNING, "Dial argument takes format (technology/[device:]number1)\n");
+			ast_log(LOG_WARNING, "Dial argument takes format (technology/resource)\n");
 			goto out;
 		}
-		if (!(tmp = ast_calloc(1, sizeof(*tmp))))
+
+		tech_len = strlen(tech) + 1;
+		number_len = strlen(number) + 1;
+		tmp = ast_calloc(1, sizeof(*tmp) + (2 * tech_len) + number_len);
+		if (!tmp) {
 			goto out;
+		}
+
+		/* Save tech, number, and interface. */
+		cur = tmp->stuff;
+		strcpy(cur, tech);
+		tmp->tech = cur;
+		cur += tech_len;
+		strcpy(cur, tech);
+		cur[tech_len - 1] = '/';
+		tmp->interface = cur;
+		cur += tech_len;
+		strcpy(cur, number);
+		tmp->number = cur;
+
 		if (opts.flags) {
+			/* Set per outgoing call leg options. */
 			ast_copy_flags64(tmp, &opts,
 				OPT_CANCEL_ELSEWHERE |
 				OPT_CALLEE_TRANSFER | OPT_CALLER_TRANSFER |
@@ -2137,10 +2355,10 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 				OPT_CALLEE_MONITOR | OPT_CALLER_MONITOR |
 				OPT_CALLEE_PARK | OPT_CALLER_PARK |
 				OPT_CALLEE_MIXMONITOR | OPT_CALLER_MIXMONITOR |
-				OPT_RINGBACK | OPT_MUSICBACK | OPT_FORCECLID);
+				OPT_RINGBACK | OPT_MUSICBACK | OPT_FORCECLID | OPT_IGNORE_CONNECTEDLINE);
 			ast_set2_flag64(tmp, args.url, DIAL_NOFORWARDHTML);
 		}
-		ast_copy_string(numsubst, number, sizeof(numsubst));
+
 		/* Request the peer */
 
 		ast_channel_lock(chan);
@@ -2151,7 +2369,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		 * previously acquired connected line info could have been set
 		 * through the CONNECTED_LINE dialplan function.
 		 */
-		ast_party_connected_line_copy(&tmp->connected, &chan->connected);
+		ast_party_connected_line_copy(&tmp->connected, ast_channel_connected(chan));
 		ast_channel_unlock(chan);
 
 		if (datastore)
@@ -2162,7 +2380,6 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 				chanlist_free(tmp);
 				goto out;
 			}
-
 			datastore->inheritance = DATASTORE_INHERIT_FOREVER;
 
 			if (!(dialed_interfaces = ast_calloc(1, sizeof(*dialed_interfaces)))) {
@@ -2181,14 +2398,13 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 
 		AST_LIST_LOCK(dialed_interfaces);
 		AST_LIST_TRAVERSE(dialed_interfaces, di, list) {
-			if (!strcasecmp(di->interface, interface)) {
+			if (!strcasecmp(di->interface, tmp->interface)) {
 				ast_log(LOG_WARNING, "Skipping dialing interface '%s' again since it has already been dialed\n",
 					di->interface);
 				break;
 			}
 		}
 		AST_LIST_UNLOCK(dialed_interfaces);
-
 		if (di) {
 			fulldial++;
 			chanlist_free(tmp);
@@ -2199,47 +2415,47 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		 * which "real" interfaces have been dialed.  The Local channel will
 		 * inherit this list so that if it ends up dialing a real interface,
 		 * it won't call one that has already been called. */
-		if (strcasecmp(tech, "Local")) {
-			if (!(di = ast_calloc(1, sizeof(*di) + strlen(interface)))) {
-				AST_LIST_UNLOCK(dialed_interfaces);
+		if (strcasecmp(tmp->tech, "Local")) {
+			if (!(di = ast_calloc(1, sizeof(*di) + strlen(tmp->interface)))) {
 				chanlist_free(tmp);
 				goto out;
 			}
-			strcpy(di->interface, interface);
+			strcpy(di->interface, tmp->interface);
 
 			AST_LIST_LOCK(dialed_interfaces);
 			AST_LIST_INSERT_TAIL(dialed_interfaces, di, list);
 			AST_LIST_UNLOCK(dialed_interfaces);
 		}
 
-		tc = ast_request(tech, chan->nativeformats, chan, numsubst, &cause);
+		tc = ast_request(tmp->tech, ast_channel_nativeformats(chan), chan, tmp->number, &cause);
 		if (!tc) {
 			/* If we can't, just go on to the next call */
 			ast_log(LOG_WARNING, "Unable to create channel of type '%s' (cause %d - %s)\n",
-				tech, cause, ast_cause2str(cause));
+				tmp->tech, cause, ast_cause2str(cause));
 			handle_cause(cause, &num);
-			if (!rest) /* we are on the last destination */
-				chan->hangupcause = cause;
-			chanlist_free(tmp);
+			if (!rest) {
+				/* we are on the last destination */
+				ast_channel_hangupcause_set(chan, cause);
+			}
 			if (!ignore_cc && (cause == AST_CAUSE_BUSY || cause == AST_CAUSE_CONGESTION)) {
-				if (!ast_cc_callback(chan, tech, numsubst, ast_cc_busy_interface)) {
-					ast_cc_extension_monitor_add_dialstring(chan, interface, "");
+				if (!ast_cc_callback(chan, tmp->tech, tmp->number, ast_cc_busy_interface)) {
+					ast_cc_extension_monitor_add_dialstring(chan, tmp->interface, "");
 				}
 			}
+			chanlist_free(tmp);
 			continue;
 		}
 		ast_channel_get_device_name(tc, device_name, sizeof(device_name));
 		if (!ignore_cc) {
-			ast_cc_extension_monitor_add_dialstring(chan, interface, device_name);
+			ast_cc_extension_monitor_add_dialstring(chan, tmp->interface, device_name);
 		}
-		pbx_builtin_setvar_helper(tc, "DIALEDPEERNUMBER", numsubst);
+		pbx_builtin_setvar_helper(tc, "DIALEDPEERNUMBER", tmp->number);
 
-		ast_channel_lock(tc);
-		while (ast_channel_trylock(chan)) {
-			CHANNEL_DEADLOCK_AVOIDANCE(tc);
-		}
+		ast_channel_lock_both(tc, chan);
+
 		/* Setup outgoing SDP to match incoming one */
-		if (!outgoing && !rest && CAN_EARLY_BRIDGE(peerflags, chan, tc)) {
+		if (!AST_LIST_FIRST(&out_chans) && !rest && CAN_EARLY_BRIDGE(peerflags, chan, tc)) {
+			/* We are on the only destination. */
 			ast_rtp_instance_early_bridge_make_compatible(tc, chan);
 		}
 		
@@ -2247,46 +2463,46 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		ast_channel_inherit_variables(chan, tc);
 		ast_channel_datastore_inherit(chan, tc);
 
-		tc->appl = "AppDial";
-		tc->data = "(Outgoing Line)";
-		memset(&tc->whentohangup, 0, sizeof(tc->whentohangup));
+		ast_channel_appl_set(tc, "AppDial");
+		ast_channel_data_set(tc, "(Outgoing Line)");
+		memset(ast_channel_whentohangup(tc), 0, sizeof(*ast_channel_whentohangup(tc)));
 
 		/* Determine CallerID to store in outgoing channel. */
-		ast_party_caller_set_init(&caller, &tc->caller);
+		ast_party_caller_set_init(&caller, ast_channel_caller(tc));
 		if (ast_test_flag64(peerflags, OPT_ORIGINAL_CLID)) {
 			caller.id = stored_clid;
 			ast_channel_set_caller_event(tc, &caller, NULL);
 			ast_set_flag64(tmp, DIAL_CALLERID_ABSENT);
-		} else if (ast_strlen_zero(S_COR(tc->caller.id.number.valid,
-			tc->caller.id.number.str, NULL))) {
+		} else if (ast_strlen_zero(S_COR(ast_channel_caller(tc)->id.number.valid,
+			ast_channel_caller(tc)->id.number.str, NULL))) {
 			/*
 			 * The new channel has no preset CallerID number by the channel
 			 * driver.  Use the dialplan extension and hint name.
 			 */
 			caller.id = stored_clid;
 			if (!caller.id.name.valid
-				&& !ast_strlen_zero(S_COR(chan->connected.id.name.valid,
-					chan->connected.id.name.str, NULL))) {
+				&& !ast_strlen_zero(S_COR(ast_channel_connected(chan)->id.name.valid,
+					ast_channel_connected(chan)->id.name.str, NULL))) {
 				/*
 				 * No hint name available.  We have a connected name supplied by
 				 * the dialplan we can use instead.
 				 */
 				caller.id.name.valid = 1;
-				caller.id.name = chan->connected.id.name;
+				caller.id.name = ast_channel_connected(chan)->id.name;
 			}
 			ast_channel_set_caller_event(tc, &caller, NULL);
 			ast_set_flag64(tmp, DIAL_CALLERID_ABSENT);
-		} else if (ast_strlen_zero(S_COR(tc->caller.id.name.valid, tc->caller.id.name.str,
+		} else if (ast_strlen_zero(S_COR(ast_channel_caller(tc)->id.name.valid, ast_channel_caller(tc)->id.name.str,
 			NULL))) {
 			/* The new channel has no preset CallerID name by the channel driver. */
-			if (!ast_strlen_zero(S_COR(chan->connected.id.name.valid,
-				chan->connected.id.name.str, NULL))) {
+			if (!ast_strlen_zero(S_COR(ast_channel_connected(chan)->id.name.valid,
+				ast_channel_connected(chan)->id.name.str, NULL))) {
 				/*
 				 * We have a connected name supplied by the dialplan we can
 				 * use instead.
 				 */
 				caller.id.name.valid = 1;
-				caller.id.name = chan->connected.id.name;
+				caller.id.name = ast_channel_connected(chan)->id.name;
 				ast_channel_set_caller_event(tc, &caller, NULL);
 			}
 		}
@@ -2295,86 +2511,123 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		if (ast_test_flag64(peerflags, OPT_FORCECLID) && !force_forwards_only) {
 			struct ast_party_connected_line connected;
 
-			ast_party_connected_line_set_init(&connected, &tc->connected);
+			ast_party_connected_line_set_init(&connected, ast_channel_connected(tc));
 			connected.id = forced_clid;
 			ast_channel_set_connected_line(tc, &connected, NULL);
 		} else {
-			ast_connected_line_copy_from_caller(&tc->connected, &chan->caller);
+			ast_connected_line_copy_from_caller(ast_channel_connected(tc), ast_channel_caller(chan));
 		}
 
-		ast_party_redirecting_copy(&tc->redirecting, &chan->redirecting);
+		ast_party_redirecting_copy(ast_channel_redirecting(tc), ast_channel_redirecting(chan));
 
-		tc->dialed.transit_network_select = chan->dialed.transit_network_select;
+		ast_channel_dialed(tc)->transit_network_select = ast_channel_dialed(chan)->transit_network_select;
 
-		if (!ast_strlen_zero(chan->accountcode)) {
-			ast_string_field_set(tc, peeraccount, chan->accountcode);
+		if (!ast_strlen_zero(ast_channel_accountcode(chan))) {
+			ast_channel_accountcode_set(tc, ast_channel_accountcode(chan));
 		}
-		if (ast_strlen_zero(tc->musicclass))
-			ast_string_field_set(tc, musicclass, chan->musicclass);
+		if (ast_strlen_zero(ast_channel_musicclass(tc))) {
+			ast_channel_musicclass_set(tc, ast_channel_musicclass(chan));
+		}
 
 		/* Pass ADSI CPE and transfer capability */
-		tc->adsicpe = chan->adsicpe;
-		tc->transfercapability = chan->transfercapability;
+		ast_channel_adsicpe_set(tc, ast_channel_adsicpe(chan));
+		ast_channel_transfercapability_set(tc, ast_channel_transfercapability(chan));
 
 		/* If we have an outbound group, set this peer channel to it */
 		if (outbound_group)
 			ast_app_group_set_channel(tc, outbound_group);
 		/* If the calling channel has the ANSWERED_ELSEWHERE flag set, inherit it. This is to support local channels */
-		if (ast_test_flag(chan, AST_FLAG_ANSWERED_ELSEWHERE))
-			ast_set_flag(tc, AST_FLAG_ANSWERED_ELSEWHERE);
+		if (ast_channel_hangupcause(chan) == AST_CAUSE_ANSWERED_ELSEWHERE)
+			ast_channel_hangupcause_set(tc, AST_CAUSE_ANSWERED_ELSEWHERE);
 
 		/* Check if we're forced by configuration */
 		if (ast_test_flag64(&opts, OPT_CANCEL_ELSEWHERE))
-			 ast_set_flag(tc, AST_FLAG_ANSWERED_ELSEWHERE);
+			 ast_channel_hangupcause_set(tc, AST_CAUSE_ANSWERED_ELSEWHERE);
 
 
 		/* Inherit context and extension */
-		ast_string_field_set(tc, dialcontext, ast_strlen_zero(chan->macrocontext) ? chan->context : chan->macrocontext);
-		if (!ast_strlen_zero(chan->macroexten))
-			ast_copy_string(tc->exten, chan->macroexten, sizeof(tc->exten));
+		ast_channel_dialcontext_set(tc, ast_strlen_zero(ast_channel_macrocontext(chan)) ? ast_channel_context(chan) : ast_channel_macrocontext(chan));
+		if (!ast_strlen_zero(ast_channel_macroexten(chan)))
+			ast_channel_exten_set(tc, ast_channel_macroexten(chan));
 		else
-			ast_copy_string(tc->exten, chan->exten, sizeof(tc->exten));
+			ast_channel_exten_set(tc, ast_channel_exten(chan));
 
 		ast_channel_unlock(tc);
 		ast_channel_unlock(chan);
-		res = ast_call(tc, numsubst, 0); /* Place the call, but don't wait on the answer */
+
+		/* Put channel in the list of outgoing thingies. */
+		tmp->chan = tc;
+		AST_LIST_INSERT_TAIL(&out_chans, tmp, node);
+	}
+
+	/*
+	 * PREDIAL: Run gosub on all of the callee channels
+	 *
+	 * We run the callee predial before ast_call() in case the user
+	 * wishes to do something on the newly created channels before
+	 * the channel does anything important.
+	 *
+	 * Inside the target gosub we will be able to do something with
+	 * the newly created channel name ie: now the calling channel
+	 * can know what channel will be used to call the destination
+	 * ex: now we will know that SIP/abc-123 is calling SIP/def-124
+	 */
+	if (ast_test_flag64(&opts, OPT_PREDIAL_CALLEE)
+		&& !ast_strlen_zero(opt_args[OPT_ARG_PREDIAL_CALLEE])
+		&& !AST_LIST_EMPTY(&out_chans)) {
+		const char *predial_callee;
+
+		ast_replace_subargument_delimiter(opt_args[OPT_ARG_PREDIAL_CALLEE]);
+		predial_callee = ast_app_expand_sub_args(chan, opt_args[OPT_ARG_PREDIAL_CALLEE]);
+		if (predial_callee) {
+			ast_autoservice_start(chan);
+			AST_LIST_TRAVERSE(&out_chans, tmp, node) {
+				ast_pre_call(tmp->chan, predial_callee);
+			}
+			ast_autoservice_stop(chan);
+			ast_free((char *) predial_callee);
+		}
+	}
+
+	/* Start all outgoing calls */
+	AST_LIST_TRAVERSE_SAFE_BEGIN(&out_chans, tmp, node) {
+		res = ast_call(tmp->chan, tmp->number, 0); /* Place the call, but don't wait on the answer */
 		ast_channel_lock(chan);
 
 		/* Save the info in cdr's that we called them */
-		if (chan->cdr)
-			ast_cdr_setdestchan(chan->cdr, tc->name);
+		if (ast_channel_cdr(chan))
+			ast_cdr_setdestchan(ast_channel_cdr(chan), ast_channel_name(tmp->chan));
 
 		/* check the results of ast_call */
 		if (res) {
 			/* Again, keep going even if there's an error */
 			ast_debug(1, "ast call on peer returned %d\n", res);
-			ast_verb(3, "Couldn't call %s/%s\n", tech, numsubst);
-			if (tc->hangupcause) {
-				chan->hangupcause = tc->hangupcause;
+			ast_verb(3, "Couldn't call %s\n", tmp->interface);
+			if (ast_channel_hangupcause(tmp->chan)) {
+				ast_channel_hangupcause_set(chan, ast_channel_hangupcause(tmp->chan));
 			}
 			ast_channel_unlock(chan);
-			ast_cc_call_failed(chan, tc, interface);
-			ast_hangup(tc);
-			tc = NULL;
+			ast_cc_call_failed(chan, tmp->chan, tmp->interface);
+			ast_hangup(tmp->chan);
+			tmp->chan = NULL;
+			AST_LIST_REMOVE_CURRENT(node);
 			chanlist_free(tmp);
 			continue;
-		} else {
-			senddialevent(chan, tc, numsubst);
-			ast_verb(3, "Called %s/%s\n", tech, numsubst);
-			ast_channel_unlock(chan);
 		}
-		/* Put them in the list of outgoing thingies...  We're ready now.
-		   XXX If we're forcibly removed, these outgoing calls won't get
-		   hung up XXX */
+
+		senddialevent(chan, tmp->chan, tmp->number);
+		ast_channel_unlock(chan);
+
+		ast_verb(3, "Called %s\n", tmp->interface);
 		ast_set_flag64(tmp, DIAL_STILLGOING);
-		tmp->chan = tc;
-		tmp->next = outgoing;
-		outgoing = tmp;
+
 		/* If this line is up, don't try anybody else */
-		if (outgoing->chan->_state == AST_STATE_UP)
+		if (ast_channel_state(tmp->chan) == AST_STATE_UP) {
 			break;
+		}
 	}
-	
+	AST_LIST_TRAVERSE_SAFE_END;
+
 	if (ast_strlen_zero(args.timeout)) {
 		to = -1;
 	} else {
@@ -2387,6 +2640,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		}
 	}
 
+	outgoing = AST_LIST_FIRST(&out_chans);
 	if (!outgoing) {
 		strcpy(pa.status, "CHANUNAVAIL");
 		if (fulldial == num_dialed) {
@@ -2399,10 +2653,10 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		if (ast_test_flag64(outgoing, OPT_MUSICBACK)) {
 			moh = 1;
 			if (!ast_strlen_zero(opt_args[OPT_ARG_MUSICBACK])) {
-				char *original_moh = ast_strdupa(chan->musicclass);
-				ast_string_field_set(chan, musicclass, opt_args[OPT_ARG_MUSICBACK]);
+				char *original_moh = ast_strdupa(ast_channel_musicclass(chan));
+				ast_channel_musicclass_set(chan, opt_args[OPT_ARG_MUSICBACK]);
 				ast_moh_start(chan, opt_args[OPT_ARG_MUSICBACK], NULL);
-				ast_string_field_set(chan, musicclass, original_moh);
+				ast_channel_musicclass_set(chan, original_moh);
 			} else {
 				ast_moh_start(chan, NULL, NULL);
 			}
@@ -2422,7 +2676,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		}
 	}
 
-	peer = wait_for_answer(chan, outgoing, &to, peerflags, opt_args, &pa, &num, &result,
+	peer = wait_for_answer(chan, &out_chans, &to, peerflags, opt_args, &pa, &num, &result,
 		dtmf_progress, ignore_cc, &forced_clid, &stored_clid);
 
 	/* The ast_channel_datastore_remove() function could fail here if the
@@ -2456,22 +2710,24 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		/* Ah ha!  Someone answered within the desired timeframe.  Of course after this
 		   we will always return with -1 so that it is hung up properly after the
 		   conversation.  */
-		hanguptree(outgoing, peer, 1);
-		outgoing = NULL;
+		hanguptree(&out_chans, peer, 1);
 		/* If appropriate, log that we have a destination channel and set the answer time */
-		if (chan->cdr) {
-			ast_cdr_setdestchan(chan->cdr, peer->name);
-			ast_cdr_setanswer(chan->cdr, peer->cdr->answer);
+		if (ast_channel_cdr(chan)) {
+			ast_cdr_setdestchan(ast_channel_cdr(chan), ast_channel_name(peer));
+			ast_cdr_setanswer(ast_channel_cdr(chan), ast_channel_cdr(peer)->answer);
 		}
-		if (peer->name)
-			pbx_builtin_setvar_helper(chan, "DIALEDPEERNAME", peer->name);
+		if (ast_channel_name(peer))
+			pbx_builtin_setvar_helper(chan, "DIALEDPEERNAME", ast_channel_name(peer));
 		
 		ast_channel_lock(peer);
-		number = pbx_builtin_getvar_helper(peer, "DIALEDPEERNUMBER"); 
-		if (!number)
-			number = numsubst;
-		pbx_builtin_setvar_helper(chan, "DIALEDPEERNUMBER", number);
+		number = pbx_builtin_getvar_helper(peer, "DIALEDPEERNUMBER");
+		if (ast_strlen_zero(number)) {
+			number = NULL;
+		} else {
+			number = ast_strdupa(number);
+		}
 		ast_channel_unlock(peer);
+		pbx_builtin_setvar_helper(chan, "DIALEDPEERNUMBER", number);
 
 		if (!ast_strlen_zero(args.url) && ast_channel_supports_html(peer) ) {
 			ast_debug(1, "app_dial: sendurl=%s.\n", args.url);
@@ -2496,19 +2752,19 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 			/* we need to stream the announcment while monitoring the caller for a hangup */
 
 			/* stream the file */
-			res = ast_streamfile(peer, opt_args[OPT_ARG_ANNOUNCE], peer->language);
+			res = ast_streamfile(peer, opt_args[OPT_ARG_ANNOUNCE], ast_channel_language(peer));
 			if (res) {
 				res = 0;
 				ast_log(LOG_ERROR, "error streaming file '%s' to callee\n", opt_args[OPT_ARG_ANNOUNCE]);
 			}
 
-			ast_set_flag(peer, AST_FLAG_END_DTMF_ONLY);
-			while (peer->stream) {
+			ast_set_flag(ast_channel_flags(peer), AST_FLAG_END_DTMF_ONLY);
+			while (ast_channel_stream(peer)) {
 				int ms;
 
-				ms = ast_sched_wait(peer->sched);
+				ms = ast_sched_wait(ast_channel_sched(peer));
 
-				if (ms < 0 && !peer->timingfunc) {
+				if (ms < 0 && !ast_channel_timingfunc(peer)) {
 					ast_stopstream(peer);
 					break;
 				}
@@ -2519,7 +2775,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 				if (active_chan) {
 					struct ast_frame *fr = ast_read(active_chan);
 					if (!fr) {
-						ast_hangup(peer);
+						ast_autoservice_chan_hangup_peer(chan, peer);
 						res = -1;
 						goto done;
 					}
@@ -2535,7 +2791,7 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 							switch (fr->subclass.integer) {
 								case AST_CONTROL_HANGUP:
 									ast_frfree(fr);
-									ast_hangup(peer);
+									ast_autoservice_chan_hangup_peer(chan, peer);
 									res = -1;
 									goto done;
 								default:
@@ -2548,25 +2804,27 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 					}
 					ast_frfree(fr);
 				}
-				ast_sched_runq(peer->sched);
+				ast_sched_runq(ast_channel_sched(peer));
 			}
-			ast_clear_flag(peer, AST_FLAG_END_DTMF_ONLY);
+			ast_clear_flag(ast_channel_flags(peer), AST_FLAG_END_DTMF_ONLY);
 		}
 
 		if (chan && peer && ast_test_flag64(&opts, OPT_GOTO) && !ast_strlen_zero(opt_args[OPT_ARG_GOTO])) {
 			/* chan and peer are going into the PBX, they both
 			 * should probably get CDR records. */
-			ast_clear_flag(chan->cdr, AST_CDR_FLAG_DIALED);
-			ast_clear_flag(peer->cdr, AST_CDR_FLAG_DIALED);
+			ast_clear_flag(ast_channel_cdr(chan), AST_CDR_FLAG_DIALED);
+			ast_clear_flag(ast_channel_cdr(peer), AST_CDR_FLAG_DIALED);
 
-			replace_macro_delimiter(opt_args[OPT_ARG_GOTO]);
+			ast_replace_subargument_delimiter(opt_args[OPT_ARG_GOTO]);
 			ast_parseable_goto(chan, opt_args[OPT_ARG_GOTO]);
 			/* peer goes to the same context and extension as chan, so just copy info from chan*/
-			ast_copy_string(peer->context, chan->context, sizeof(peer->context));
-			ast_copy_string(peer->exten, chan->exten, sizeof(peer->exten));
-			peer->priority = chan->priority + 2;
-			ast_pbx_start(peer);
-			hanguptree(outgoing, NULL, ast_test_flag64(&opts, OPT_CANCEL_ELSEWHERE) ? 1 : 0);
+			ast_channel_context_set(peer, ast_channel_context(chan));
+			ast_channel_exten_set(peer, ast_channel_exten(chan));
+			ast_channel_priority_set(peer, ast_channel_priority(chan) + 2);
+			if (ast_pbx_start(peer)) {
+				ast_autoservice_chan_hangup_peer(chan, peer);
+			}
+			hanguptree(&out_chans, NULL, ast_test_flag64(&opts, OPT_CANCEL_ELSEWHERE) ? 1 : 0);
 			if (continue_exec)
 				*continue_exec = 1;
 			res = 0;
@@ -2574,39 +2832,25 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 		}
 
 		if (ast_test_flag64(&opts, OPT_CALLEE_MACRO) && !ast_strlen_zero(opt_args[OPT_ARG_CALLEE_MACRO])) {
-			struct ast_app *theapp;
-			const char *macro_result;
+			const char *macro_result_peer;
 
-			res = ast_autoservice_start(chan);
-			if (res) {
-				ast_log(LOG_ERROR, "Unable to start autoservice on calling channel\n");
-				res = -1;
-			}
+			/* Set peer->exten and peer->context so that MACRO_EXTEN and MACRO_CONTEXT get set */
+			ast_channel_lock_both(chan, peer);
+			ast_channel_context_set(peer, ast_channel_context(chan));
+			ast_channel_exten_set(peer, ast_channel_exten(chan));
+			ast_channel_unlock(peer);
+			ast_channel_unlock(chan);
 
-			theapp = pbx_findapp("Macro");
-
-			if (theapp && !res) { /* XXX why check res here ? */
-				/* Set peer->exten and peer->context so that MACRO_EXTEN and MACRO_CONTEXT get set */
-				ast_copy_string(peer->context, chan->context, sizeof(peer->context));
-				ast_copy_string(peer->exten, chan->exten, sizeof(peer->exten));
-
-				replace_macro_delimiter(opt_args[OPT_ARG_CALLEE_MACRO]);
-				res = pbx_exec(peer, theapp, opt_args[OPT_ARG_CALLEE_MACRO]);
-				ast_debug(1, "Macro exited with status %d\n", res);
-				res = 0;
-			} else {
-				ast_log(LOG_ERROR, "Could not find application Macro\n");
-				res = -1;
-			}
-
-			if (ast_autoservice_stop(chan) < 0) {
-				res = -1;
-			}
+			ast_replace_subargument_delimiter(opt_args[OPT_ARG_CALLEE_MACRO]);
+			res = ast_app_exec_macro(chan, peer, opt_args[OPT_ARG_CALLEE_MACRO]);
 
 			ast_channel_lock(peer);
 
-			if (!res && (macro_result = pbx_builtin_getvar_helper(peer, "MACRO_RESULT"))) {
+			if (!res && (macro_result_peer = pbx_builtin_getvar_helper(peer, "MACRO_RESULT"))) {
+				char *macro_result = ast_strdupa(macro_result_peer);
 				char *macro_transfer_dest;
+
+				ast_channel_unlock(peer);
 
 				if (!strcasecmp(macro_result, "BUSY")) {
 					ast_copy_string(pa.status, macro_result, sizeof(pa.status));
@@ -2626,102 +2870,71 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 				} else if (!strcasecmp(macro_result, "ABORT")) {
 					/* Hangup both ends unless the caller has the g flag */
 					res = -1;
-				} else if (!strncasecmp(macro_result, "GOTO:", 5) && (macro_transfer_dest = ast_strdupa(macro_result + 5))) {
+				} else if (!strncasecmp(macro_result, "GOTO:", 5)) {
+					macro_transfer_dest = macro_result + 5;
 					res = -1;
 					/* perform a transfer to a new extension */
 					if (strchr(macro_transfer_dest, '^')) { /* context^exten^priority*/
-						replace_macro_delimiter(macro_transfer_dest);
+						ast_replace_subargument_delimiter(macro_transfer_dest);
 						if (!ast_parseable_goto(chan, macro_transfer_dest))
 							ast_set_flag64(peerflags, OPT_GO_ON);
 					}
 				}
+			} else {
+				ast_channel_unlock(peer);
 			}
-
-			ast_channel_unlock(peer);
 		}
 
 		if (ast_test_flag64(&opts, OPT_CALLEE_GOSUB) && !ast_strlen_zero(opt_args[OPT_ARG_CALLEE_GOSUB])) {
-			struct ast_app *theapp;
-			const char *gosub_result;
-			char *gosub_args, *gosub_argstart;
+			const char *gosub_result_peer;
+			char *gosub_argstart;
+			char *gosub_args = NULL;
 			int res9 = -1;
 
-			res9 = ast_autoservice_start(chan);
-			if (res9) {
-				ast_log(LOG_ERROR, "Unable to start autoservice on calling channel\n");
-				res9 = -1;
-			}
-
-			theapp = pbx_findapp("Gosub");
-
-			if (theapp && !res9) {
-				replace_macro_delimiter(opt_args[OPT_ARG_CALLEE_GOSUB]);
-
-				/* Set where we came from */
-				ast_copy_string(peer->context, "app_dial_gosub_virtual_context", sizeof(peer->context));
-				ast_copy_string(peer->exten, "s", sizeof(peer->exten));
-				peer->priority = 0;
-
-				gosub_argstart = strchr(opt_args[OPT_ARG_CALLEE_GOSUB], ',');
-				if (gosub_argstart) {
-					const char *what_is_s = "s";
-					*gosub_argstart = 0;
-					if (!ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "s", 1, S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL)) &&
-						 ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "~~s~~", 1, S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL))) {
-						what_is_s = "~~s~~";
-					}
-					if (asprintf(&gosub_args, "%s,%s,1(%s)", opt_args[OPT_ARG_CALLEE_GOSUB], what_is_s, gosub_argstart + 1) < 0) {
-						ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
-						gosub_args = NULL;
-					}
-					*gosub_argstart = ',';
-				} else {
-					const char *what_is_s = "s";
-					if (!ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "s", 1, S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL)) &&
-						 ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "~~s~~", 1, S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL))) {
-						what_is_s = "~~s~~";
-					}
-					if (asprintf(&gosub_args, "%s,%s,1", opt_args[OPT_ARG_CALLEE_GOSUB], what_is_s) < 0) {
-						ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
-						gosub_args = NULL;
-					}
+			ast_replace_subargument_delimiter(opt_args[OPT_ARG_CALLEE_GOSUB]);
+			gosub_argstart = strchr(opt_args[OPT_ARG_CALLEE_GOSUB], ',');
+			if (gosub_argstart) {
+				const char *what_is_s = "s";
+				*gosub_argstart = 0;
+				if (!ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "s", 1, S_COR(ast_channel_caller(peer)->id.number.valid, ast_channel_caller(peer)->id.number.str, NULL)) &&
+					 ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "~~s~~", 1, S_COR(ast_channel_caller(peer)->id.number.valid, ast_channel_caller(peer)->id.number.str, NULL))) {
+					what_is_s = "~~s~~";
 				}
-
-				if (gosub_args) {
-					res9 = pbx_exec(peer, theapp, gosub_args);
-					if (!res9) {
-						struct ast_pbx_args args;
-						/* A struct initializer fails to compile for this case ... */
-						memset(&args, 0, sizeof(args));
-						args.no_hangup_chan = 1;
-						ast_pbx_run_args(peer, &args);
-					}
-					ast_free(gosub_args);
-					ast_debug(1, "Gosub exited with status %d\n", res9);
-				} else {
-					ast_log(LOG_ERROR, "Could not Allocate string for Gosub arguments -- Gosub Call Aborted!\n");
+				if (ast_asprintf(&gosub_args, "%s,%s,1(%s)", opt_args[OPT_ARG_CALLEE_GOSUB], what_is_s, gosub_argstart + 1) < 0) {
+					gosub_args = NULL;
 				}
-
-			} else if (!res9) {
-				ast_log(LOG_ERROR, "Could not find application Gosub\n");
-				res9 = -1;
+				*gosub_argstart = ',';
+			} else {
+				const char *what_is_s = "s";
+				if (!ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "s", 1, S_COR(ast_channel_caller(peer)->id.number.valid, ast_channel_caller(peer)->id.number.str, NULL)) &&
+					 ast_exists_extension(peer, opt_args[OPT_ARG_CALLEE_GOSUB], "~~s~~", 1, S_COR(ast_channel_caller(peer)->id.number.valid, ast_channel_caller(peer)->id.number.str, NULL))) {
+					what_is_s = "~~s~~";
+				}
+				if (ast_asprintf(&gosub_args, "%s,%s,1", opt_args[OPT_ARG_CALLEE_GOSUB], what_is_s) < 0) {
+					gosub_args = NULL;
+				}
+			}
+			if (gosub_args) {
+				res9 = ast_app_exec_sub(chan, peer, gosub_args, 0);
+				ast_free(gosub_args);
+			} else {
+				ast_log(LOG_ERROR, "Could not Allocate string for Gosub arguments -- Gosub Call Aborted!\n");
 			}
 
-			if (ast_autoservice_stop(chan) < 0) {
-				ast_log(LOG_ERROR, "Could not stop autoservice on calling channel\n");
-				res9 = -1;
-			}
-			
-			ast_channel_lock(peer);
+			ast_channel_lock_both(chan, peer);
 
-			if (!res9 && (gosub_result = pbx_builtin_getvar_helper(peer, "GOSUB_RESULT"))) {
+			if (!res9 && (gosub_result_peer = pbx_builtin_getvar_helper(peer, "GOSUB_RESULT"))) {
 				char *gosub_transfer_dest;
+				char *gosub_result = ast_strdupa(gosub_result_peer);
 				const char *gosub_retval = pbx_builtin_getvar_helper(peer, "GOSUB_RETVAL");
 
 				/* Inherit return value from the peer, so it can be used in the master */
 				if (gosub_retval) {
 					pbx_builtin_setvar_helper(chan, "GOSUB_RETVAL", gosub_retval);
 				}
+
+				ast_channel_unlock(peer);
+				ast_channel_unlock(chan);
 
 				if (!strcasecmp(gosub_result, "BUSY")) {
 					ast_copy_string(pa.status, gosub_result, sizeof(pa.status));
@@ -2732,33 +2945,32 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 					ast_set_flag64(peerflags, OPT_GO_ON);
 					res = -1;
 				} else if (!strcasecmp(gosub_result, "CONTINUE")) {
-					/* hangup peer and keep chan alive assuming the macro has changed
-					   the context / exten / priority or perhaps
-					   the next priority in the current exten is desired.
-					*/
+					/* Hangup peer and continue with the next extension priority. */
 					ast_set_flag64(peerflags, OPT_GO_ON);
 					res = -1;
 				} else if (!strcasecmp(gosub_result, "ABORT")) {
 					/* Hangup both ends unless the caller has the g flag */
 					res = -1;
-				} else if (!strncasecmp(gosub_result, "GOTO:", 5) && (gosub_transfer_dest = ast_strdupa(gosub_result + 5))) {
+				} else if (!strncasecmp(gosub_result, "GOTO:", 5)) {
+					gosub_transfer_dest = gosub_result + 5;
 					res = -1;
 					/* perform a transfer to a new extension */
 					if (strchr(gosub_transfer_dest, '^')) { /* context^exten^priority*/
-						replace_macro_delimiter(gosub_transfer_dest);
+						ast_replace_subargument_delimiter(gosub_transfer_dest);
 						if (!ast_parseable_goto(chan, gosub_transfer_dest))
 							ast_set_flag64(peerflags, OPT_GO_ON);
 					}
 				}
+			} else {
+				ast_channel_unlock(peer);
+				ast_channel_unlock(chan);
 			}
-
-			ast_channel_unlock(peer);	
 		}
 
 		if (!res) {
 			if (!ast_tvzero(calldurationlimit)) {
-				struct timeval whentohangup = calldurationlimit;
-				peer->whentohangup = ast_tvadd(ast_tvnow(), whentohangup);
+				struct timeval whentohangup = ast_tvadd(ast_tvnow(), calldurationlimit);
+				ast_channel_whentohangup_set(peer, &whentohangup);
 			}
 			if (!ast_strlen_zero(dtmfcalled)) {
 				ast_verb(3, "Sending DTMF '%s' to the called party.\n", dtmfcalled);
@@ -2809,12 +3021,12 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 			}
 			/* Be sure no generators are left on it and reset the visible indication */
 			ast_deactivate_generator(chan);
-			chan->visible_indication = 0;
+			ast_channel_visible_indication_set(chan, 0);
 			/* Make sure channels are compatible */
 			res = ast_channel_make_compatible(chan, peer);
 			if (res < 0) {
-				ast_log(LOG_WARNING, "Had to drop call because I couldn't make %s compatible with %s\n", chan->name, peer->name);
-				ast_hangup(peer);
+				ast_log(LOG_WARNING, "Had to drop call because I couldn't make %s compatible with %s\n", ast_channel_name(chan), ast_channel_name(peer));
+				ast_autoservice_chan_hangup_peer(chan, peer);
 				res = -1;
 				goto done;
 			}
@@ -2829,52 +3041,35 @@ static int dial_exec_full(struct ast_channel *chan, const char *data, struct ast
 			res = ast_bridge_call(chan, peer, &config);
 		}
 
-		strcpy(peer->context, chan->context);
+		ast_channel_context_set(peer, ast_channel_context(chan));
 
 		if (ast_test_flag64(&opts, OPT_PEER_H)
-			&& ast_exists_extension(peer, peer->context, "h", 1,
-				S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL))) {
-			int autoloopflag;
-			int found;
-			int res9;
-			
-			strcpy(peer->exten, "h");
-			peer->priority = 1;
-			autoloopflag = ast_test_flag(peer, AST_FLAG_IN_AUTOLOOP); /* save value to restore at the end */
-			ast_set_flag(peer, AST_FLAG_IN_AUTOLOOP);
-
-			while ((res9 = ast_spawn_extension(peer, peer->context, peer->exten,
-				peer->priority,
-				S_COR(peer->caller.id.number.valid, peer->caller.id.number.str, NULL),
-				&found, 1)) == 0) {
-				peer->priority++;
-			}
-
-			if (found && res9) {
-				/* Something bad happened, or a hangup has been requested. */
-				ast_debug(1, "Spawn extension (%s,%s,%d) exited non-zero on '%s'\n", peer->context, peer->exten, peer->priority, peer->name);
-				ast_verb(2, "Spawn extension (%s, %s, %d) exited non-zero on '%s'\n", peer->context, peer->exten, peer->priority, peer->name);
-			}
-			ast_set2_flag(peer, autoloopflag, AST_FLAG_IN_AUTOLOOP);  /* set it back the way it was */
+			&& ast_exists_extension(peer, ast_channel_context(peer), "h", 1,
+				S_COR(ast_channel_caller(peer)->id.number.valid, ast_channel_caller(peer)->id.number.str, NULL))) {
+			ast_autoservice_start(chan);
+			ast_pbx_h_exten_run(peer, ast_channel_context(peer));
+			ast_autoservice_stop(chan);
 		}
-		if (!ast_check_hangup(peer) && ast_test_flag64(&opts, OPT_CALLEE_GO_ON)) {
-			if(!ast_strlen_zero(opt_args[OPT_ARG_CALLEE_GO_ON])) {
-				replace_macro_delimiter(opt_args[OPT_ARG_CALLEE_GO_ON]);
-				ast_parseable_goto(peer, opt_args[OPT_ARG_CALLEE_GO_ON]);
-			} else { /* F() */
-				int res;
-				res = ast_goto_if_exists(peer, chan->context, chan->exten, (chan->priority) + 1); 
-				if (res == AST_PBX_GOTO_FAILED) {
-					ast_hangup(peer);
+		if (!ast_check_hangup(peer)) {
+			if (ast_test_flag64(&opts, OPT_CALLEE_GO_ON)) {
+				int goto_res;
+
+				if (!ast_strlen_zero(opt_args[OPT_ARG_CALLEE_GO_ON])) {
+					ast_replace_subargument_delimiter(opt_args[OPT_ARG_CALLEE_GO_ON]);
+					goto_res = ast_parseable_goto(peer, opt_args[OPT_ARG_CALLEE_GO_ON]);
+				} else { /* F() */
+					goto_res = ast_goto_if_exists(peer, ast_channel_context(chan),
+						ast_channel_exten(chan), ast_channel_priority(chan) + 1);
+				}
+				if (!goto_res && !ast_pbx_start(peer)) {
+					/* The peer is now running its own PBX. */
 					goto out;
 				}
 			}
-			ast_pbx_start(peer);
-		} else {
-			if (!ast_check_hangup(chan))
-				chan->hangupcause = peer->hangupcause;
-			ast_hangup(peer);
+		} else if (!ast_check_hangup(chan)) {
+			ast_channel_hangupcause_set(chan, ast_channel_hangupcause(peer));
 		}
+		ast_autoservice_chan_hangup_peer(chan, peer);
 	}
 out:
 	if (moh) {
@@ -2895,14 +3090,14 @@ out:
 	}
 
 	ast_channel_early_bridge(chan, NULL);
-	hanguptree(outgoing, NULL, 0); /* In this case, there's no answer anywhere */
+	hanguptree(&out_chans, NULL, ast_channel_hangupcause(chan)==AST_CAUSE_ANSWERED_ELSEWHERE ? 1 : 0 ); /* forward 'answered elsewhere' if we received it */
 	pbx_builtin_setvar_helper(chan, "DIALSTATUS", pa.status);
 	senddialendevent(chan, pa.status);
 	ast_debug(1, "Exiting with DIALSTATUS=%s.\n", pa.status);
-	
+
 	if ((ast_test_flag64(peerflags, OPT_GO_ON)) && !ast_check_hangup(chan) && (res != AST_PBX_INCOMPLETE)) {
 		if (!ast_tvzero(calldurationlimit))
-			memset(&chan->whentohangup, 0, sizeof(chan->whentohangup));
+			memset(ast_channel_whentohangup(chan), 0, sizeof(*ast_channel_whentohangup(chan)));
 		res = 0;
 	}
 
@@ -2977,8 +3172,8 @@ static int retrydial_exec(struct ast_channel *chan, const char *data)
 	while (loops) {
 		int continue_exec;
 
-		chan->data = "Retrying";
-		if (ast_test_flag(chan, AST_FLAG_MOH))
+		ast_channel_data_set(chan, "Retrying");
+		if (ast_test_flag(ast_channel_flags(chan), AST_FLAG_MOH))
 			ast_moh_stop(chan);
 
 		res = dial_exec_full(chan, args.dialdata, &peerflags, &continue_exec);
@@ -2988,27 +3183,27 @@ static int retrydial_exec(struct ast_channel *chan, const char *data)
 		if (res == 0) {
 			if (ast_test_flag64(&peerflags, OPT_DTMF_EXIT)) {
 				if (!ast_strlen_zero(args.announce)) {
-					if (ast_fileexists(args.announce, NULL, chan->language) > 0) {
-						if (!(res = ast_streamfile(chan, args.announce, chan->language)))
+					if (ast_fileexists(args.announce, NULL, ast_channel_language(chan)) > 0) {
+						if (!(res = ast_streamfile(chan, args.announce, ast_channel_language(chan))))
 							ast_waitstream(chan, AST_DIGIT_ANY);
 					} else
 						ast_log(LOG_WARNING, "Announce file \"%s\" specified in Retrydial does not exist\n", args.announce);
 				}
 				if (!res && sleepms) {
-					if (!ast_test_flag(chan, AST_FLAG_MOH))
+					if (!ast_test_flag(ast_channel_flags(chan), AST_FLAG_MOH))
 						ast_moh_start(chan, NULL, NULL);
 					res = ast_waitfordigit(chan, sleepms);
 				}
 			} else {
 				if (!ast_strlen_zero(args.announce)) {
-					if (ast_fileexists(args.announce, NULL, chan->language) > 0) {
-						if (!(res = ast_streamfile(chan, args.announce, chan->language)))
+					if (ast_fileexists(args.announce, NULL, ast_channel_language(chan)) > 0) {
+						if (!(res = ast_streamfile(chan, args.announce, ast_channel_language(chan))))
 							res = ast_waitstream(chan, "");
 					} else
 						ast_log(LOG_WARNING, "Announce file \"%s\" specified in Retrydial does not exist\n", args.announce);
 				}
 				if (sleepms) {
-					if (!ast_test_flag(chan, AST_FLAG_MOH))
+					if (!ast_test_flag(ast_channel_flags(chan), AST_FLAG_MOH))
 						ast_moh_start(chan, NULL, NULL);
 					if (!res)
 						res = ast_waitfordigit(chan, sleepms);
@@ -3031,7 +3226,7 @@ static int retrydial_exec(struct ast_channel *chan, const char *data)
 	else if (res == 1)
 		res = 0;
 
-	if (ast_test_flag(chan, AST_FLAG_MOH))
+	if (ast_test_flag(ast_channel_flags(chan), AST_FLAG_MOH))
 		ast_moh_stop(chan);
  done:
 	return res;
@@ -3040,15 +3235,9 @@ static int retrydial_exec(struct ast_channel *chan, const char *data)
 static int unload_module(void)
 {
 	int res;
-	struct ast_context *con;
 
 	res = ast_unregister_application(app);
 	res |= ast_unregister_application(rapp);
-
-	if ((con = ast_context_find("app_dial_gosub_virtual_context"))) {
-		ast_context_remove_extension2(con, "s", 1, NULL, 0);
-		ast_context_destroy(con, "app_dial"); /* leave nothing behind */
-	}
 
 	return res;
 }
@@ -3056,13 +3245,6 @@ static int unload_module(void)
 static int load_module(void)
 {
 	int res;
-	struct ast_context *con;
-
-	con = ast_context_find_or_create(NULL, NULL, "app_dial_gosub_virtual_context", "app_dial");
-	if (!con)
-		ast_log(LOG_ERROR, "Dial virtual context 'app_dial_gosub_virtual_context' does not exist and unable to create\n");
-	else
-		ast_add_extension2(con, 1, "s", 1, NULL, NULL, "NoOp", ast_strdup(""), ast_free_ptr, "app_dial");
 
 	res = ast_register_application_xml(app, dial_exec);
 	res |= ast_register_application_xml(rapp, retrydial_exec);

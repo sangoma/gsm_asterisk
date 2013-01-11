@@ -20,16 +20,20 @@
 
 /*! \file
  *
- * \brief TTY/TDD Generation support 
+ * \brief TTY/TDD Generation support
  *
  * \author Mark Spencer <markster@digium.com>
  *
  * \note Includes code and algorithms from the Zapata library.
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 185912 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include <time.h>
 #include <math.h>
@@ -69,19 +73,21 @@ static int tdd_decode_baudot(struct tdd_state *tdd,unsigned char data)	/* covert
 	                         '5','\"',')','2','=','6','0','1',
 	                         '9','?','+','^','.','/',';','^' };
 	int d = 0;  /* return 0 if not decodeable */
-	switch (data) {
-	case 0x1f:
-		tdd->modo = 0;
-		break;
-	case 0x1b:
-		tdd->modo = 1;
-		break;
-	default:
-		if (tdd->modo == 0)
-			d = ltrs[data];
-		else
-			d = figs[data];
-		break;
+	if (data < 32) {
+		switch (data) {
+		case 0x1f:
+			tdd->modo = 0;
+			break;
+		case 0x1b:
+			tdd->modo = 1;
+			break;
+		default:
+			if (tdd->modo == 0)
+				d = ltrs[data];
+			else
+				d = figs[data];
+			break;
+		}
 	}
 	return d;
 }
@@ -168,7 +174,7 @@ int tdd_feed(struct tdd_state *tdd, unsigned char *ubuf, int len)
 	}
 	memcpy(buf, tdd->oldstuff, tdd->oldlen);
 	mylen += tdd->oldlen / 2;
-	for (x = 0; x < len; x++) 
+	for (x = 0; x < len; x++)
 		buf[x + tdd->oldlen / 2] = AST_MULAW(ubuf[x]);
 	c = res = 0;
 	while (mylen >= 1320) { /* has to have enough to work on */
@@ -202,7 +208,7 @@ int tdd_feed(struct tdd_state *tdd, unsigned char *ubuf, int len)
 		tdd->oldlen = 0;
 	free(obuf);
 	if (res) {
-		tdd->mode = 2; 
+		tdd->mode = 2;
 /* put it in mode where it
 			reliably puts teleprinter in correct shift mode */
 		return(c);
@@ -222,12 +228,12 @@ static inline float tdd_getcarrier(float *cr, float *ci, int bit)
 	t = *cr * dr[bit] - *ci * di[bit];
 	*ci = *cr * di[bit] + *ci * dr[bit];
 	*cr = t;
-	
+
 	t = 2.0 - (*cr * *cr + *ci * *ci);
 	*cr *= t;
 	*ci *= t;
 	return *cr;
-}	
+}
 
 #define PUT_BYTE(a) do { \
 	*(buf++) = (a); \
@@ -239,7 +245,7 @@ static inline float tdd_getcarrier(float *cr, float *ci, int bit)
 	*(buf++) = AST_LIN2MU(__pas_idx); \
 	bytes++; \
 } while(0)
-	
+
 #define PUT_TDD_MARKMS do { \
 	int x; \
 	for (x = 0; x < 8; x++) \
@@ -266,13 +272,13 @@ static inline float tdd_getcarrier(float *cr, float *ci, int bit)
 #define PUT_TDD(byte) do { \
 	int z; \
 	unsigned char b = (byte); \
-	PUT_TDD_BAUD(0); 	/* Start bit */ \
+	PUT_TDD_BAUD(0);	/* Start bit */ \
 	for (z = 0; z < 5; z++) { \
 		PUT_TDD_BAUD(b & 1); \
 		b >>= 1; \
 	} \
 	PUT_TDD_STOP;	/* Stop bit */ \
-} while(0);	
+} while(0);
 
 /*! Generate TDD hold tone
  * \param buf Result buffer
@@ -304,7 +310,7 @@ int tdd_generate(struct tdd_state *tdd, unsigned char *buf, const char *str)
 
 	for(x = 0; str[x]; x++) {
 		/* Do synch for each 72th character */
-		if ( (tdd->charnum++) % 72 == 0) 
+		if ( (tdd->charnum++) % 72 == 0)
 			PUT_TDD(tdd->mode ? 27 /* FIGS */ : 31 /* LTRS */);
 
 		c = toupper(str[x]);

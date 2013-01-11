@@ -19,9 +19,13 @@
  * \brief sip channel dialplan functions and unit tests
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 310089 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include <math.h>
 
@@ -39,7 +43,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 310089 $")
 
 int sip_acf_channel_read(struct ast_channel *chan, const char *funcname, char *preparse, char *buf, size_t buflen)
 {
-	struct sip_pvt *p = chan->tech_pvt;
+	struct sip_pvt *p = ast_channel_tech_pvt(chan);
 	char *parse = ast_strdupa(preparse);
 	int res = 0;
 	AST_DECLARE_APP_ARGS(args,
@@ -57,7 +61,7 @@ int sip_acf_channel_read(struct ast_channel *chan, const char *funcname, char *p
 	AST_STANDARD_APP_ARGS(args, parse);
 
 	/* Sanity check */
-	if (!IS_SIP_TECH(chan->tech)) {
+	if (!IS_SIP_TECH(ast_channel_tech(chan))) {
 		ast_log(LOG_ERROR, "Cannot call %s on a non-SIP channel\n", funcname);
 		return 0;
 	}
@@ -153,9 +157,9 @@ int sip_acf_channel_read(struct ast_channel *chan, const char *funcname, char *p
 		}
 
 		if (ast_strlen_zero(args.field) || !strcasecmp(args.field, "all")) {
-			char quality_buf[AST_MAX_USER_FIELD], *quality;
+			char quality_buf[AST_MAX_USER_FIELD];
 
-			if (!(quality = ast_rtp_instance_get_quality(rtp, AST_RTP_INSTANCE_STAT_FIELD_QUALITY, quality_buf, sizeof(quality_buf)))) {
+			if (!ast_rtp_instance_get_quality(rtp, AST_RTP_INSTANCE_STAT_FIELD_QUALITY, quality_buf, sizeof(quality_buf))) {
 				return -1;
 			}
 
@@ -334,7 +338,7 @@ AST_TEST_DEFINE(test_sip_rtpqos_1)
 
 	ast_rtp_engine_register2(&test_engine, NULL);
 	/* Have to associate this with a SIP pvt and an ast_channel */
-	if (!(p = sip_alloc(NULL, NULL, 0, SIP_NOTIFY, NULL))) {
+	if (!(p = sip_alloc(NULL, NULL, 0, SIP_NOTIFY, NULL, NULL))) {
 		res = AST_TEST_NOT_RUN;
 		goto done;
 	}
@@ -348,8 +352,8 @@ AST_TEST_DEFINE(test_sip_rtpqos_1)
 		res = AST_TEST_NOT_RUN;
 		goto done;
 	}
-	chan->tech = &sip_tech;
-	chan->tech_pvt = p;
+	ast_channel_tech_set(chan, &sip_tech);
+	ast_channel_tech_pvt_set(chan, p);
 	p->owner = chan;
 
 	varstr = ast_str_create(16);

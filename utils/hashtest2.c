@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 355413 $")
 
 #include <pthread.h>
 #include <sys/stat.h>
@@ -368,7 +368,7 @@ void ast_log(int level, const char *file, int line, const char *function, const 
 	va_end(vars);
 }
 
-void __ast_verbose(const char *file, int line, const char *func, const char *fmt, ...)
+void __ast_verbose(const char *file, int line, const char *func, int level, const char *fmt, ...)
 {
         va_list vars;
         va_start(vars,fmt);

@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357542 $")
 
 #include "asterisk/lock.h"
 #include "asterisk/file.h"
@@ -103,12 +103,12 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 		AST_APP_ARG(checkcontext);
 	);
 
-	if (chan->caller.id.number.valid
-		&& !ast_strlen_zero(chan->caller.id.number.str)) {
+	if (ast_channel_caller(chan)->id.number.valid
+		&& !ast_strlen_zero(ast_channel_caller(chan)->id.number.str)) {
 		ast_verb(3, "CallerID number present: Skipping\n");
 	} else {
 		/*Answer the channel if it is not already*/
-		if (chan->_state != AST_STATE_UP) {
+		if (ast_channel_state(chan) != AST_STATE_UP) {
 			if ((res = ast_answer(chan))) {
 				return -1;
 			}
@@ -136,7 +136,7 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 		/* Play unidentified call */
 		res = ast_safe_sleep(chan, 1000);
 		if (!res) {
-			res = ast_streamfile(chan, "privacy-unident", chan->language);
+			res = ast_streamfile(chan, "privacy-unident", ast_channel_language(chan));
 		}
 		if (!res) {
 			res = ast_waitstream(chan, "");
@@ -145,7 +145,7 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 		/* Ask for 10 digit number, give 3 attempts */
 		for (retries = 0; retries < maxretries; retries++) {
 			if (!res) {
-				res = ast_streamfile(chan, "privacy-prompt", chan->language);
+				res = ast_streamfile(chan, "privacy-prompt", ast_channel_language(chan));
 			}
 			if (!res) {
 				res = ast_waitstream(chan, "");
@@ -164,7 +164,7 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 				/* if we have a checkcontext argument, do pattern matching */
 				if (!ast_strlen_zero(args.checkcontext)) {
 					if (!ast_exists_extension(NULL, args.checkcontext, phone, 1, NULL)) {
-						res = ast_streamfile(chan, "privacy-incorrect", chan->language);
+						res = ast_streamfile(chan, "privacy-incorrect", ast_channel_language(chan));
 						if (!res) {
 							res = ast_waitstream(chan, "");
 						}
@@ -175,7 +175,7 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 					break;
 				}
 			} else {
-				res = ast_streamfile(chan, "privacy-incorrect", chan->language);
+				res = ast_streamfile(chan, "privacy-incorrect", ast_channel_language(chan));
 				if (!res) {
 					res = ast_waitstream(chan, "");
 				}
@@ -184,7 +184,7 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 
 		/* Got a number, play sounds and send them on their way */
 		if ((retries < maxretries) && res >= 0) {
-			res = ast_streamfile(chan, "privacy-thankyou", chan->language);
+			res = ast_streamfile(chan, "privacy-thankyou", ast_channel_language(chan));
 			if (!res) {
 				res = ast_waitstream(chan, "");
 			}
@@ -195,9 +195,9 @@ static int privacy_exec(struct ast_channel *chan, const char *data)
 			 * be passed out to other channels.  This is the point of the
 			 * privacy application.
 			 */
-			chan->caller.id.name.presentation = AST_PRES_ALLOWED_USER_NUMBER_NOT_SCREENED;
-			chan->caller.id.number.presentation = AST_PRES_ALLOWED_USER_NUMBER_NOT_SCREENED;
-			chan->caller.id.number.plan = 0;/* Unknown */
+			ast_channel_caller(chan)->id.name.presentation = AST_PRES_ALLOWED_USER_NUMBER_NOT_SCREENED;
+			ast_channel_caller(chan)->id.number.presentation = AST_PRES_ALLOWED_USER_NUMBER_NOT_SCREENED;
+			ast_channel_caller(chan)->id.number.plan = 0;/* Unknown */
 
 			ast_set_callerid(chan, phone, "Privacy Manager", NULL);
 

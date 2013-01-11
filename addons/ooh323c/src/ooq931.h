@@ -246,6 +246,7 @@ typedef struct Q931Message {
    Q931InformationElement *calledPartyNumberIE;
    Q931InformationElement *causeIE;
    Q931InformationElement *keypadIE;
+   Q931InformationElement *callstateIE;
    H225H323_UserInformation *userInfo;
 } Q931Message;
 
@@ -468,6 +469,10 @@ EXTERN int ooSendCallProceeding(struct OOH323CallData *call);
 EXTERN int ooSendAlerting(struct OOH323CallData *call);
 
 EXTERN int ooSendProgress(struct OOH323CallData *call);
+
+EXTERN int ooSendStatus(struct OOH323CallData *call);
+
+EXTERN int ooSendStatusInquiry(struct OOH323CallData *call);
 
 /**
  * This function is invoked to send Facility message.
@@ -714,6 +719,9 @@ EXTERN int ooQ931SetCauseIE
    (OOCTXT *pctxt, Q931Message *pmsg,enum Q931CauseValues cause, unsigned coding, 
     unsigned location);
 
+EXTERN int ooQ931SetCallStateIE
+    (OOCTXT *pctxt, Q931Message *pmsg, unsigned char callstate);
+
 /**
  * This function is used to convert a call clear reason to cause and 
  * reason code. It is used when local user is endoing the call and 
@@ -764,6 +772,8 @@ EXTERN char* ooQ931GetMessageTypeName(int messageType, char* buf);
 EXTERN char* ooQ931GetIEName(int number, char* buf);
 EXTERN int ooSendTCSandMSD(struct OOH323CallData *call);
 EXTERN int ooSendStartH245Facility(struct OOH323CallData *call);
+EXTERN int ooSendFSUpdate(struct OOH323CallData *call);
+EXTERN int ooHandleFastStartChannels(struct OOH323CallData *pCall);
 
 /** 
  * @} 

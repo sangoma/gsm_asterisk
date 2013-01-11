@@ -38,7 +38,7 @@
 #ifdef SOLARIS
 #include <sys/sockio.h>
 #endif
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362307 $")
 
 #include "asterisk/channel.h"
 #include "asterisk/file.h"
@@ -1002,7 +1002,7 @@ static int set_config(void)
 			}
 
 			if (!(user = build_user(mac, profile))) {
-				ast_log(LOG_WARNING, "Could not create user for '%s' - skipping\n", user->macaddress);
+				ast_log(LOG_WARNING, "Could not create user for '%s' - skipping\n", mac);
 				continue;
 			}
 

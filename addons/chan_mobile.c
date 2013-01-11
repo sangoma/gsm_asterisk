@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 333789 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <pthread.h>
 #include <signal.h>
@@ -198,15 +198,15 @@ static char *mblsendsms_desc =
 static struct ast_channel *mbl_new(int state, struct mbl_pvt *pvt, char *cid_num,
 		const struct ast_channel *requestor);
 static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *cap,
-		const struct ast_channel *requestor, void *data, int *cause);
-static int mbl_call(struct ast_channel *ast, char *dest, int timeout);
+		const struct ast_channel *requestor, const char *data, int *cause);
+static int mbl_call(struct ast_channel *ast, const char *dest, int timeout);
 static int mbl_hangup(struct ast_channel *ast);
 static int mbl_answer(struct ast_channel *ast);
 static int mbl_digit_end(struct ast_channel *ast, char digit, unsigned int duration);
 static struct ast_frame *mbl_read(struct ast_channel *ast);
 static int mbl_write(struct ast_channel *ast, struct ast_frame *frame);
 static int mbl_fixup(struct ast_channel *oldchan, struct ast_channel *newchan);
-static int mbl_devicestate(void *data);
+static int mbl_devicestate(const char *data);
 
 static void do_alignment_detection(struct mbl_pvt *pvt, char *buf, int buflen);
 
@@ -557,7 +557,7 @@ static char *handle_cli_mobile_search(struct ast_cli_entry *e, int cmd, struct a
 	max_rsp = 255;
 	flags = IREQ_CACHE_FLUSH;
 
-	ii = alloca(max_rsp * sizeof(inquiry_info));
+	ii = ast_alloca(max_rsp * sizeof(inquiry_info));
 	num_rsp = hci_inquiry(adapter->dev_id, len, max_rsp, NULL, &ii, flags);
 	if (num_rsp > 0) {
 		ast_cli(a->fd, FORMAT1, "Address", "Name", "Usable", "Type", "Port");
@@ -837,24 +837,24 @@ static struct ast_channel *mbl_new(int state, struct mbl_pvt *pvt, char *cid_num
 	ast_dsp_digitreset(pvt->dsp);
 
 	chn = ast_channel_alloc(1, state, cid_num, pvt->id, 0, 0, pvt->context,
-			requestor ? requestor->linkedid : "", 0,
+			requestor ? ast_channel_linkedid(requestor) : "", 0,
 			"Mobile/%s-%04lx", pvt->id, ast_random() & 0xffff);
 	if (!chn) {
 		goto e_return;
 	}
 
-	chn->tech = &mbl_tech;
-	ast_format_cap_add(chn->nativeformats, &prefformat);
-	ast_format_copy(&chn->rawreadformat, &prefformat);
-	ast_format_copy(&chn->rawwriteformat, &prefformat);
-	ast_format_copy(&chn->writeformat, &prefformat);
-	ast_format_copy(&chn->readformat, &prefformat);
-	chn->tech_pvt = pvt;
+	ast_channel_tech_set(chn, &mbl_tech);
+	ast_format_cap_add(ast_channel_nativeformats(chn), &prefformat);
+	ast_format_copy(ast_channel_rawreadformat(chn), &prefformat);
+	ast_format_copy(ast_channel_rawwriteformat(chn), &prefformat);
+	ast_format_copy(ast_channel_writeformat(chn), &prefformat);
+	ast_format_copy(ast_channel_readformat(chn), &prefformat);
+	ast_channel_tech_pvt_set(chn, pvt);
 
 	if (state == AST_STATE_RING)
-		chn->rings = 1;
+		ast_channel_rings_set(chn, 1);
 
-	ast_string_field_set(chn, language, "en");
+	ast_channel_language_set(chn, "en");
 	pvt->owner = chn;
 
 	if (pvt->sco_socket != -1) {
@@ -868,7 +868,7 @@ e_return:
 }
 
 static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *cap,
-		const struct ast_channel *requestor, void *data, int *cause)
+		const struct ast_channel *requestor, const char *data, int *cause)
 {
 
 	struct ast_channel *chn = NULL;
@@ -890,7 +890,7 @@ static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *
 		return NULL;
 	}
 
-	dest_dev = ast_strdupa((char *)data);
+	dest_dev = ast_strdupa(data);
 
 	dest_num = strchr(dest_dev, '/');
 	if (dest_num)
@@ -939,16 +939,15 @@ static struct ast_channel *mbl_request(const char *type, struct ast_format_cap *
 
 }
 
-static int mbl_call(struct ast_channel *ast, char *dest, int timeout)
+static int mbl_call(struct ast_channel *ast, const char *dest, int timeout)
 {
-
 	struct mbl_pvt *pvt;
-	char *dest_dev = NULL;
+	char *dest_dev;
 	char *dest_num = NULL;
 
-	dest_dev = ast_strdupa((char *)dest);
+	dest_dev = ast_strdupa(dest);
 
-	pvt = ast->tech_pvt;
+	pvt = ast_channel_tech_pvt(ast);
 
 	if (pvt->type == MBL_TYPE_PHONE) {
 		dest_num = strchr(dest_dev, '/');
@@ -959,12 +958,12 @@ static int mbl_call(struct ast_channel *ast, char *dest, int timeout)
 		*dest_num++ = 0x00;
 	}
 
-	if ((ast->_state != AST_STATE_DOWN) && (ast->_state != AST_STATE_RESERVED)) {
-		ast_log(LOG_WARNING, "mbl_call called on %s, neither down nor reserved\n", ast->name);
+	if ((ast_channel_state(ast) != AST_STATE_DOWN) && (ast_channel_state(ast) != AST_STATE_RESERVED)) {
+		ast_log(LOG_WARNING, "mbl_call called on %s, neither down nor reserved\n", ast_channel_name(ast));
 		return -1;
 	}
 
-	ast_debug(1, "Calling %s on %s\n", dest, ast->name);
+	ast_debug(1, "Calling %s on %s\n", dest, ast_channel_name(ast));
 
 	ast_mutex_lock(&pvt->lock);
 	if (pvt->type == MBL_TYPE_PHONE) {
@@ -1002,11 +1001,11 @@ static int mbl_hangup(struct ast_channel *ast)
 
 	struct mbl_pvt *pvt;
 
-	if (!ast->tech_pvt) {
+	if (!ast_channel_tech_pvt(ast)) {
 		ast_log(LOG_WARNING, "Asked to hangup channel not connected\n");
 		return 0;
 	}
-	pvt = ast->tech_pvt;
+	pvt = ast_channel_tech_pvt(ast);
 
 	ast_debug(1, "[%s] hanging up device\n", pvt->id);
 
@@ -1025,7 +1024,7 @@ static int mbl_hangup(struct ast_channel *ast)
 	pvt->incoming = 0;
 	pvt->needring = 0;
 	pvt->owner = NULL;
-	ast->tech_pvt = NULL;
+	ast_channel_tech_pvt_set(ast, NULL);
 
 	ast_mutex_unlock(&pvt->lock);
 
@@ -1040,7 +1039,7 @@ static int mbl_answer(struct ast_channel *ast)
 
 	struct mbl_pvt *pvt;
 
-	pvt = ast->tech_pvt;
+	pvt = ast_channel_tech_pvt(ast);
 
 	if (pvt->type == MBL_TYPE_HEADSET)
 		return 0;
@@ -1059,7 +1058,7 @@ static int mbl_answer(struct ast_channel *ast)
 
 static int mbl_digit_end(struct ast_channel *ast, char digit, unsigned int duration)
 {
-	struct mbl_pvt *pvt = ast->tech_pvt;
+	struct mbl_pvt *pvt = ast_channel_tech_pvt(ast);
 
 	if (pvt->type == MBL_TYPE_HEADSET)
 		return 0;
@@ -1081,7 +1080,7 @@ static int mbl_digit_end(struct ast_channel *ast, char digit, unsigned int durat
 static struct ast_frame *mbl_read(struct ast_channel *ast)
 {
 
-	struct mbl_pvt *pvt = ast->tech_pvt;
+	struct mbl_pvt *pvt = ast_channel_tech_pvt(ast);
 	struct ast_frame *fr = &ast_null_frame;
 	int r;
 
@@ -1135,7 +1134,7 @@ e_return:
 static int mbl_write(struct ast_channel *ast, struct ast_frame *frame)
 {
 
-	struct mbl_pvt *pvt = ast->tech_pvt;
+	struct mbl_pvt *pvt = ast_channel_tech_pvt(ast);
 	struct ast_frame *f;
 
 	ast_debug(3, "*** mbl_write\n");
@@ -1163,7 +1162,7 @@ static int mbl_write(struct ast_channel *ast, struct ast_frame *frame)
 static int mbl_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 {
 
-	struct mbl_pvt *pvt = newchan->tech_pvt;
+	struct mbl_pvt *pvt = ast_channel_tech_pvt(newchan);
 
 	if (!pvt) {
 		ast_debug(1, "fixup failed, no pvt on newchan\n");
@@ -1179,14 +1178,14 @@ static int mbl_fixup(struct ast_channel *oldchan, struct ast_channel *newchan)
 
 }
 
-static int mbl_devicestate(void *data)
+static int mbl_devicestate(const char *data)
 {
 
 	char *device;
 	int res = AST_DEVICE_INVALID;
 	struct mbl_pvt *pvt;
 
-	device = ast_strdupa(S_OR((char *) data, ""));
+	device = ast_strdupa(S_OR(data, ""));
 
 	ast_debug(1, "Checking device state for device %s\n", device);
 
@@ -1719,7 +1718,7 @@ static int rfcomm_read_result(int rsock, char **buf, size_t count, size_t *in_co
 	return 1;
 
 e_return:
-	ast_log(LOG_ERROR, "error parsing AT result on rfcomm socket");
+	ast_log(LOG_ERROR, "error parsing AT result on rfcomm socket\n");
 	return res;
 }
 
@@ -2120,7 +2119,7 @@ static int hfp_parse_ciev(struct hfp_pvt *hfp, char *buf, int *value)
 		return HFP_CIND_NONE;
 	}
 
-	if (i >= sizeof(hfp->cind_state)) {
+	if (i >= ARRAY_LEN(hfp->cind_state)) {
 		ast_debug(2, "[%s] CIEV event index too high (%s)\n", hfp->owner->id, buf);
 		return HFP_CIND_NONE;
 	}
@@ -2273,14 +2272,13 @@ static int hfp_parse_cmgr(struct hfp_pvt *hfp, char *buf, char **from_number, ch
  */
 static char *hfp_parse_cusd(struct hfp_pvt *hfp, char *buf)
 {
-	int i, state, message_start, message_end;
+	int i, message_start, message_end;
 	char *cusd;
 	size_t s;
 
 	/* parse cusd message in the following format:
 	 * +CUSD: 0,"100,00 EURO, valid till 01.01.2010, you are using tariff "Mega Tariff". More informations *111#."
 	 */
-	state = 0;
 	message_start = 0;
 	message_end = 0;
 	s = strlen(buf);
@@ -2603,7 +2601,7 @@ static int hfp_parse_cind_indicator(struct hfp_pvt *hfp, int group, char *indica
 	int value;
 
 	/* store the current indicator */
-	if (group >= sizeof(hfp->cind_state)) {
+	if (group >= ARRAY_LEN(hfp->cind_state)) {
 		ast_debug(1, "ignoring CIND state '%s' for group %d, we only support up to %d indicators\n", indicator, group, (int) sizeof(hfp->cind_state));
 		return -1;
 	}
@@ -2678,7 +2676,7 @@ static int hfp_parse_cind_test(struct hfp_pvt *hfp, char *buf)
 {
 	int i, state, group;
 	size_t s;
-	char *indicator = NULL, *values;
+	char *indicator = NULL;
 
 	hfp->nocallsetup = 1;
 
@@ -2717,7 +2715,6 @@ static int hfp_parse_cind_test(struct hfp_pvt *hfp, char *buf)
 			}
 			break;
 		case 5: /* mark the start of the value range */
-			values = &buf[i];
 			state++;
 			break;
 		case 6: /* find the end of the value range */
@@ -2978,7 +2975,6 @@ static int sdp_search(char *addr, int profile)
 
 static sdp_session_t *sdp_register(void)
 {
-
 	uint32_t service_uuid_int[] = {0, 0, 0, GENERIC_AUDIO_SVCLASS_ID};
 	uint8_t rfcomm_channel = 1;
 	const char *service_name = "Asterisk PABX";
@@ -2989,7 +2985,6 @@ static sdp_session_t *sdp_register(void)
 	sdp_list_t  *l2cap_list = 0, *rfcomm_list = 0, *root_list = 0, *proto_list = 0, *access_proto_list = 0, *svc_uuid_list = 0;
 	sdp_data_t *channel = 0;
 
-	int err = 0;
 	sdp_session_t *session = 0;
 
 	sdp_record_t *record = sdp_record_alloc();
@@ -3025,8 +3020,12 @@ static sdp_session_t *sdp_register(void)
 
 	if (!(session = sdp_connect(BDADDR_ANY, BDADDR_LOCAL, SDP_RETRY_IF_BUSY)))
 		ast_log(LOG_WARNING, "Failed to connect sdp and create session.\n");
-	else
-		err = sdp_record_register(session, record, 0);
+	else {
+		if (sdp_record_register(session, record, 0) < 0) {
+			ast_log(LOG_WARNING, "Failed to sdp_record_register error: %d\n", errno);
+			return NULL;
+		}
+	}
 
 	sdp_data_free(channel);
 	sdp_list_free(rfcomm_list, 0);
@@ -3587,7 +3586,7 @@ static int handle_response_cmgr(struct mbl_pvt *pvt, char *buf)
 			return -1;
 		}
 
-		strcpy(chan->exten, "sms");
+		ast_channel_exten_set(chan, "sms");
 		pbx_builtin_setvar_helper(chan, "SMSSRC", from_number);
 		pbx_builtin_setvar_helper(chan, "SMSTXT", text);
 
@@ -3971,7 +3970,7 @@ static void *do_monitor_headset(void *data)
 
 				ast_channel_set_fd(chan, 0, pvt->sco_socket);
 
-				ast_copy_string(chan->exten, "s", AST_MAX_EXTENSION);
+				ast_channel_exten_set(chan, "s");
 				if (ast_pbx_start(chan)) {
 					ast_log(LOG_ERROR, "[%s] unable to start pbx on incoming call\n", pvt->id);
 					ast_hangup(chan);
@@ -4087,18 +4086,17 @@ static void *do_discovery(void *data)
 static void *do_sco_listen(void *data)
 {
 	struct adapter_pvt *adapter = (struct adapter_pvt *) data;
-	int res;
 
 	while (!check_unloading()) {
 		/* check for new sco connections */
-		if ((res = ast_io_wait(adapter->accept_io, 0)) == -1) {
+		if (ast_io_wait(adapter->accept_io, 0) == -1) {
 			/* handle errors */
 			ast_log(LOG_ERROR, "ast_io_wait() failed for adapter %s\n", adapter->id);
 			break;
 		}
 
 		/* handle audio data */
-		if ((res = ast_io_wait(adapter->io, 1)) == -1) {
+		if (ast_io_wait(adapter->io, 1) == -1) {
 			ast_log(LOG_ERROR, "ast_io_wait() failed for audio on adapter %s\n", adapter->id);
 			break;
 		}

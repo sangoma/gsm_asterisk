@@ -137,6 +137,12 @@
 /* Define to 1 if you have the `closefrom' function. */
 #undef HAVE_CLOSEFROM
 
+/* Define to 1 if you have the Corosync library. */
+#undef HAVE_COROSYNC
+
+/* Define to 1 if COROSYNC has the A callback only in corosync 1.x feature. */
+#undef HAVE_COROSYNC_CFG_STATE_TRACK
+
 /* Define to 1 if you have the `cos' function. */
 #undef HAVE_COS
 
@@ -321,6 +327,9 @@
 /* Define to 1 if you have the Iksemel Jabber library. */
 #undef HAVE_IKSEMEL
 
+/* Define if your system has the ILBC libraries. */
+#undef HAVE_ILBC
+
 /* Define if your system has the UW IMAP Toolkit c-client library. */
 #undef HAVE_IMAP_TK
 
@@ -366,6 +375,9 @@
 
 /* Define to 1 if you have the OpenLDAP library. */
 #undef HAVE_LDAP
+
+/* Define if your system has the LIBEDIT libraries. */
+#undef HAVE_LIBEDIT
 
 /* Define to 1 if you have the <libintl.h> header file. */
 #undef HAVE_LIBINTL_H
@@ -506,9 +518,6 @@
 /* Define to 1 if you have the OGG library. */
 #undef HAVE_OGG
 
-/* Define to 1 if you have the OpenAIS library. */
-#undef HAVE_OPENAIS
-
 /* Define if your system has the OpenH323 libraries. */
 #undef HAVE_OPENH323
 
@@ -517,6 +526,9 @@
 
 /* Define to 1 if you have the OpenSSL Secure Sockets Layer library. */
 #undef HAVE_OPENSSL
+
+/* Define to 1 if CRYPTO has the OpenSSL SRTP Extension Support feature. */
+#undef HAVE_OPENSSL_SRTP
 
 /* Define this to indicate the ${OSPTK_DESCRIP} library */
 #undef HAVE_OSPTK
@@ -839,6 +851,9 @@
 /* Define to 1 if `ifr_ifru.ifru_hwaddr' is member of `struct ifreq'. */
 #undef HAVE_STRUCT_IFREQ_IFR_IFRU_IFRU_HWADDR
 
+/* Define to 1 if `uid' is member of `struct sockpeercred'. */
+#undef HAVE_STRUCT_SOCKPEERCRED_UID
+
 /* Define to 1 if `st_blksize' is member of `struct stat'. */
 #undef HAVE_STRUCT_STAT_ST_BLKSIZE
 
@@ -989,9 +1004,6 @@
 /* Define to 1 if you have the `unsetenv' function. */
 #undef HAVE_UNSETENV
 
-/* Define to 1 if you have the usb library. */
-#undef HAVE_USB
-
 /* Define to 1 if you have the `utime' function. */
 #undef HAVE_UTIME
 
@@ -1020,14 +1032,14 @@
 /* Define to 1 if you have the Vorbis library. */
 #undef HAVE_VORBIS
 
+/* Define if your system has OV_CALLBACKS_NOCLOSE declared. */
+#undef HAVE_VORBIS_OPEN_CALLBACKS
+
 /* Define if your system has the VoiceTronix API libraries. */
 #undef HAVE_VPB
 
 /* Define to 1 if you have the `vprintf' function. */
 #undef HAVE_VPRINTF
-
-/* Define to 1 if you have the GSM AT library. */
-#undef HAVE_WAT
 
 /* Define to 1 if you have the <winsock2.h> header file. */
 #undef HAVE_WINSOCK2_H

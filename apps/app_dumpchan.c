@@ -34,7 +34,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 358907 $")
 
 #include "asterisk/pbx.h"
 #include "asterisk/module.h"
@@ -83,8 +83,8 @@ static int serialize_showchan(struct ast_channel *c, char *buf, size_t size)
 	if (!c)
 		return 0;
 
-	if (c->cdr) {
-		elapsed_seconds = now.tv_sec - c->cdr->start.tv_sec;
+	if (ast_channel_cdr(c)) {
+		elapsed_seconds = now.tv_sec - ast_channel_cdr(c)->start.tv_sec;
 		hour = elapsed_seconds / 3600;
 		min = (elapsed_seconds % 3600) / 60;
 		sec = elapsed_seconds % 60;
@@ -127,47 +127,47 @@ static int serialize_showchan(struct ast_channel *c, char *buf, size_t size)
 		"Application=        %s\n"
 		"Data=               %s\n"
 		"Blocking_in=        %s\n",
-		c->name,
-		c->tech->type,
-		c->uniqueid,
-		c->linkedid,
-		S_COR(c->caller.id.number.valid, c->caller.id.number.str, "(N/A)"),
-		S_COR(c->caller.id.name.valid, c->caller.id.name.str, "(N/A)"),
-		S_COR(c->connected.id.number.valid, c->connected.id.number.str, "(N/A)"),
-		S_COR(c->connected.id.name.valid, c->connected.id.name.str, "(N/A)"),
-		S_OR(c->dialed.number.str, "(N/A)"),
-		S_COR(c->redirecting.from.number.valid, c->redirecting.from.number.str, "(N/A)"),
-		c->parkinglot,
-		c->language,	
-		ast_state2str(c->_state),
-		c->_state,
-		c->rings, 
-		ast_getformatname_multiple(nf, sizeof(nf), c->nativeformats),
-		ast_getformatname(&c->writeformat),
-		ast_getformatname(&c->readformat),
-		ast_getformatname(&c->rawwriteformat),
-		ast_getformatname(&c->rawreadformat),
-		c->writetrans ? "Yes" : "No",
-		ast_translate_path_to_str(c->writetrans, &write_transpath),
-		c->readtrans ? "Yes" : "No",
-		ast_translate_path_to_str(c->readtrans, &read_transpath),
-		c->fds[0],
-		c->fin & ~DEBUGCHAN_FLAG, (c->fin & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
-		c->fout & ~DEBUGCHAN_FLAG, (c->fout & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
-		(long)c->whentohangup.tv_sec,
+		ast_channel_name(c),
+		ast_channel_tech(c)->type,
+		ast_channel_uniqueid(c),
+		ast_channel_linkedid(c),
+		S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, "(N/A)"),
+		S_COR(ast_channel_caller(c)->id.name.valid, ast_channel_caller(c)->id.name.str, "(N/A)"),
+		S_COR(ast_channel_connected(c)->id.number.valid, ast_channel_connected(c)->id.number.str, "(N/A)"),
+		S_COR(ast_channel_connected(c)->id.name.valid, ast_channel_connected(c)->id.name.str, "(N/A)"),
+		S_OR(ast_channel_dialed(c)->number.str, "(N/A)"),
+		S_COR(ast_channel_redirecting(c)->from.number.valid, ast_channel_redirecting(c)->from.number.str, "(N/A)"),
+		ast_channel_parkinglot(c),
+		ast_channel_language(c),	
+		ast_state2str(ast_channel_state(c)),
+		ast_channel_state(c),
+		ast_channel_rings(c), 
+		ast_getformatname_multiple(nf, sizeof(nf), ast_channel_nativeformats(c)),
+		ast_getformatname(ast_channel_writeformat(c)),
+		ast_getformatname(ast_channel_readformat(c)),
+		ast_getformatname(ast_channel_rawwriteformat(c)),
+		ast_getformatname(ast_channel_rawreadformat(c)),
+		ast_channel_writetrans(c) ? "Yes" : "No",
+		ast_translate_path_to_str(ast_channel_writetrans(c), &write_transpath),
+		ast_channel_readtrans(c) ? "Yes" : "No",
+		ast_translate_path_to_str(ast_channel_readtrans(c), &read_transpath),
+		ast_channel_fd(c, 0),
+		ast_channel_fin(c) & ~DEBUGCHAN_FLAG, (ast_channel_fin(c) & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
+		ast_channel_fout(c) & ~DEBUGCHAN_FLAG, (ast_channel_fout(c) & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
+		(long)ast_channel_whentohangup(c)->tv_sec,
 		hour,
 		min,
 		sec,
-		c->_bridge ? c->_bridge->name : "<none>",
-		ast_bridged_channel(c) ? ast_bridged_channel(c)->name : "<none>", 
-		c->context,
-		c->exten,
-		c->priority,
-		ast_print_group(cgrp, sizeof(cgrp), c->callgroup),
-		ast_print_group(pgrp, sizeof(pgrp), c->pickupgroup),
-		c->appl ? c->appl : "(N/A)",
-		c->data ? S_OR(c->data, "(Empty)") : "(None)",
-		(ast_test_flag(c, AST_FLAG_BLOCKING) ? c->blockproc : "(Not Blocking)"));
+		ast_channel_internal_bridged_channel(c) ? ast_channel_name(ast_channel_internal_bridged_channel(c)) : "<none>",
+		ast_bridged_channel(c) ? ast_channel_name(ast_bridged_channel(c)) : "<none>", 
+		ast_channel_context(c),
+		ast_channel_exten(c),
+		ast_channel_priority(c),
+		ast_print_group(cgrp, sizeof(cgrp), ast_channel_callgroup(c)),
+		ast_print_group(pgrp, sizeof(pgrp), ast_channel_pickupgroup(c)),
+		ast_channel_appl(c) ? ast_channel_appl(c) : "(N/A)",
+		ast_channel_data(c) ? S_OR(ast_channel_data(c), "(Empty)") : "(None)",
+		(ast_test_flag(ast_channel_flags(c), AST_FLAG_BLOCKING) ? ast_channel_blockproc(c) : "(Not Blocking)"));
 
 	return 0;
 }
@@ -191,7 +191,7 @@ static int dumpchan_exec(struct ast_channel *chan, const char *data)
 			"Info:\n"
 			"%s\n"
 			"Variables:\n"
-			"%s%s\n", chan->name, line, info, ast_str_buffer(vars), line);
+			"%s%s\n", ast_channel_name(chan), line, info, ast_str_buffer(vars), line);
 	}
 
 	return 0;

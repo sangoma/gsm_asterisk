@@ -31,7 +31,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <sys/stat.h>
 
@@ -88,7 +88,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
 
 static void shared_variable_free(void *data);
 
-static struct ast_datastore_info shared_variable_info = {
+static const struct ast_datastore_info shared_variable_info = {
 	.type = "SHARED_VARIABLES",
 	.destroy = shared_variable_free,
 };
@@ -148,7 +148,7 @@ static int shared_read(struct ast_channel *chan, const char *cmd, char *data, ch
 	AST_STANDARD_APP_ARGS(args, data);
 
 	if (!ast_strlen_zero(args.chan)) {
-		char *prefix = alloca(strlen(args.chan) + 2);
+		char *prefix = ast_alloca(strlen(args.chan) + 2);
 		sprintf(prefix, "%s-", args.chan);
 		if (!(c_ref = ast_channel_get_by_name(args.chan)) && !(c_ref = ast_channel_get_by_name_prefix(prefix, strlen(prefix)))) {
 			ast_log(LOG_ERROR, "Channel '%s' not found!  Variable '%s' will be blank.\n", args.chan, args.var);
@@ -206,7 +206,7 @@ static int shared_write(struct ast_channel *chan, const char *cmd, char *data, c
 	AST_STANDARD_APP_ARGS(args, data);
 
 	if (!ast_strlen_zero(args.chan)) {
-		char *prefix = alloca(strlen(args.chan) + 2);
+		char *prefix = ast_alloca(strlen(args.chan) + 2);
 		sprintf(prefix, "%s-", args.chan);
 		if (!(c_ref = ast_channel_get_by_name(args.chan)) && !(c_ref = ast_channel_get_by_name_prefix(prefix, strlen(prefix)))) {
 			ast_log(LOG_ERROR, "Channel '%s' not found!  Variable '%s' not set to '%s'.\n", args.chan, args.var, value);
@@ -243,14 +243,15 @@ static int shared_write(struct ast_channel *chan, const char *cmd, char *data, c
 	varshead = varstore->data;
 
 	/* Protected by the channel lock */
-	AST_LIST_TRAVERSE(varshead, var, entries) {
+	AST_LIST_TRAVERSE_SAFE_BEGIN(varshead, var, entries) {
 		/* If there's a previous value, remove it */
 		if (!strcmp(args.var, ast_var_name(var))) {
-			AST_LIST_REMOVE(varshead, var, entries);
+			AST_LIST_REMOVE_CURRENT(entries);
 			ast_var_delete(var);
 			break;
 		}
 	}
+	AST_LIST_TRAVERSE_SAFE_END;
 
 	var = ast_var_assign(args.var, S_OR(value, ""));
 	AST_LIST_INSERT_HEAD(varshead, var, entries);
@@ -259,8 +260,8 @@ static int shared_write(struct ast_channel *chan, const char *cmd, char *data, c
 		"Variable: SHARED(%s)\r\n"
 		"Value: %s\r\n"
 		"Uniqueid: %s\r\n", 
-		chan ? chan->name : "none", args.var, value, 
-		chan ? chan->uniqueid : "none");
+		chan ? ast_channel_name(chan) : "none", args.var, value, 
+		chan ? ast_channel_uniqueid(chan) : "none");
 
 	ast_channel_unlock(chan);
 

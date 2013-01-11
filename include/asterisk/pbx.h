@@ -26,6 +26,7 @@
 #include "asterisk/channel.h"
 #include "asterisk/sched.h"
 #include "asterisk/devicestate.h"
+#include "asterisk/presencestate.h"
 #include "asterisk/chanvars.h"
 #include "asterisk/hashtab.h"
 #include "asterisk/stringfields.h"
@@ -74,9 +75,34 @@ struct ast_exten;
 struct ast_include;
 struct ast_ignorepat;
 struct ast_sw;
+ 
+enum ast_state_cb_update_reason {
+	/*! The extension state update is a result of a device state changing on the extension. */
+	AST_HINT_UPDATE_DEVICE = 1,
+	/*! The extension state update is a result of presence state changing on the extension. */
+	AST_HINT_UPDATE_PRESENCE = 2,
+};
+
+struct ast_device_state_info {
+	enum ast_device_state device_state;
+	struct ast_channel *causing_channel;
+	char device_name[1];
+};
+
+struct ast_state_cb_info {
+	enum ast_state_cb_update_reason reason;
+	enum ast_extension_states exten_state;
+	struct ao2_container *device_state_info; /* holds ast_device_state_info, must be referenced by callback if stored */
+	enum ast_presence_state presence_state;
+	const char *presence_subtype;
+	const char *presence_message;
+};
 
 /*! \brief Typedef for devicestate and hint callbacks */
-typedef int (*ast_state_cb_type)(const char *context, const char *exten, enum ast_extension_states state, void *data);
+typedef int (*ast_state_cb_type)(char *context, char *id, struct ast_state_cb_info *info, void *data);
+
+/*! \brief Typedef for devicestate and hint callback removal indication callback */
+typedef void (*ast_state_cb_destroy_type)(int id, void *data);
 
 /*! \brief Data structure associated with a custom dialplan function */
 struct ast_custom_function {
@@ -349,6 +375,71 @@ struct ast_pbx_args {
 enum ast_pbx_result ast_pbx_run_args(struct ast_channel *c, struct ast_pbx_args *args);
 
 /*!
+ * \brief Run the h exten from the given context.
+ * \since 11.0
+ *
+ * \param chan Channel to run the h exten on.
+ * \param context Context the h exten is in.
+ *
+ * \return Nothing
+ */
+void ast_pbx_h_exten_run(struct ast_channel *chan, const char *context);
+
+/*!
+ * \brief Run all hangup handlers on the channel.
+ * \since 11.0
+ *
+ * \param chan Channel to run the hangup handlers on.
+ *
+ * \note Absolutely _NO_ channel locks should be held before calling this function.
+ *
+ * \retval Zero if no hangup handlers run.
+ * \retval non-zero if hangup handlers were run.
+ */
+int ast_pbx_hangup_handler_run(struct ast_channel *chan);
+
+/*!
+ * \brief Init the hangup handler container on a channel.
+ * \since 11.0
+ *
+ * \param chan Channel to init the hangup handler container on.
+ *
+ * \return Nothing
+ */
+void ast_pbx_hangup_handler_init(struct ast_channel *chan);
+
+/*!
+ * \brief Destroy the hangup handler container on a channel.
+ * \since 11.0
+ *
+ * \param chan Channel to destroy the hangup handler container on.
+ *
+ * \return Nothing
+ */
+void ast_pbx_hangup_handler_destroy(struct ast_channel *chan);
+
+/*!
+ * \brief Pop the top of the channel hangup handler stack.
+ * \since 11.0
+ *
+ * \param chan Channel to push the hangup handler onto.
+ *
+ * \retval TRUE if a handler was popped off of the stack.
+ */
+int ast_pbx_hangup_handler_pop(struct ast_channel *chan);
+
+/*!
+ * \brief Push the given hangup handler onto the channel hangup handler stack.
+ * \since 11.0
+ *
+ * \param chan Channel to push the hangup handler onto.
+ * \param handler Gosub application parameter string.
+ *
+ * \return Nothing
+ */
+void ast_pbx_hangup_handler_push(struct ast_channel *chan, const char *handler);
+
+/*!
  * \brief Add and extension to an extension context.
  *
  * \param context context to add the extension to
@@ -399,6 +490,36 @@ enum ast_extension_states ast_devstate_to_extenstate(enum ast_device_state devst
 int ast_extension_state(struct ast_channel *c, const char *context, const char *exten);
 
 /*!
+ * \brief Uses hint and devicestate callback to get the extended state of an extension
+ * \since 11
+ *
+ * \param c this is not important
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param[out] device_state_info ptr to an ao2_container with extended state info, must be unref'd after use.
+ *
+ * \return extension state as defined in the ast_extension_states enum
+ */
+int ast_extension_state_extended(struct ast_channel *c, const char *context, const char *exten,
+	struct ao2_container **device_state_info);
+
+/*!
+ * \brief Uses hint and presence state callback to get the presence state of an extension
+ *
+ * \param c this is not important
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param[out] subtype Further information regarding the presence returned
+ * \param[out] message Custom message further describing current presence
+ *
+ * \note The subtype and message are dynamically allocated and must be freed by
+ * the caller of this function.
+ *
+ * \return returns the presence state value.
+ */
+int ast_hint_presence_state(struct ast_channel *c, const char *context, const char *exten, char **subtype, char **message);
+
+/*!
  * \brief Return string representation of the state of an extension
  *
  * \param extension_state is the numerical state delivered by ast_extension_state
@@ -408,33 +529,97 @@ int ast_extension_state(struct ast_channel *c, const char *context, const char *
 const char *ast_extension_state2str(int extension_state);
 
 /*!
+ * \brief Registers a state change callback with destructor.
+ * \since 1.8.9
+ * \since 10.1.0
+ *
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param change_cb callback to call if state changed
+ * \param destroy_cb callback to call when registration destroyed.
+ * \param data to pass to callback
+ *
+ * \note The change_cb is called if the state of an extension is changed.
+ *
+ * \note The destroy_cb is called when the registration is
+ * deleted so the registerer can release any associated
+ * resources.
+ *
+ * \retval -1 on failure
+ * \retval ID on success
+ */
+int ast_extension_state_add_destroy(const char *context, const char *exten,
+	ast_state_cb_type change_cb, ast_state_cb_destroy_type destroy_cb, void *data);
+
+/*!
+ * \brief Registers an extended state change callback with destructor.
+ * \since 11
+ *
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param change_cb callback to call if state changed
+ * \param destroy_cb callback to call when registration destroyed.
+ * \param data to pass to callback
+ *
+ * \note The change_cb is called if the state of an extension is changed.
+ * The extended state is passed to the callback in the device_state_info
+ * member of ast_state_cb_info.
+ *
+ * \note The destroy_cb is called when the registration is
+ * deleted so the registerer can release any associated
+ * resources.
+ *
+ * \retval -1 on failure
+ * \retval ID on success
+ */
+int ast_extension_state_add_destroy_extended(const char *context, const char *exten,
+	ast_state_cb_type change_cb, ast_state_cb_destroy_type destroy_cb, void *data);
+
+/*!
  * \brief Registers a state change callback
  *
  * \param context which context to look in
  * \param exten which extension to get state
- * \param callback callback to call if state changed
+ * \param change_cb callback to call if state changed
  * \param data to pass to callback
  *
- * The callback is called if the state of an extension is changed.
+ * \note The change_cb is called if the state of an extension is changed.
  *
  * \retval -1 on failure
  * \retval ID on success
  */
 int ast_extension_state_add(const char *context, const char *exten,
-			    ast_state_cb_type callback, void *data);
+	ast_state_cb_type change_cb, void *data);
+
+/*!
+ * \brief Registers an extended state change callback
+ * \since 11
+ *
+ * \param context which context to look in
+ * \param exten which extension to get state
+ * \param change_cb callback to call if state changed
+ * \param data to pass to callback
+ *
+ * \note The change_cb is called if the state of an extension is changed.
+ * The extended state is passed to the callback in the device_state_info
+ * member of ast_state_cb_info.
+ *
+ * \retval -1 on failure
+ * \retval ID on success
+ */
+int ast_extension_state_add_extended(const char *context, const char *exten,
+	ast_state_cb_type change_cb, void *data);
 
 /*!
  * \brief Deletes a registered state change callback by ID
  *
- * \param id of the callback to delete
- * \param callback callback
- *
- * Removes the callback from list of callbacks
+ * \param id of the registered state callback to delete
+ * \param change_cb callback to call if state changed (Used if id == 0 (global))
  *
  * \retval 0 success
  * \retval -1 failure
  */
-int ast_extension_state_del(int id, ast_state_cb_type callback);
+int ast_extension_state_del(int id, ast_state_cb_type change_cb);
 
 /*!
  * \brief If an extension hint exists, return non-zero
@@ -889,11 +1074,11 @@ int ast_async_goto_by_name(const char *chan, const char *context, const char *ex
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular extension */
-int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_exten(const char *type, struct ast_format_cap *cap, const char *addr, int timeout, const char *context, const char *exten, int priority, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel, int early_media);
 
 /*! Synchronously or asynchronously make an outbound call and send it to a
    particular application with given extension */
-int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, void *data, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
+int ast_pbx_outgoing_app(const char *type, struct ast_format_cap *cap, const char *addr, int timeout, const char *app, const char *appdata, int *reason, int sync, const char *cid_num, const char *cid_name, struct ast_variable *vars, const char *account, struct ast_channel **locked_channel);
 
 /*!
  * \brief Evaluate a condition

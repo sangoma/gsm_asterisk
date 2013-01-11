@@ -20,12 +20,16 @@
  *
  * \brief Standard Command Line Interface
  *
- * \author Mark Spencer <markster@digium.com> 
+ * \author Mark Spencer <markster@digium.com>
  */
+
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313867 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371120 $")
 
 #include "asterisk/_private.h"
 #include "asterisk/paths.h"	/* use ast_config_AST_MODULE_DIR */
@@ -35,6 +39,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313867 $")
 #include <regex.h>
 #include <pwd.h>
 #include <grp.h>
+#include <editline/readline.h>
 
 #include "asterisk/cli.h"
 #include "asterisk/linkedlists.h"
@@ -44,7 +49,6 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 313867 $")
 #include "asterisk/utils.h"
 #include "asterisk/app.h"
 #include "asterisk/lock.h"
-#include "editline/readline/readline.h"
 #include "asterisk/threadstorage.h"
 #include "asterisk/translate.h"
 
@@ -116,7 +120,7 @@ void ast_cli(int fd, const char *fmt, ...)
 	}
 }
 
-unsigned int ast_debug_get_by_module(const char *module) 
+unsigned int ast_debug_get_by_module(const char *module)
 {
 	struct module_level *ml;
 	unsigned int res = 0;
@@ -133,7 +137,7 @@ unsigned int ast_debug_get_by_module(const char *module)
 	return res;
 }
 
-unsigned int ast_verbose_get_by_module(const char *module) 
+unsigned int ast_verbose_get_by_module(const char *module)
 {
 	struct module_level *ml;
 	unsigned int res = 0;
@@ -231,14 +235,14 @@ static char *complete_fn(const char *word, int state)
 		snprintf(filename, sizeof(filename), "%s/%s", ast_config_AST_MODULE_DIR, word);
 
 	c = d = filename_completion_function(filename, state);
-	
+
 	if (c && word[0] != '/')
 		c += (strlen(ast_config_AST_MODULE_DIR) + 1);
 	if (c)
 		c = ast_strdup(c);
 
 	free(d);
-	
+
 	return c;
 }
 
@@ -325,8 +329,8 @@ static char *handle_core_reload(struct ast_cli_entry *e, int cmd, struct ast_cli
 
 	return CLI_SUCCESS;
 }
-/*! 
- * \brief Find the debug or verbose file setting 
+/*!
+ * \brief Find the debug or verbose file setting
  * \arg debug 1 for debug, 0 for verbose
  */
 static struct module_level *find_module_level(const char *module, unsigned int debug)
@@ -569,7 +573,7 @@ static char *handle_logger_mute(struct ast_cli_entry *e, int cmd, struct ast_cli
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "logger mute";
-		e->usage = 
+		e->usage =
 			"Usage: logger mute\n"
 			"       Disables logging output to the current console, making it possible to\n"
 			"       gather information without being disturbed by scrolling lines.\n";
@@ -650,7 +654,7 @@ static int modlist_modentry(const char *module, const char *description, int use
 	if (strcasestr(module, like) ) {
 		ast_cli(climodentryfd, MODLIST_FORMAT, module, description, usecnt);
 		return 1;
-	} 
+	}
 	return 0;
 }
 
@@ -772,7 +776,7 @@ static char *handle_modlist(struct ast_cli_entry *e, int cmd, struct ast_cli_arg
 		like = a->argv[e->args];
 	else
 		return CLI_SHOWUSAGE;
-		
+
 	ast_mutex_lock(&climodentrylock);
 	climodentryfd = a->fd; /* global, protected by climodentrylock */
 	ast_cli(a->fd, MODLIST_FORMAT2, "Module", "Description", "Use Count");
@@ -829,7 +833,7 @@ static char *handle_showcalls(struct ast_cli_entry *e, int cmd, struct ast_cli_a
 	} else {
 		ast_cli(a->fd, "%d active call%s\n", ast_active_calls(), ESS(ast_active_calls()));
 	}
-   
+
 	ast_cli(a->fd, "%d call%s processed\n", ast_processed_calls(), ESS(ast_processed_calls()));
 
 	if (ast_startuptime.tv_sec && showuptime) {
@@ -885,7 +889,7 @@ static char *handle_chanlist(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		if (!concise && !verbose)
 			ast_cli(a->fd, FORMAT_STRING2, "Channel", "Location", "State", "Application(Data)");
 		else if (verbose)
-			ast_cli(a->fd, VERBOSE_FORMAT_STRING2, "Channel", "Context", "Extension", "Priority", "State", "Application", "Data", 
+			ast_cli(a->fd, VERBOSE_FORMAT_STRING2, "Channel", "Context", "Extension", "Priority", "State", "Application", "Data",
 				"CallerID", "Duration", "Accountcode", "PeerAccount", "BridgedTo");
 	}
 
@@ -902,8 +906,8 @@ static char *handle_chanlist(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		bc = ast_bridged_channel(c);
 
 		if (!count) {
-			if ((concise || verbose)  && c->cdr && !ast_tvzero(c->cdr->start)) {
-				int duration = (int)(ast_tvdiff_ms(ast_tvnow(), c->cdr->start) / 1000);
+			if ((concise || verbose)  && ast_channel_cdr(c) && !ast_tvzero(ast_channel_cdr(c)->start)) {
+				int duration = (int)(ast_tvdiff_ms(ast_tvnow(), ast_channel_cdr(c)->start) / 1000);
 				if (verbose) {
 					int durh = duration / 3600;
 					int durm = (duration % 3600) / 60;
@@ -911,37 +915,37 @@ static char *handle_chanlist(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 					snprintf(durbuf, sizeof(durbuf), "%02d:%02d:%02d", durh, durm, durs);
 				} else {
 					snprintf(durbuf, sizeof(durbuf), "%d", duration);
-				}				
+				}
 			}
 			if (concise) {
-				ast_cli(a->fd, CONCISE_FORMAT_STRING, c->name, c->context, c->exten, c->priority, ast_state2str(c->_state),
-					c->appl ? c->appl : "(None)",
-					S_OR(c->data, ""),	/* XXX different from verbose ? */
-					S_COR(c->caller.id.number.valid, c->caller.id.number.str, ""),
-					S_OR(c->accountcode, ""),
-					S_OR(c->peeraccount, ""),
-					c->amaflags, 
+				ast_cli(a->fd, CONCISE_FORMAT_STRING, ast_channel_name(c), ast_channel_context(c), ast_channel_exten(c), ast_channel_priority(c), ast_state2str(ast_channel_state(c)),
+					ast_channel_appl(c) ? ast_channel_appl(c) : "(None)",
+					S_OR(ast_channel_data(c), ""),	/* XXX different from verbose ? */
+					S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, ""),
+					S_OR(ast_channel_accountcode(c), ""),
+					S_OR(ast_channel_peeraccount(c), ""),
+					ast_channel_amaflags(c),
 					durbuf,
-					bc ? bc->name : "(None)",
-					c->uniqueid);
+					bc ? ast_channel_name(bc) : "(None)",
+					ast_channel_uniqueid(c));
 			} else if (verbose) {
-				ast_cli(a->fd, VERBOSE_FORMAT_STRING, c->name, c->context, c->exten, c->priority, ast_state2str(c->_state),
-					c->appl ? c->appl : "(None)",
-					c->data ? S_OR(c->data, "(Empty)" ): "(None)",
-					S_COR(c->caller.id.number.valid, c->caller.id.number.str, ""),
+				ast_cli(a->fd, VERBOSE_FORMAT_STRING, ast_channel_name(c), ast_channel_context(c), ast_channel_exten(c), ast_channel_priority(c), ast_state2str(ast_channel_state(c)),
+					ast_channel_appl(c) ? ast_channel_appl(c) : "(None)",
+					ast_channel_data(c) ? S_OR(ast_channel_data(c), "(Empty)" ): "(None)",
+					S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, ""),
 					durbuf,
-					S_OR(c->accountcode, ""),
-					S_OR(c->peeraccount, ""),
-					bc ? bc->name : "(None)");
+					S_OR(ast_channel_accountcode(c), ""),
+					S_OR(ast_channel_peeraccount(c), ""),
+					bc ? ast_channel_name(bc) : "(None)");
 			} else {
 				char locbuf[40] = "(None)";
 				char appdata[40] = "(None)";
-				
-				if (!ast_strlen_zero(c->context) && !ast_strlen_zero(c->exten)) 
-					snprintf(locbuf, sizeof(locbuf), "%s@%s:%d", c->exten, c->context, c->priority);
-				if (c->appl)
-					snprintf(appdata, sizeof(appdata), "%s(%s)", c->appl, S_OR(c->data, ""));
-				ast_cli(a->fd, FORMAT_STRING, c->name, locbuf, ast_state2str(c->_state), appdata);
+
+				if (!ast_strlen_zero(ast_channel_context(c)) && !ast_strlen_zero(ast_channel_exten(c)))
+					snprintf(locbuf, sizeof(locbuf), "%s@%s:%d", ast_channel_exten(c), ast_channel_context(c), ast_channel_priority(c));
+				if (ast_channel_appl(c))
+					snprintf(appdata, sizeof(appdata), "%s(%s)", ast_channel_appl(c), S_OR(ast_channel_data(c), ""));
+				ast_cli(a->fd, FORMAT_STRING, ast_channel_name(c), locbuf, ast_state2str(ast_channel_state(c)), appdata);
 			}
 		}
 		ast_channel_unlock(c);
@@ -965,7 +969,7 @@ static char *handle_chanlist(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 	}
 
 	return CLI_SUCCESS;
-	
+
 #undef FORMAT_STRING
 #undef FORMAT_STRING2
 #undef CONCISE_FORMAT_STRING
@@ -1002,14 +1006,14 @@ static char *handle_softhangup(struct ast_cli_entry *e, int cmd, struct ast_cli_
 		}
 		for (; iter && (c = ast_channel_iterator_next(iter)); ast_channel_unref(c)) {
 			ast_channel_lock(c);
-			ast_cli(a->fd, "Requested Hangup on channel '%s'\n", c->name);
+			ast_cli(a->fd, "Requested Hangup on channel '%s'\n", ast_channel_name(c));
 			ast_softhangup(c, AST_SOFTHANGUP_EXPLICIT);
 			ast_channel_unlock(c);
 		}
 		ast_channel_iterator_destroy(iter);
 	} else if ((c = ast_channel_get_by_name(a->argv[3]))) {
 		ast_channel_lock(c);
-		ast_cli(a->fd, "Requested Hangup on channel '%s'\n", c->name);
+		ast_cli(a->fd, "Requested Hangup on channel '%s'\n", ast_channel_name(c));
 		ast_softhangup(c, AST_SOFTHANGUP_EXPLICIT);
 		ast_channel_unlock(c);
 		c = ast_channel_unref(c);
@@ -1169,11 +1173,11 @@ static char *handle_commandmatchesarray(struct ast_cli_entry *e, int cmd, struct
 	int len = 0;
 	char **matches;
 	int x, matchlen;
-	
+
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "_command matchesarray";
-		e->usage = 
+		e->usage =
 			"Usage: _command matchesarray \"<line>\" text \n"
 			"       This function is used internally to help with command completion and should.\n"
 			"       never be called by the user directly.\n";
@@ -1194,7 +1198,7 @@ static char *handle_commandmatchesarray(struct ast_cli_entry *e, int cmd, struct
 			if (len + matchlen >= buflen) {
 				buflen += matchlen * 3;
 				obuf = buf;
-				if (!(buf = ast_realloc(obuf, buflen))) 
+				if (!(buf = ast_realloc(obuf, buflen)))
 					/* Memory allocation failure...  Just free old buffer and be done */
 					ast_free(obuf);
 			}
@@ -1224,7 +1228,7 @@ static char *handle_commandnummatches(struct ast_cli_entry *e, int cmd, struct a
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "_command nummatches";
-		e->usage = 
+		e->usage =
 			"Usage: _command nummatches \"<line>\" text \n"
 			"       This function is used internally to help with command completion and should.\n"
 			"       never be called by the user directly.\n";
@@ -1249,7 +1253,7 @@ static char *handle_commandcomplete(struct ast_cli_entry *e, int cmd, struct ast
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "_command complete";
-		e->usage = 
+		e->usage =
 			"Usage: _command complete \"<line>\" text state\n"
 			"       This function is used internally to help with command completion and should.\n"
 			"       never be called by the user directly.\n";
@@ -1280,16 +1284,16 @@ static int channel_set_debug(void *obj, void *arg, void *data, int flags)
 
 	ast_channel_lock(chan);
 
-	if (!(chan->fin & DEBUGCHAN_FLAG) || !(chan->fout & DEBUGCHAN_FLAG)) {
+	if (!(ast_channel_fin(chan) & DEBUGCHAN_FLAG) || !(ast_channel_fout(chan) & DEBUGCHAN_FLAG)) {
 		if (args->is_off) {
-			chan->fin &= ~DEBUGCHAN_FLAG;
-			chan->fout &= ~DEBUGCHAN_FLAG;
+			ast_channel_fin_set(chan, ast_channel_fin(chan) & ~DEBUGCHAN_FLAG);
+			ast_channel_fout_set(chan, ast_channel_fout(chan) & ~DEBUGCHAN_FLAG);
 		} else {
-			chan->fin |= DEBUGCHAN_FLAG;
-			chan->fout |= DEBUGCHAN_FLAG;
+			ast_channel_fin_set(chan, ast_channel_fin(chan) | DEBUGCHAN_FLAG);
+			ast_channel_fout_set(chan, ast_channel_fout(chan) | DEBUGCHAN_FLAG);
 		}
 		ast_cli(args->fd, "Debugging %s on channel %s\n", args->is_off ? "disabled" : "enabled",
-				chan->name);
+				ast_channel_name(chan));
 	}
 
 	ast_channel_unlock(chan);
@@ -1380,18 +1384,22 @@ static char *handle_nodebugchan_deprecated(struct ast_cli_entry *e, int cmd, str
 
 	return res;
 }
-		
+
 static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
 	struct ast_channel *c=NULL;
 	struct timeval now;
-	struct ast_str *out = ast_str_thread_get(&ast_str_thread_global_buf, 16);
 	char cdrtime[256];
 	char nf[256];
 	struct ast_str *write_transpath = ast_str_alloca(256);
 	struct ast_str *read_transpath = ast_str_alloca(256);
+	struct ast_str *obuf;/*!< Buffer for variable, CDR variable, and trace output. */
+	struct ast_str *output;/*!< Accumulation buffer for all output. */
 	long elapsed_seconds=0;
 	int hour=0, min=0, sec=0;
+	struct ast_callid *callid;
+	char call_identifier_str[AST_CALLID_BUFFER_LENGTH] = "";
+	struct ast_party_id effective_connected_id;
 #ifdef CHANNEL_TRACE
 	int trace_enabled;
 #endif
@@ -1399,14 +1407,14 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "core show channel";
-		e->usage = 
+		e->usage =
 			"Usage: core show channel <channel>\n"
 			"       Shows lots of information about the specified channel.\n";
 		return NULL;
 	case CLI_GENERATE:
 		return ast_complete_channels(a->line, a->word, a->pos, a->n, 3);
 	}
-	
+
 	if (a->argc != 4) {
 		return CLI_SHOWUSAGE;
 	}
@@ -1418,10 +1426,19 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		return CLI_SUCCESS;
 	}
 
+	obuf = ast_str_thread_get(&ast_str_thread_global_buf, 16);
+	if (!obuf) {
+		return CLI_FAILURE;
+	}
+	output = ast_str_create(8192);
+	if (!output) {
+		return CLI_FAILURE;
+	}
+
 	ast_channel_lock(c);
 
-	if (c->cdr) {
-		elapsed_seconds = now.tv_sec - c->cdr->start.tv_sec;
+	if (ast_channel_cdr(c)) {
+		elapsed_seconds = now.tv_sec - ast_channel_cdr(c)->start.tv_sec;
 		hour = elapsed_seconds / 3600;
 		min = (elapsed_seconds % 3600) / 60;
 		sec = elapsed_seconds % 60;
@@ -1430,7 +1447,15 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		strcpy(cdrtime, "N/A");
 	}
 
-	ast_cli(a->fd, 
+	/* Construct the call identifier string based on the status of the channel's call identifier */
+	if ((callid = ast_channel_callid(c))) {
+		ast_callid_strnprint(call_identifier_str, sizeof(call_identifier_str), callid);
+		ast_callid_unref(callid);
+	}
+
+	effective_connected_id = ast_channel_connected_effective_id(c);
+
+	ast_str_append(&output, 0,
 		" -- General --\n"
 		"           Name: %s\n"
 		"           Type: %s\n"
@@ -1440,6 +1465,8 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		" Caller ID Name: %s\n"
 		"Connected Line ID: %s\n"
 		"Connected Line ID Name: %s\n"
+		"Eff. Connected Line ID: %s\n"
+		"Eff. Connected Line ID Name: %s\n"
 		"    DNID Digits: %s\n"
 		"       Language: %s\n"
 		"          State: %s (%d)\n"
@@ -1464,49 +1491,57 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		"   Pickup Group: %llu\n"
 		"    Application: %s\n"
 		"           Data: %s\n"
-		"    Blocking in: %s\n",
-		c->name, c->tech->type, c->uniqueid, c->linkedid,
-		S_COR(c->caller.id.number.valid, c->caller.id.number.str, "(N/A)"),
-		S_COR(c->caller.id.name.valid, c->caller.id.name.str, "(N/A)"),
-		S_COR(c->connected.id.number.valid, c->connected.id.number.str, "(N/A)"),
-		S_COR(c->connected.id.name.valid, c->connected.id.name.str, "(N/A)"),
-		S_OR(c->dialed.number.str, "(N/A)"),
-		c->language,	
-		ast_state2str(c->_state), c->_state, c->rings, 
-		ast_getformatname_multiple(nf, sizeof(nf), c->nativeformats),
-		ast_getformatname(&c->writeformat),
-		ast_getformatname(&c->readformat),
-		c->writetrans ? "Yes" : "No",
-		ast_translate_path_to_str(c->writetrans, &write_transpath),
-		c->readtrans ? "Yes" : "No",
-		ast_translate_path_to_str(c->readtrans, &read_transpath),
-		c->fds[0],
-		c->fin & ~DEBUGCHAN_FLAG, (c->fin & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
-		c->fout & ~DEBUGCHAN_FLAG, (c->fout & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
-		(long)c->whentohangup.tv_sec,
-		cdrtime, c->_bridge ? c->_bridge->name : "<none>", ast_bridged_channel(c) ? ast_bridged_channel(c)->name : "<none>", 
-		c->context, c->exten, c->priority, c->callgroup, c->pickupgroup, ( c->appl ? c->appl : "(N/A)" ),
-		( c-> data ? S_OR(c->data, "(Empty)") : "(None)"),
-		(ast_test_flag(c, AST_FLAG_BLOCKING) ? c->blockproc : "(Not Blocking)"));
-	
-	if (pbx_builtin_serialize_variables(c, &out)) {
-		ast_cli(a->fd,"      Variables:\n%s\n", ast_str_buffer(out));
+		"    Blocking in: %s\n"
+		" Call Identifer: %s\n",
+		ast_channel_name(c), ast_channel_tech(c)->type, ast_channel_uniqueid(c), ast_channel_linkedid(c),
+		S_COR(ast_channel_caller(c)->id.number.valid, ast_channel_caller(c)->id.number.str, "(N/A)"),
+		S_COR(ast_channel_caller(c)->id.name.valid, ast_channel_caller(c)->id.name.str, "(N/A)"),
+		S_COR(ast_channel_connected(c)->id.number.valid, ast_channel_connected(c)->id.number.str, "(N/A)"),
+		S_COR(ast_channel_connected(c)->id.name.valid, ast_channel_connected(c)->id.name.str, "(N/A)"),
+		S_COR(effective_connected_id.number.valid, effective_connected_id.number.str, "(N/A)"),
+		S_COR(effective_connected_id.name.valid, effective_connected_id.name.str, "(N/A)"),
+		S_OR(ast_channel_dialed(c)->number.str, "(N/A)"),
+		ast_channel_language(c),
+		ast_state2str(ast_channel_state(c)), ast_channel_state(c), ast_channel_rings(c),
+		ast_getformatname_multiple(nf, sizeof(nf), ast_channel_nativeformats(c)),
+		ast_getformatname(ast_channel_writeformat(c)),
+		ast_getformatname(ast_channel_readformat(c)),
+		ast_channel_writetrans(c) ? "Yes" : "No",
+		ast_translate_path_to_str(ast_channel_writetrans(c), &write_transpath),
+		ast_channel_readtrans(c) ? "Yes" : "No",
+		ast_translate_path_to_str(ast_channel_readtrans(c), &read_transpath),
+		ast_channel_fd(c, 0),
+		ast_channel_fin(c) & ~DEBUGCHAN_FLAG, (ast_channel_fin(c) & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
+		ast_channel_fout(c) & ~DEBUGCHAN_FLAG, (ast_channel_fout(c) & DEBUGCHAN_FLAG) ? " (DEBUGGED)" : "",
+		(long)ast_channel_whentohangup(c)->tv_sec,
+		cdrtime, ast_channel_internal_bridged_channel(c) ? ast_channel_name(ast_channel_internal_bridged_channel(c)) : "<none>", ast_bridged_channel(c) ? ast_channel_name(ast_bridged_channel(c)) : "<none>",
+		ast_channel_context(c), ast_channel_exten(c), ast_channel_priority(c), ast_channel_callgroup(c), ast_channel_pickupgroup(c), (ast_channel_appl(c) ? ast_channel_appl(c) : "(N/A)" ),
+		(ast_channel_data(c) ? S_OR(ast_channel_data(c), "(Empty)") : "(None)"),
+		(ast_test_flag(ast_channel_flags(c), AST_FLAG_BLOCKING) ? ast_channel_blockproc(c) : "(Not Blocking)"),
+		S_OR(call_identifier_str, "(None)"));
+
+	if (pbx_builtin_serialize_variables(c, &obuf)) {
+		ast_str_append(&output, 0, "      Variables:\n%s\n", ast_str_buffer(obuf));
 	}
 
-	if (c->cdr && ast_cdr_serialize_variables(c->cdr, &out, '=', '\n', 1)) {
-		ast_cli(a->fd,"  CDR Variables:\n%s\n", ast_str_buffer(out));
+	if (ast_channel_cdr(c) && ast_cdr_serialize_variables(ast_channel_cdr(c), &obuf, '=', '\n', 1)) {
+		ast_str_append(&output, 0, "  CDR Variables:\n%s\n", ast_str_buffer(obuf));
 	}
 
 #ifdef CHANNEL_TRACE
 	trace_enabled = ast_channel_trace_is_enabled(c);
-	ast_cli(a->fd, "  Context Trace: %s\n", trace_enabled ? "Enabled" : "Disabled");
-	if (trace_enabled && ast_channel_trace_serialize(c, &out))
-		ast_cli(a->fd, "          Trace:\n%s\n", ast_str_buffer(out));
+	ast_str_append(&output, 0, "  Context Trace: %s\n",
+		trace_enabled ? "Enabled" : "Disabled");
+	if (trace_enabled && ast_channel_trace_serialize(c, &obuf)) {
+		ast_str_append(&output, 0, "          Trace:\n%s\n", ast_str_buffer(obuf));
+	}
 #endif
 
 	ast_channel_unlock(c);
 	c = ast_channel_unref(c);
 
+	ast_cli(a->fd, "%s", ast_str_buffer(output));
+	ast_free(output);
 	return CLI_SUCCESS;
 }
 
@@ -1551,7 +1586,7 @@ char *ast_complete_channels(const char *line, const char *word, int pos, int sta
 	while (ret == &notfound && (c = ast_channel_iterator_next(iter))) {
 		if (++which > state) {
 			ast_channel_lock(c);
-			ret = ast_strdup(c->name);
+			ret = ast_strdup(ast_channel_name(c));
 			ast_channel_unlock(c);
 		}
 		ast_channel_unref(c);
@@ -1574,7 +1609,7 @@ static char *group_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cl
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "group show channels";
-		e->usage = 
+		e->usage =
 			"Usage: group show channels [pattern]\n"
 			"       Lists all currently active channels with channel group(s) specified.\n"
 			"       Optional regular expression pattern is matched to group names for each\n"
@@ -1586,7 +1621,7 @@ static char *group_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cl
 
 	if (a->argc < 3 || a->argc > 4)
 		return CLI_SHOWUSAGE;
-	
+
 	if (a->argc == 4) {
 		if (regcomp(&regexbuf, a->argv[3], REG_EXTENDED | REG_NOSUB))
 			return CLI_SHOWUSAGE;
@@ -1596,18 +1631,18 @@ static char *group_show_channels(struct ast_cli_entry *e, int cmd, struct ast_cl
 	ast_cli(a->fd, FORMAT_STRING, "Channel", "Group", "Category");
 
 	ast_app_group_list_rdlock();
-	
+
 	gi = ast_app_group_list_head();
 	while (gi) {
 		if (!havepattern || !regexec(&regexbuf, gi->group, 0, NULL, 0)) {
-			ast_cli(a->fd, FORMAT_STRING, gi->chan->name, gi->group, (ast_strlen_zero(gi->category) ? "(default)" : gi->category));
+			ast_cli(a->fd, FORMAT_STRING, ast_channel_name(gi->chan), gi->group, (ast_strlen_zero(gi->category) ? "(default)" : gi->category));
 			numchans++;
 		}
 		gi = AST_LIST_NEXT(gi, group_list);
 	}
-	
+
 	ast_app_group_list_unlock();
-	
+
 	if (havepattern)
 		regfree(&regexbuf);
 
@@ -1792,7 +1827,7 @@ int ast_cli_perms_init(int reload)
 		AST_RWLIST_WRLOCK(&cli_perms);
 		AST_LIST_TRAVERSE(&cli_perms, cp_entry, list) {
 			if ((pw && cp_entry->uid == pw->pw_uid) || (gr && cp_entry->gid == gr->gr_gid)) {
-				/* if it is duplicated, just added this new settings, to 
+				/* if it is duplicated, just added this new settings, to
 				the current list. */
 				user_group = cp_entry;
 				break;
@@ -2066,9 +2101,9 @@ static int __ast_cli_register(struct ast_cli_entry *e, struct ast_cli_entry *ed)
 		s = ast_skip_blanks(s);
 	}
 	*dst++ = NULL;
-	
+
 	AST_RWLIST_WRLOCK(&helpers);
-	
+
 	if (find_cli(e->cmda, 1)) {
 		ast_log(LOG_WARNING, "Command '%s' already registered (or something close enough)\n", S_OR(e->_full_cmd, e->command));
 		goto done;
@@ -2082,14 +2117,14 @@ static int __ast_cli_register(struct ast_cli_entry *e, struct ast_cli_entry *ed)
 		if (lf < len)
 			len = lf;
 		if (strncasecmp(e->_full_cmd, cur->_full_cmd, len) < 0) {
-			AST_RWLIST_INSERT_BEFORE_CURRENT(e, list); 
+			AST_RWLIST_INSERT_BEFORE_CURRENT(e, list);
 			break;
 		}
 	}
 	AST_RWLIST_TRAVERSE_SAFE_END;
 
 	if (!cur)
-		AST_RWLIST_INSERT_TAIL(&helpers, e, list); 
+		AST_RWLIST_INSERT_TAIL(&helpers, e, list);
 	ret = 0;	/* success */
 
 done:
@@ -2326,16 +2361,20 @@ char **ast_cli_completion_matches(const char *text, const char *word)
 		max_equal = i;
 	}
 
-	if (!(retstr = ast_malloc(max_equal + 1)))
+	if (!(retstr = ast_malloc(max_equal + 1))) {
+		ast_free(match_list);
 		return NULL;
-	
+	}
+
 	ast_copy_string(retstr, match_list[1], max_equal + 1);
 	match_list[0] = retstr;
 
 	/* ensure that the array is NULL terminated */
 	if (matches + 1 >= match_list_len) {
-		if (!(match_list = ast_realloc(match_list, (match_list_len + 1) * sizeof(*match_list))))
+		if (!(match_list = ast_realloc(match_list, (match_list_len + 1) * sizeof(*match_list)))) {
+			ast_free(retstr);
 			return NULL;
+		}
 	}
 	match_list[matches + 1] = NULL;
 
@@ -2352,7 +2391,7 @@ static int more_words (const char * const *dst)
 	}
 	return 0;
 }
-	
+
 /*
  * generate the entry at position 'state'
  */

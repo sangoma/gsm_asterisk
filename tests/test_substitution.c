@@ -33,7 +33,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 332178 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 357542 $")
 
 #include "asterisk/file.h"
 #include "asterisk/channel.h"
@@ -69,9 +69,32 @@ static enum ast_test_result_state test_chan_integer(struct ast_test *test,
 	return okay ? AST_TEST_PASS : AST_TEST_FAIL;
 }
 
+static enum ast_test_result_state test_chan_integer_accessor(struct ast_test *test,
+		struct ast_channel *c, void (*setter)(struct ast_channel *, int),const char *expression)
+{
+	int i, okay = 1, value1 = -1, value2 = -1;
+	char workspace[4096];
+	struct ast_str *str = ast_str_create(16);
+
+	ast_test_status_update(test, "Testing '%s' . . . . . %s\n", expression, okay ? "passed" : "FAILED");
+	for (i = 0; i < 256; i++) {
+		setter(c, i);
+		ast_str_substitute_variables(&str, 0, c, expression);
+		pbx_substitute_variables_helper(c, expression, workspace, sizeof(workspace));
+		if (sscanf(workspace, "%d", &value1) != 1 || value1 != i || sscanf(ast_str_buffer(str), "%d", &value2) != 1 || value2 != i) {
+			ast_test_status_update(test, "%s != %s and/or %d != %d != %d\n", ast_str_buffer(str), workspace, value1, value2, i);
+			okay = 0;
+		}
+	}
+
+	ast_free(str);
+
+	return okay ? AST_TEST_PASS : AST_TEST_FAIL;
+}
+
 static enum ast_test_result_state test_chan_string(struct ast_test *test,
-		struct ast_channel *c, char *cfield, size_t cfieldsize,
-		const char *expression)
+		struct ast_channel *c, void (*setter)(struct ast_channel *, const char *),
+		const char *(*getter)(const struct ast_channel *), const char *expression)
 {
 	const char *values[] = { "one", "three", "reallylongdinosaursoundingthingwithwordsinit" };
 	int i, okay = 1;
@@ -79,13 +102,13 @@ static enum ast_test_result_state test_chan_string(struct ast_test *test,
 	struct ast_str *str = ast_str_create(16);
 
 	for (i = 0; i < ARRAY_LEN(values); i++) {
-		ast_copy_string(cfield, values[i], cfieldsize);
+		setter(c, values[i]);
 		ast_str_substitute_variables(&str, 0, c, expression);
 		pbx_substitute_variables_helper(c, expression, workspace, sizeof(workspace));
 		ast_test_status_update(test, "Testing '%s' . . . . . %s\n",
 				expression, okay ? "passed" : "FAILED");
-		if (strcmp(cfield, ast_str_buffer(str)) != 0 || strcmp(cfield, workspace) != 0) {
-			ast_test_status_update(test, "%s != %s != %s\n", cfield, ast_str_buffer(str), workspace);
+		if (strcmp(getter(c), ast_str_buffer(str)) != 0 || strcmp(getter(c), workspace) != 0) {
+			ast_test_status_update(test, "%s != %s != %s\n", getter(c), ast_str_buffer(str), workspace);
 			okay = 0;
 		}
 	}
@@ -229,13 +252,13 @@ AST_TEST_DEFINE(test_substitution)
 	 */
 	TEST(test_chan_integer(test, c, &c->caller.id.number.presentation, "${CALLINGPRES}"));
 #endif
-	TEST(test_chan_integer(test, c, &c->caller.ani2, "${CALLINGANI2}"));
-	TEST(test_chan_integer(test, c, &c->caller.id.number.plan, "${CALLINGTON}"));
-	TEST(test_chan_integer(test, c, &c->dialed.transit_network_select, "${CALLINGTNS}"));
-	TEST(test_chan_integer(test, c, &c->hangupcause, "${HANGUPCAUSE}"));
-	TEST(test_chan_integer(test, c, &c->priority, "${PRIORITY}"));
-	TEST(test_chan_string(test, c, c->context, sizeof(c->context), "${CONTEXT}"));
-	TEST(test_chan_string(test, c, c->exten, sizeof(c->exten), "${EXTEN}"));
+	TEST(test_chan_integer(test, c, &ast_channel_caller(c)->ani2, "${CALLINGANI2}"));
+	TEST(test_chan_integer(test, c, &ast_channel_caller(c)->id.number.plan, "${CALLINGTON}"));
+	TEST(test_chan_integer(test, c, &ast_channel_dialed(c)->transit_network_select, "${CALLINGTNS}"));
+	TEST(test_chan_integer_accessor(test, c, ast_channel_hangupcause_set, "${HANGUPCAUSE}"));
+	TEST(test_chan_integer_accessor(test, c, ast_channel_priority_set, "${PRIORITY}"));
+	TEST(test_chan_string(test, c, ast_channel_context_set, ast_channel_context, "${CONTEXT}"));
+	TEST(test_chan_string(test, c, ast_channel_exten_set, ast_channel_exten, "${EXTEN}"));
 	TEST(test_chan_variable(test, c, "CHANNEL(language)"));
 	TEST(test_chan_variable(test, c, "CHANNEL(musicclass)"));
 	TEST(test_chan_variable(test, c, "CHANNEL(parkinglot)"));

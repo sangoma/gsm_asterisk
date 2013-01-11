@@ -39,7 +39,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 337975 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362307 $")
 
 #include <sqlite3.h>
 
@@ -156,7 +156,6 @@ static int load_config(int reload)
 {
 	struct ast_config *cfg;
 	struct ast_flags config_flags = { reload ? CONFIG_FLAG_FILEUNCHANGED : 0 };
-	struct ast_variable *mappingvar;
 	const char *tmp;
 
 	if ((cfg = ast_config_load(config_file, config_flags)) == CONFIG_STATUS_FILEMISSING || cfg == CONFIG_STATUS_FILEINVALID) {
@@ -170,7 +169,7 @@ static int load_config(int reload)
 		free_config(1);
 	}
 
-	if (!(mappingvar = ast_variable_browse(cfg, "master"))) {
+	if (!ast_variable_browse(cfg, "master")) {
 		/* Nothing configured */
 		ast_config_destroy(cfg);
 		return -1;
@@ -252,7 +251,7 @@ static int write_cdr(struct ast_cdr *cdr)
 			ast_mutex_unlock(&lock);
 			return 0;
 		}
-		dummy->cdr = ast_cdr_dup(cdr);
+		ast_channel_cdr_set(dummy, ast_cdr_dup(cdr));
 		AST_LIST_TRAVERSE(&sql_values, value, list) {
 			pbx_substitute_variables_helper(dummy, value->expression, subst_buf, sizeof(subst_buf) - 1);
 			escaped = sqlite3_mprintf("%q", subst_buf);

@@ -21,12 +21,15 @@
  * \brief Format Preference API
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 308582 $");
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 375661 $");
 
 #include "asterisk/_private.h"
-#include "asterisk/version.h"
 #include "asterisk/frame.h"
 #include "asterisk/channel.h"
 #include "asterisk/utils.h"
@@ -34,7 +37,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 308582 $");
 void ast_codec_pref_convert(struct ast_codec_pref *pref, char *buf, size_t size, int right)
 {
 	size_t f_len;
-	const const struct ast_format_list *f_list = ast_format_list_get(&f_len);
+	const struct ast_format_list *f_list = ast_format_list_get(&f_len);
 	int x, differential = (int) 'A', mem;
 	char *from, *to;
 
@@ -117,7 +120,7 @@ void ast_codec_pref_remove(struct ast_codec_pref *pref, struct ast_format *forma
 	struct ast_codec_pref oldorder;
 	int x, y = 0;
 	size_t f_len = 0;
-	const const struct ast_format_list *f_list;
+	const struct ast_format_list *f_list;
 
 	if (!pref->order[0]) {
 		return;
@@ -194,6 +197,11 @@ void ast_codec_pref_prepend(struct ast_codec_pref *pref, struct ast_format *form
 	for (x = 0; x < AST_CODEC_PREF_SIZE; x++) {
 		if (!pref->order[x] || pref->order[x] == newindex)
 			break;
+	}
+
+	/* If we failed to find any occurrence, set to the end */
+	if (x == AST_CODEC_PREF_SIZE) {
+		--x;
 	}
 
 	if (only_if_existing && !pref->order[x]) {
@@ -273,6 +281,12 @@ struct ast_format_list ast_codec_pref_getsize(struct ast_codec_pref *pref, struc
 			idx = x;
 			break;
 		}
+	}
+
+	if (idx < 0) {
+		ast_log(AST_LOG_WARNING, "Format %s unknown; unable to get preferred codec packet size\n", ast_getformatname(format));
+		ast_format_list_destroy(f_list);
+		return fmt;
 	}
 
 	for (x = 0; x < f_len; x++) {

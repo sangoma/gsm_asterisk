@@ -35,7 +35,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370955 $")
 
 #include <ctype.h>
 #include <errno.h>
@@ -484,12 +484,12 @@ static int start_spying(struct ast_autochan *autochan, const char *spychan_name,
 	int res = 0;
 	struct ast_channel *peer = NULL;
 
-	ast_log(LOG_NOTICE, "Attaching %s to %s\n", spychan_name, autochan->chan->name);
+	ast_log(LOG_NOTICE, "Attaching %s to %s\n", spychan_name, ast_channel_name(autochan->chan));
 
 	ast_set_flag(audiohook, AST_AUDIOHOOK_TRIGGER_SYNC | AST_AUDIOHOOK_SMALL_QUEUE);
 	res = ast_audiohook_attach(autochan->chan, audiohook);
 
-	if (!res && ast_test_flag(autochan->chan, AST_FLAG_NBRIDGE) && (peer = ast_bridged_channel(autochan->chan))) {
+	if (!res && ast_test_flag(ast_channel_flags(autochan->chan), AST_FLAG_NBRIDGE) && (peer = ast_bridged_channel(autochan->chan))) {
 		ast_softhangup(peer, AST_SOFTHANGUP_UNBRIDGE);
 	}
 	return res;
@@ -524,20 +524,31 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	struct ast_channel *chans[] = { chan, spyee_autochan->chan };
 
 	ast_channel_lock(chan);
-	spyer_name = ast_strdupa(chan->name);
+	spyer_name = ast_strdupa(ast_channel_name(chan));
 	ast_channel_unlock(chan);
 
 	/* We now hold the channel lock on spyee */
 
-	if (ast_check_hangup(chan) || ast_check_hangup(spyee_autochan->chan)) {
+	if (ast_check_hangup(chan) || ast_check_hangup(spyee_autochan->chan) ||
+			ast_test_flag(ast_channel_flags(spyee_autochan->chan), AST_FLAG_ZOMBIE)) {
 		return 0;
 	}
 
 	ast_channel_lock(spyee_autochan->chan);
-	name = ast_strdupa(spyee_autochan->chan->name);
+	name = ast_strdupa(ast_channel_name(spyee_autochan->chan));
 	ast_channel_unlock(spyee_autochan->chan);
 
 	ast_verb(2, "Spying on channel %s\n", name);
+	/*** DOCUMENTATION
+		<managerEventInstance>
+			<synopsis>Raised when a channel has started spying on another channel.</synopsis>
+			<see-also>
+				<ref type="application">ChanSpy</ref>
+				<ref type="application">ExtenSpy</ref>
+				<ref type="managerEvent">ChanSpyStop</ref>
+			</see-also>
+		</managerEventInstance>
+	***/
 	ast_manager_event_multichan(EVENT_FLAG_CALL, "ChanSpyStart", 2, chans,
 			"SpyerChannel: %s\r\n"
 			"SpyeeChannel: %s\r\n",
@@ -546,6 +557,9 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	memset(&csth, 0, sizeof(csth));
 	ast_copy_flags(&csth.flags, flags, AST_FLAGS_ALL);
 
+	/* This is the audiohook which gives us the audio off the channel we are
+	   spying on.
+	*/
 	ast_audiohook_init(&csth.spy_audiohook, AST_AUDIOHOOK_TYPE_SPY, "ChanSpy", 0);
 
 	if (start_spying(spyee_autochan, spyer_name, &csth.spy_audiohook)) {
@@ -553,21 +567,34 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 		return 0;
 	}
 
-	ast_audiohook_init(&csth.whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "ChanSpy", 0);
-	ast_audiohook_init(&csth.bridge_whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "Chanspy", 0);
-	if (start_spying(spyee_autochan, spyer_name, &csth.whisper_audiohook)) {
-		ast_log(LOG_WARNING, "Unable to attach whisper audiohook to spyee %s. Whisper mode disabled!\n", name);
-	}
-	if ((spyee_bridge_autochan = ast_autochan_setup(ast_bridged_channel(spyee_autochan->chan)))) {
-		ast_channel_lock(spyee_bridge_autochan->chan);
-		if (start_spying(spyee_bridge_autochan, spyer_name, &csth.bridge_whisper_audiohook)) {
-			ast_log(LOG_WARNING, "Unable to attach barge audiohook on spyee %s. Barge mode disabled!\n", name);
+	if (ast_test_flag(flags, OPTION_WHISPER | OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		/* This audiohook will let us inject audio from our channel into the
+		   channel we are currently spying on.
+		*/
+		ast_audiohook_init(&csth.whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "ChanSpy", 0);
+
+		if (start_spying(spyee_autochan, spyer_name, &csth.whisper_audiohook)) {
+			ast_log(LOG_WARNING, "Unable to attach whisper audiohook to spyee %s. Whisper mode disabled!\n", name);
 		}
-		ast_channel_unlock(spyee_bridge_autochan->chan);
+	}
+
+	if (ast_test_flag(flags, OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		/* And this hook lets us inject audio into the channel that the spied on
+		   channel is currently bridged with.
+		*/
+		ast_audiohook_init(&csth.bridge_whisper_audiohook, AST_AUDIOHOOK_TYPE_WHISPER, "Chanspy", 0);
+
+		if ((spyee_bridge_autochan = ast_autochan_setup(ast_bridged_channel(spyee_autochan->chan)))) {
+			ast_channel_lock(spyee_bridge_autochan->chan);
+			if (start_spying(spyee_bridge_autochan, spyer_name, &csth.bridge_whisper_audiohook)) {
+				ast_log(LOG_WARNING, "Unable to attach barge audiohook on spyee %s. Barge mode disabled!\n", name);
+			}
+			ast_channel_unlock(spyee_bridge_autochan->chan);
+		}
 	}
 
 	ast_channel_lock(chan);
-	ast_set_flag(chan, AST_FLAG_END_DTMF_ONLY);
+	ast_set_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 	ast_channel_unlock(chan);
 
 	csth.volfactor = *volfactor;
@@ -598,7 +625,7 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	   has arrived, since the spied-on channel could have gone away while
 	   we were waiting
 	*/
-	while ((res = ast_waitfor(chan, -1) > -1) && csth.spy_audiohook.status == AST_AUDIOHOOK_STATUS_RUNNING) {
+	while (ast_waitfor(chan, -1) > -1 && csth.spy_audiohook.status == AST_AUDIOHOOK_STATUS_RUNNING) {
 		if (!(f = ast_read(chan)) || ast_check_hangup(chan)) {
 			running = -1;
 			break;
@@ -669,7 +696,7 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 			(*volfactor)++;
 			if (*volfactor > 4)
 				*volfactor = -4;
-			ast_verb(3, "Setting spy volume on %s to %d\n", chan->name, *volfactor);
+			ast_verb(3, "Setting spy volume on %s to %d\n", ast_channel_name(chan), *volfactor);
 
 			csth.volfactor = *volfactor;
 			csth.spy_audiohook.options.read_volume = csth.volfactor;
@@ -683,18 +710,22 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 		ast_deactivate_generator(chan);
 
 	ast_channel_lock(chan);
-	ast_clear_flag(chan, AST_FLAG_END_DTMF_ONLY);
+	ast_clear_flag(ast_channel_flags(chan), AST_FLAG_END_DTMF_ONLY);
 	ast_channel_unlock(chan);
 
-	ast_audiohook_lock(&csth.whisper_audiohook);
-	ast_audiohook_detach(&csth.whisper_audiohook);
-	ast_audiohook_unlock(&csth.whisper_audiohook);
-	ast_audiohook_destroy(&csth.whisper_audiohook);
-	
-	ast_audiohook_lock(&csth.bridge_whisper_audiohook);
-	ast_audiohook_detach(&csth.bridge_whisper_audiohook);
-	ast_audiohook_unlock(&csth.bridge_whisper_audiohook);
-	ast_audiohook_destroy(&csth.bridge_whisper_audiohook);
+	if (ast_test_flag(flags, OPTION_WHISPER | OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		ast_audiohook_lock(&csth.whisper_audiohook);
+		ast_audiohook_detach(&csth.whisper_audiohook);
+		ast_audiohook_unlock(&csth.whisper_audiohook);
+		ast_audiohook_destroy(&csth.whisper_audiohook);
+	}
+
+	if (ast_test_flag(flags, OPTION_BARGE | OPTION_DTMF_SWITCH_MODES)) {
+		ast_audiohook_lock(&csth.bridge_whisper_audiohook);
+		ast_audiohook_detach(&csth.bridge_whisper_audiohook);
+		ast_audiohook_unlock(&csth.bridge_whisper_audiohook);
+		ast_audiohook_destroy(&csth.bridge_whisper_audiohook);
+	}
 
 	ast_audiohook_lock(&csth.spy_audiohook);
 	ast_audiohook_detach(&csth.spy_audiohook);
@@ -706,6 +737,14 @@ static int channel_spy(struct ast_channel *chan, struct ast_autochan *spyee_auto
 	}
 
 	ast_verb(2, "Done Spying on channel %s\n", name);
+	/*** DOCUMENTATION
+		<managerEventInstance>
+			<synopsis>Raised when a channel has stopped spying on another channel.</synopsis>
+			<see-also>
+				<ref type="managerEvent">ChanSpyStart</ref>
+			</see-also>
+		</managerEventInstance>
+	***/
 	ast_manager_event(chan, EVENT_FLAG_CALL, "ChanSpyStop", "SpyeeChannel: %s\r\n", name);
 
 	return running;
@@ -722,21 +761,18 @@ static struct ast_autochan *next_channel(struct ast_channel_iterator *iter,
 		return NULL;
 	}
 
-redo:
-	if (!(next = ast_channel_iterator_next(iter))) {
-		return NULL;
+	for (; (next = ast_channel_iterator_next(iter)); ast_channel_unref(next)) {
+		if (!strncmp(ast_channel_name(next), "DAHDI/pseudo", pseudo_len)
+			|| next == chan) {
+			continue;
+		}
+
+		autochan_store = ast_autochan_setup(next);
+		ast_channel_unref(next);
+
+		return autochan_store;
 	}
-
-	if (!strncmp(next->name, "DAHDI/pseudo", pseudo_len)) {
-		goto redo;
-	} else if (next == chan) {
-		goto redo;
-	}
-
-	autochan_store = ast_autochan_setup(next);
-	ast_channel_unref(next);
-
-	return autochan_store;
+	return NULL;
 }
 
 static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
@@ -745,13 +781,10 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 	const char *context, const char *mailbox, const char *name_context)
 {
 	char nameprefix[AST_NAME_STRLEN];
-	char peer_name[AST_NAME_STRLEN + 5];
 	char exitcontext[AST_MAX_CONTEXT] = "";
 	signed char zero_volume = 0;
 	int waitms;
 	int res;
-	char *ptr;
-	int num;
 	int num_spyed_upon = 1;
 	struct ast_channel_iterator *iter = NULL;
 
@@ -760,18 +793,18 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 		ast_channel_lock(chan);
 		if ((c = pbx_builtin_getvar_helper(chan, "SPY_EXIT_CONTEXT"))) {
 			ast_copy_string(exitcontext, c, sizeof(exitcontext));
-		} else if (!ast_strlen_zero(chan->macrocontext)) {
-			ast_copy_string(exitcontext, chan->macrocontext, sizeof(exitcontext));
+		} else if (!ast_strlen_zero(ast_channel_macrocontext(chan))) {
+			ast_copy_string(exitcontext, ast_channel_macrocontext(chan), sizeof(exitcontext));
 		} else {
-			ast_copy_string(exitcontext, chan->context, sizeof(exitcontext));
+			ast_copy_string(exitcontext, ast_channel_context(chan), sizeof(exitcontext));
 		}
 		ast_channel_unlock(chan);
 	}
 
-	if (chan->_state != AST_STATE_UP)
+	if (ast_channel_state(chan) != AST_STATE_UP)
 		ast_answer(chan);
 
-	ast_set_flag(chan, AST_FLAG_SPYING); /* so nobody can spy on us while we are spying */
+	ast_set_flag(ast_channel_flags(chan), AST_FLAG_SPYING); /* so nobody can spy on us while we are spying */
 
 	waitms = 100;
 
@@ -780,11 +813,11 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 		struct ast_channel *prev = NULL;
 
 		if (!ast_test_flag(flags, OPTION_QUIET) && num_spyed_upon) {
-			res = ast_streamfile(chan, "beep", chan->language);
+			res = ast_streamfile(chan, "beep", ast_channel_language(chan));
 			if (!res)
 				res = ast_waitstream(chan, "");
 			else if (res < 0) {
-				ast_clear_flag(chan, AST_FLAG_SPYING);
+				ast_clear_flag(ast_channel_flags(chan), AST_FLAG_SPYING);
 				break;
 			}
 			if (!ast_strlen_zero(exitcontext)) {
@@ -808,22 +841,26 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 		}
 
 		if (!iter) {
-			return -1;
+			res = -1;
+			goto exit;
 		}
 
 		res = ast_waitfordigit(chan, waitms);
 		if (res < 0) {
-			ast_clear_flag(chan, AST_FLAG_SPYING);
+			iter = ast_channel_iterator_destroy(iter);
+			ast_clear_flag(ast_channel_flags(chan), AST_FLAG_SPYING);
 			break;
 		}
 		if (!ast_strlen_zero(exitcontext)) {
 			char tmp[2];
 			tmp[0] = res;
 			tmp[1] = '\0';
-			if (!ast_goto_if_exists(chan, exitcontext, tmp, 1))
+			if (!ast_goto_if_exists(chan, exitcontext, tmp, 1)) {
+				iter = ast_channel_iterator_destroy(iter);
 				goto exit;
-			else
+			} else {
 				ast_debug(2, "Exit by single digit did not work in chanspy. Extension %s does not exist in context %s\n", tmp, exitcontext);
+			}
 		}
 
 		/* reset for the next loop around, unless overridden later */
@@ -837,7 +874,6 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 				next_channel(iter, autochan, chan), next_autochan = NULL) {
 			int igrp = !mygroup;
 			int ienf = !myenforced;
-			char *s;
 
 			if (autochan->chan == prev) {
 				ast_autochan_destroy(autochan);
@@ -853,7 +889,7 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 				continue;
 			}
 
-			if (ast_check_hangup(autochan->chan) || ast_test_flag(autochan->chan, AST_FLAG_SPYING)) {
+			if (ast_check_hangup(autochan->chan) || ast_test_flag(ast_channel_flags(autochan->chan), AST_FLAG_SPYING)) {
 				continue;
 			}
 
@@ -905,7 +941,7 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 
 				snprintf(buffer, sizeof(buffer) - 1, ":%s:", myenforced);
 
-				ast_copy_string(ext + 1, autochan->chan->name, sizeof(ext) - 1);
+				ast_copy_string(ext + 1, ast_channel_name(autochan->chan), sizeof(ext) - 1);
 				if ((end = strchr(ext, '-'))) {
 					*end++ = ':';
 					*end = '\0';
@@ -922,25 +958,36 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 				continue;
 			}
 
-			strcpy(peer_name, "spy-");
-			strncat(peer_name, autochan->chan->name, AST_NAME_STRLEN - 4 - 1);
-			ptr = strchr(peer_name, '/');
-			*ptr++ = '\0';
-			ptr = strsep(&ptr, "-");
-
-			for (s = peer_name; s < ptr; s++)
-				*s = tolower(*s);
-
 			if (!ast_test_flag(flags, OPTION_QUIET)) {
+				char peer_name[AST_NAME_STRLEN + 5];
+				char *ptr, *s;
+
+				strcpy(peer_name, "spy-");
+				strncat(peer_name, ast_channel_name(autochan->chan), AST_NAME_STRLEN - 4 - 1);
+				if ((ptr = strchr(peer_name, '/'))) {
+					*ptr++ = '\0';
+					for (s = peer_name; s < ptr; s++) {
+						*s = tolower(*s);
+					}
+					if ((s = strchr(ptr, '-'))) {
+						*s = '\0';
+					}
+				}
+
 				if (ast_test_flag(flags, OPTION_NAME)) {
 					const char *local_context = S_OR(name_context, "default");
 					const char *local_mailbox = S_OR(mailbox, ptr);
-					res = ast_app_sayname(chan, local_mailbox, local_context);
+					if (local_mailbox) {
+						res = ast_app_sayname(chan, local_mailbox, local_context);
+					} else {
+						res = -1;
+					}
 				}
 				if (!ast_test_flag(flags, OPTION_NAME) || res < 0) {
+					int num;
 					if (!ast_test_flag(flags, OPTION_NOTECH)) {
 						if (ast_fileexists(peer_name, NULL, NULL) > 0) {
-							res = ast_streamfile(chan, peer_name, chan->language);
+							res = ast_streamfile(chan, peer_name, ast_channel_language(chan));
 							if (!res) {
 								res = ast_waitstream(chan, "");
 							}
@@ -949,11 +996,12 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 								break;
 							}
 						} else {
-							res = ast_say_character_str(chan, peer_name, "", chan->language);
+							res = ast_say_character_str(chan, peer_name, "", ast_channel_language(chan));
 						}
 					}
-					if ((num = atoi(ptr)))
-						ast_say_digits(chan, atoi(ptr), "", chan->language);
+					if (ptr && (num = atoi(ptr))) {
+						ast_say_digits(chan, num, "", ast_channel_language(chan));
+					}
 				}
 			}
 
@@ -962,10 +1010,12 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 
 			if (res == -1) {
 				ast_autochan_destroy(autochan);
+				iter = ast_channel_iterator_destroy(iter);
 				goto exit;
 			} else if (res == -2) {
 				res = 0;
 				ast_autochan_destroy(autochan);
+				iter = ast_channel_iterator_destroy(iter);
 				goto exit;
 			} else if (res > 1 && spec) {
 				struct ast_channel *next;
@@ -985,6 +1035,8 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 					}
 				}
 			} else if (res == 0 && ast_test_flag(flags, OPTION_EXITONHANGUP)) {
+				ast_autochan_destroy(autochan);
+				iter = ast_channel_iterator_destroy(iter);
 				goto exit;
 			}
 		}
@@ -999,7 +1051,7 @@ static int common_exec(struct ast_channel *chan, struct ast_flags *flags,
 	}
 exit:
 
-	ast_clear_flag(chan, AST_FLAG_SPYING);
+	ast_clear_flag(ast_channel_flags(chan), AST_FLAG_SPYING);
 
 	ast_channel_setoption(chan, AST_OPTION_TXGAIN, &zero_volume, sizeof(zero_volume), 0);
 
@@ -1051,7 +1103,7 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 			if (strchr("0123456789*#", tmp) && tmp != '\0') {
 				user_options.exit = tmp;
 			} else {
-				ast_log(LOG_NOTICE, "Argument for option 'x' must be a valid DTMF digit.");
+				ast_log(LOG_NOTICE, "Argument for option 'x' must be a valid DTMF digit.\n");
 			}
 		}
 
@@ -1060,7 +1112,7 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 			if (strchr("0123456789*#", tmp) && tmp != '\0') {
 				user_options.cycle = tmp;
 			} else {
-				ast_log(LOG_NOTICE, "Argument for option 'c' must be a valid DTMF digit.");
+				ast_log(LOG_NOTICE, "Argument for option 'c' must be a valid DTMF digit.\n");
 			}
 		}
 
@@ -1095,7 +1147,7 @@ static int chanspy_exec(struct ast_channel *chan, const char *data)
 		ast_clear_flag(&flags, AST_FLAGS_ALL);
 	}
 
-	ast_format_copy(&oldwf, &chan->writeformat);
+	ast_format_copy(&oldwf, ast_channel_writeformat(chan));
 	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;
@@ -1158,7 +1210,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 		args.context = ptr;
 	}
 	if (ast_strlen_zero(args.context))
-		args.context = ast_strdupa(chan->context);
+		args.context = ast_strdupa(ast_channel_context(chan));
 
 	if (args.options) {
 		char *opts[OPT_ARG_ARRAY_SIZE];
@@ -1177,7 +1229,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 			if (strchr("0123456789*#", tmp) && tmp != '\0') {
 				user_options.exit = tmp;
 			} else {
-				ast_log(LOG_NOTICE, "Argument for option 'x' must be a valid DTMF digit.");
+				ast_log(LOG_NOTICE, "Argument for option 'x' must be a valid DTMF digit.\n");
 			}
 		}
 
@@ -1186,7 +1238,7 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 			if (strchr("0123456789*#", tmp) && tmp != '\0') {
 				user_options.cycle = tmp;
 			} else {
-				ast_log(LOG_NOTICE, "Argument for option 'c' must be a valid DTMF digit.");
+				ast_log(LOG_NOTICE, "Argument for option 'c' must be a valid DTMF digit.\n");
 			}
 		}
 
@@ -1216,10 +1268,11 @@ static int extenspy_exec(struct ast_channel *chan, const char *data)
 		}
 
 	} else {
+		/* Coverity - This uninit_use should be ignored since this macro initializes the flags */
 		ast_clear_flag(&flags, AST_FLAGS_ALL);
 	}
 
-	oldwf = chan->writeformat;
+	ast_format_copy(&oldwf, ast_channel_writeformat(chan));
 	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;
@@ -1260,6 +1313,7 @@ static int dahdiscan_exec(struct ast_channel *chan, const char *data)
 	int res;
 	char *mygroup = NULL;
 
+	/* Coverity - This uninit_use should be ignored since this macro initializes the flags */
 	ast_clear_flag(&flags, AST_FLAGS_ALL);
 	ast_format_clear(&oldwf);
 	if (!ast_strlen_zero(data)) {
@@ -1269,7 +1323,7 @@ static int dahdiscan_exec(struct ast_channel *chan, const char *data)
 	ast_set_flag(&flags, OPTION_DTMF_CYCLE);
 	ast_set_flag(&flags, OPTION_DAHDI_SCAN);
 
-	ast_format_copy(&oldwf, &chan->writeformat);
+	ast_format_copy(&oldwf, ast_channel_writeformat(chan));
 	if (ast_set_write_format_by_id(chan, AST_FORMAT_SLINEAR) < 0) {
 		ast_log(LOG_ERROR, "Could Not Set Write Format.\n");
 		return -1;

@@ -27,9 +27,13 @@
  *
  */
 
+/*** MODULEINFO
+	<support_level>core</support_level>
+ ***/
+
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 174584 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 369013 $")
 
 #include "jitterbuf.h"
 #include "asterisk/utils.h"
@@ -50,24 +54,24 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 174584 $")
 
 static jb_output_function_t warnf, errf, dbgf;
 
-void jb_setoutput(jb_output_function_t err, jb_output_function_t warn, jb_output_function_t dbg) 
+void jb_setoutput(jb_output_function_t err, jb_output_function_t warn, jb_output_function_t dbg)
 {
 	errf = err;
 	warnf = warn;
 	dbgf = dbg;
 }
 
-static void increment_losspct(jitterbuf *jb) 
+static void increment_losspct(jitterbuf *jb)
 {
-	jb->info.losspct = (100000 + 499 * jb->info.losspct)/500;    
+	jb->info.losspct = (100000 + 499 * jb->info.losspct)/500;
 }
 
-static void decrement_losspct(jitterbuf *jb) 
+static void decrement_losspct(jitterbuf *jb)
 {
-	jb->info.losspct = (499 * jb->info.losspct)/500;    
+	jb->info.losspct = (499 * jb->info.losspct)/500;
 }
 
-void jb_reset(jitterbuf *jb) 
+void jb_reset(jitterbuf *jb)
 {
 	/* only save settings */
 	jb_conf s = jb->info.conf;
@@ -76,14 +80,14 @@ void jb_reset(jitterbuf *jb)
 
 	/* initialize length, using the default value */
 	jb->info.current = jb->info.target = jb->info.conf.target_extra = JB_TARGET_EXTRA;
-	jb->info.silence_begin_ts = -1; 
+	jb->info.silence_begin_ts = -1;
 }
 
-jitterbuf * jb_new() 
+jitterbuf * jb_new()
 {
 	jitterbuf *jb;
 
-	if (!(jb = ast_malloc(sizeof(*jb)))) 
+	if (!(jb = ast_malloc(sizeof(*jb))))
 		return NULL;
 
 	jb_reset(jb);
@@ -92,9 +96,9 @@ jitterbuf * jb_new()
 	return jb;
 }
 
-void jb_destroy(jitterbuf *jb) 
+void jb_destroy(jitterbuf *jb)
 {
-	jb_frame *frame; 
+	jb_frame *frame;
 	jb_dbg2("jb_destroy(%x)\n", jb);
 
 	/* free all the frames on the "free list" */
@@ -105,54 +109,64 @@ void jb_destroy(jitterbuf *jb)
 		frame = next;
 	}
 
-	/* free ourselves! */ 
+	/* free ourselves! */
 	ast_free(jb);
 }
 
-
-
-#if 0
-static int longcmp(const void *a, const void *b) 
+static int check_resync(jitterbuf *jb, long ts, long now, long ms, const enum jb_frame_type type, long *delay)
 {
-	return *(long *)a - *(long *)b;
-}
-#endif
-
-/*!	\brief simple history manipulation 
- 	\note maybe later we can make the history buckets variable size, or something? */
-/* drop parameter determines whether we will drop outliers to minimize
- * delay */
-static int history_put(jitterbuf *jb, long ts, long now, long ms) 
-{
-	long delay = now - (ts - jb->info.resync_offset);
+	long numts = 0;
 	long threshold = 2 * jb->info.jitter + jb->info.conf.resync_threshold;
-	long kicked;
 
-	/* don't add special/negative times to history */
-	if (ts <= 0) 
-		return 0;
+	/* Check for overfill of the buffer */
+	if (jb->frames) {
+		numts = jb->frames->prev->ts - jb->frames->ts;
+	}
+
+	if (numts >= (jb->info.conf.max_jitterbuf)) {
+		if (!jb->dropem) {
+			ast_debug(1, "Attempting to exceed Jitterbuf max %ld timeslots\n",
+				jb->info.conf.max_jitterbuf);
+			jb->dropem = 1;
+		}
+		jb->info.frames_dropped++;
+		return -1;
+	} else {
+		jb->dropem = 0;
+	}
 
 	/* check for drastic change in delay */
 	if (jb->info.conf.resync_threshold != -1) {
-		if (abs(delay - jb->info.last_delay) > threshold) {
+		if (abs(*delay - jb->info.last_delay) > threshold) {
 			jb->info.cnt_delay_discont++;
-			if (jb->info.cnt_delay_discont > 3) {
-				/* resync the jitterbuffer */
+			/* resync the jitterbuffer on 3 consecutive discontinuities,
+			 * or immediately if a control frame */
+			if ((jb->info.cnt_delay_discont > 3) || (type == JB_TYPE_CONTROL)) {
 				jb->info.cnt_delay_discont = 0;
 				jb->hist_ptr = 0;
 				jb->hist_maxbuf_valid = 0;
-
-				jb_warn("Resyncing the jb. last_delay %ld, this delay %ld, threshold %ld, new offset %ld\n", jb->info.last_delay, delay, threshold, ts - now);
+				jb_warn("Resyncing the jb. last_delay %ld, this delay %ld, threshold %ld, new offset %ld\n", jb->info.last_delay, *delay, threshold, ts - now);
 				jb->info.resync_offset = ts - now;
-				jb->info.last_delay = delay = 0; /* after resync, frame is right on time */
+				jb->info.last_delay = *delay = 0; /* after resync, frame is right on time */
 			} else {
+				jb->info.frames_dropped++;
 				return -1;
 			}
 		} else {
-			jb->info.last_delay = delay;
+			jb->info.last_delay = *delay;
 			jb->info.cnt_delay_discont = 0;
 		}
 	}
+	return 0;
+}
+
+static int history_put(jitterbuf *jb, long ts, long now, long ms, long delay)
+{
+	long kicked;
+
+	/* don't add special/negative times to history */
+	if (ts <= 0)
+		return 0;
 
 	kicked = jb->history[jb->hist_ptr % JB_HISTORY_SZ];
 
@@ -160,13 +174,13 @@ static int history_put(jitterbuf *jb, long ts, long now, long ms)
 
 	/* optimization; the max/min buffers don't need to be recalculated, if this packet's
 	 * entry doesn't change them.  This happens if this packet is not involved, _and_ any packet
-	 * that got kicked out of the history is also not involved 
+	 * that got kicked out of the history is also not involved
 	 * We do a number of comparisons, but it's probably still worthwhile, because it will usually
 	 * succeed, and should be a lot faster than going through all 500 packets in history */
 	if (!jb->hist_maxbuf_valid)
 		return 0;
 
-	/* don't do this until we've filled history 
+	/* don't do this until we've filled history
 	 * (reduces some edge cases below) */
 	if (jb->hist_ptr < JB_HISTORY_SZ)
 		goto invalidate;
@@ -180,13 +194,13 @@ static int history_put(jitterbuf *jb, long ts, long now, long ms)
 		goto invalidate;
 
 	/* or the kicked delay would be in min */
-	if (kicked <= jb->hist_minbuf[JB_HISTORY_MAXBUF_SZ-1]) 
+	if (kicked <= jb->hist_minbuf[JB_HISTORY_MAXBUF_SZ-1])
 		goto invalidate;
 
-	if (kicked >= jb->hist_maxbuf[JB_HISTORY_MAXBUF_SZ-1]) 
+	if (kicked >= jb->hist_maxbuf[JB_HISTORY_MAXBUF_SZ-1])
 		goto invalidate;
 
-	/* if we got here, we don't need to invalidate, 'cause this delay didn't 
+	/* if we got here, we don't need to invalidate, 'cause this delay didn't
 	 * affect things */
 	return 0;
 	/* end optimization */
@@ -197,11 +211,11 @@ invalidate:
 	return 0;
 }
 
-static void history_calc_maxbuf(jitterbuf *jb) 
+static void history_calc_maxbuf(jitterbuf *jb)
 {
 	int i,j;
 
-	if (jb->hist_ptr == 0) 
+	if (jb->hist_ptr == 0)
 		return;
 
 
@@ -219,7 +233,7 @@ static void history_calc_maxbuf(jitterbuf *jb)
 	/* we want it to be the top "n" values, in order */
 
 	/* start at the beginning, or JB_HISTORY_SZ frames ago */
-	i = (jb->hist_ptr > JB_HISTORY_SZ) ? (jb->hist_ptr - JB_HISTORY_SZ) : 0; 
+	i = (jb->hist_ptr > JB_HISTORY_SZ) ? (jb->hist_ptr - JB_HISTORY_SZ) : 0;
 
 	for (;i<jb->hist_ptr;i++) {
 		long toins = jb->history[i % JB_HISTORY_SZ];
@@ -232,7 +246,9 @@ static void history_calc_maxbuf(jitterbuf *jb)
 				/* found where it fits */
 				if (toins > jb->hist_maxbuf[j]) {
 					/* move over */
-					memmove(jb->hist_maxbuf + j + 1, jb->hist_maxbuf + j, (JB_HISTORY_MAXBUF_SZ - (j + 1)) * sizeof(jb->hist_maxbuf[0]));
+					if (j != JB_HISTORY_MAXBUF_SZ - 1) {
+						memmove(jb->hist_maxbuf + j + 1, jb->hist_maxbuf + j, (JB_HISTORY_MAXBUF_SZ - (j + 1)) * sizeof(jb->hist_maxbuf[0]));
+					}
 					/* insert */
 					jb->hist_maxbuf[j] = toins;
 
@@ -249,7 +265,9 @@ static void history_calc_maxbuf(jitterbuf *jb)
 				/* found where it fits */
 				if (toins < jb->hist_minbuf[j]) {
 					/* move over */
-					memmove(jb->hist_minbuf + j + 1, jb->hist_minbuf + j, (JB_HISTORY_MAXBUF_SZ - (j + 1)) * sizeof(jb->hist_minbuf[0]));
+					if (j != JB_HISTORY_MAXBUF_SZ - 1) {
+						memmove(jb->hist_minbuf + j + 1, jb->hist_minbuf + j, (JB_HISTORY_MAXBUF_SZ - (j + 1)) * sizeof(jb->hist_minbuf[0]));
+					}
 					/* insert */
 					jb->hist_minbuf[j] = toins;
 
@@ -258,14 +276,14 @@ static void history_calc_maxbuf(jitterbuf *jb)
 			}
 		}
 
-		if (0) { 
+		if (0) {
 			int k;
 			fprintf(stderr, "toins = %ld\n", toins);
 			fprintf(stderr, "maxbuf =");
-			for (k=0;k<JB_HISTORY_MAXBUF_SZ;k++) 
+			for (k=0;k<JB_HISTORY_MAXBUF_SZ;k++)
 				fprintf(stderr, "%ld ", jb->hist_maxbuf[k]);
 			fprintf(stderr, "\nminbuf =");
-			for (k=0;k<JB_HISTORY_MAXBUF_SZ;k++) 
+			for (k=0;k<JB_HISTORY_MAXBUF_SZ;k++)
 				fprintf(stderr, "%ld ", jb->hist_minbuf[k]);
 			fprintf(stderr, "\n");
 		}
@@ -274,13 +292,13 @@ static void history_calc_maxbuf(jitterbuf *jb)
 	jb->hist_maxbuf_valid = 1;
 }
 
-static void history_get(jitterbuf *jb) 
+static void history_get(jitterbuf *jb)
 {
 	long max, min, jitter;
 	int idx;
 	int count;
 
-	if (!jb->hist_maxbuf_valid) 
+	if (!jb->hist_maxbuf_valid)
 		history_calc_maxbuf(jb);
 
 	/* count is how many items in history we're examining */
@@ -290,7 +308,7 @@ static void history_get(jitterbuf *jb)
 	idx = count * JB_HISTORY_DROPPCT / 100;
 
 	/* sanity checks for idx */
-	if (idx > (JB_HISTORY_MAXBUF_SZ - 1)) 
+	if (idx > (JB_HISTORY_MAXBUF_SZ - 1))
 		idx = JB_HISTORY_MAXBUF_SZ - 1;
 
 	if (idx < 0) {
@@ -316,7 +334,7 @@ static void history_get(jitterbuf *jb)
 }
 
 /* returns 1 if frame was inserted into head of queue, 0 otherwise */
-static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, long ms, long ts) 
+static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, long ms, long ts)
 {
 	jb_frame *frame;
 	jb_frame *p;
@@ -337,8 +355,8 @@ static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, l
 	frame->ms = ms;
 	frame->type = type;
 
-	/* 
-	 * frames are a circular list, jb-frames points to to the lowest ts, 
+	/*
+	 * frames are a circular list, jb-frames points to to the lowest ts,
 	 * jb->frames->prev points to the highest ts
 	 */
 
@@ -359,13 +377,13 @@ static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, l
 
 		jb->frames = frame;
 		head = 1;
-	} else { 
+	} else {
 		p = jb->frames;
 
 		/* frame is out of order */
 		if (resync_ts < p->prev->ts) jb->info.frames_ooo++;
 
-		while (resync_ts < p->prev->ts && p->prev != jb->frames) 
+		while (resync_ts < p->prev->ts && p->prev != jb->frames)
 			p = p->prev;
 
 		frame->next = p;
@@ -377,23 +395,23 @@ static int queue_put(jitterbuf *jb, void *data, const enum jb_frame_type type, l
 	return head;
 }
 
-static long queue_next(jitterbuf *jb) 
+static long queue_next(jitterbuf *jb)
 {
-	if (jb->frames) 
+	if (jb->frames)
 		return jb->frames->ts;
-	else 
+	else
 		return -1;
 }
 
-static long queue_last(jitterbuf *jb) 
+static long queue_last(jitterbuf *jb)
 {
-	if (jb->frames) 
+	if (jb->frames)
 		return jb->frames->prev->ts;
-	else 
+	else
 		return -1;
 }
 
-static jb_frame *_queue_get(jitterbuf *jb, long ts, int all) 
+static jb_frame *_queue_get(jitterbuf *jb, long ts, int all)
 {
 	jb_frame *frame;
 	frame = jb->frames;
@@ -420,52 +438,52 @@ static jb_frame *_queue_get(jitterbuf *jb, long ts, int all)
 
 		jb->info.frames_cur--;
 
-		/* we return the frame pointer, even though it's on free list, 
+		/* we return the frame pointer, even though it's on free list,
 		 * but caller must copy data */
 		return frame;
-	} 
+	}
 
 	return NULL;
 }
 
-static jb_frame *queue_get(jitterbuf *jb, long ts) 
+static jb_frame *queue_get(jitterbuf *jb, long ts)
 {
 	return _queue_get(jb,ts,0);
 }
 
-static jb_frame *queue_getall(jitterbuf *jb) 
+static jb_frame *queue_getall(jitterbuf *jb)
 {
 	return _queue_get(jb,0,1);
 }
 
 #if 0
 /* some diagnostics */
-static void jb_dbginfo(jitterbuf *jb) 
+static void jb_dbginfo(jitterbuf *jb)
 {
-	if (dbgf == NULL) 
+	if (dbgf == NULL)
 		return;
 
 	jb_dbg("\njb info: fin=%ld fout=%ld flate=%ld flost=%ld fdrop=%ld fcur=%ld\n",
 		jb->info.frames_in, jb->info.frames_out, jb->info.frames_late, jb->info.frames_lost, jb->info.frames_dropped, jb->info.frames_cur);
-	
+
 	jb_dbg("jitter=%ld current=%ld target=%ld min=%ld sil=%d len=%d len/fcur=%ld\n",
-		jb->info.jitter, jb->info.current, jb->info.target, jb->info.min, jb->info.silence_begin_ts, jb->info.current - jb->info.min, 
+		jb->info.jitter, jb->info.current, jb->info.target, jb->info.min, jb->info.silence_begin_ts, jb->info.current - jb->info.min,
 		jb->info.frames_cur ? (jb->info.current - jb->info.min)/jb->info.frames_cur : -8);
-	if (jb->info.frames_in > 0) 
+	if (jb->info.frames_in > 0)
 		jb_dbg("jb info: Loss PCT = %ld%%, Late PCT = %ld%%\n",
-			jb->info.frames_lost * 100/(jb->info.frames_in + jb->info.frames_lost), 
+			jb->info.frames_lost * 100/(jb->info.frames_in + jb->info.frames_lost),
 			jb->info.frames_late * 100/jb->info.frames_in);
 	jb_dbg("jb info: queue %d -> %d.  last_ts %d (queue len: %d) last_ms %d\n",
-		queue_next(jb), 
+		queue_next(jb),
 		queue_last(jb),
-		jb->info.next_voice_ts, 
+		jb->info.next_voice_ts,
 		queue_last(jb) - queue_next(jb),
 		jb->info.last_voice_ms);
 }
 #endif
 
 #ifdef DEEP_DEBUG
-static void jb_chkqueue(jitterbuf *jb) 
+static void jb_chkqueue(jitterbuf *jb)
 {
 	int i=0;
 	jb_frame *p = jb->frames;
@@ -476,14 +494,14 @@ static void jb_chkqueue(jitterbuf *jb)
 
 	do {
 		if (p->next == NULL)  {
-			jb_err("Queue is BROKEN at item [%d]", i);	
+			jb_err("Queue is BROKEN at item [%d]", i);
 		}
 		i++;
 		p=p->next;
 	} while (p->next != jb->frames);
 }
 
-static void jb_dbgqueue(jitterbuf *jb) 
+static void jb_dbgqueue(jitterbuf *jb)
 {
 	int i=0;
 	jb_frame *p = jb->frames;
@@ -504,35 +522,19 @@ static void jb_dbgqueue(jitterbuf *jb)
 }
 #endif
 
-enum jb_return_code jb_put(jitterbuf *jb, void *data, const enum jb_frame_type type, long ms, long ts, long now) 
+enum jb_return_code jb_put(jitterbuf *jb, void *data, const enum jb_frame_type type, long ms, long ts, long now)
 {
-	long numts;
-
+	long delay = now - (ts - jb->info.resync_offset);
 	jb_dbg2("jb_put(%x,%x,%ld,%ld,%ld)\n", jb, data, ms, ts, now);
 
-	numts = 0;
-	if (jb->frames)
-		numts = jb->frames->prev->ts - jb->frames->ts;
-
-	if (numts >= jb->info.conf.max_jitterbuf) {
-		if (!jb->dropem) {
-			ast_debug(1, "Attempting to exceed Jitterbuf max %ld timeslots\n",
-				jb->info.conf.max_jitterbuf);
-			jb->dropem = 1;
-		}
-		jb->info.frames_dropped++;
+	if (check_resync(jb, ts, now, ms, type, &delay)) {
 		return JB_DROP;
-	} else {
-		jb->dropem = 0;
 	}
 
 	if (type == JB_TYPE_VOICE) {
 		/* presently, I'm only adding VOICE frames to history and drift calculations; mostly because with the
 		 * IAX integrations, I'm sending retransmitted control frames with their awkward timestamps through */
-		if (history_put(jb,ts,now,ms)) {
-			jb->info.frames_dropped++;
-			return JB_DROP;
-		}
+		history_put(jb, ts, now, ms, delay);
 	}
 
 	jb->info.frames_in++;
@@ -545,13 +547,12 @@ enum jb_return_code jb_put(jitterbuf *jb, void *data, const enum jb_frame_type t
 }
 
 
-static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, long interpl) 
+static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, long interpl)
 {
 	jb_frame *frame;
 	long diff;
 	static int dbg_cnt = 0;
 
-	/*if ((now - jb_next(jb)) > 2 * jb->info.last_voice_ms) jb_warn("SCHED: %ld", (now - jb_next(jb))); */
 	/* get jitter info */
 	history_get(jb);
 
@@ -561,7 +562,7 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 	dbg_cnt++;
 
 	/* target */
-	jb->info.target = jb->info.jitter + jb->info.min + jb->info.conf.target_extra; 
+	jb->info.target = jb->info.jitter + jb->info.min + jb->info.conf.target_extra;
 
 	/* if a hard clamp was requested, use it */
 	if ((jb->info.conf.max_jitterbuf) && ((jb->info.target - jb->info.min) > jb->info.conf.max_jitterbuf)) {
@@ -575,11 +576,11 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 	/*	jb->info.last_voice_ms, jb->info.last_adjustment, now); */
 
 	/* let's work on non-silent case first */
-	if (!jb->info.silence_begin_ts) { 
+	if (!jb->info.silence_begin_ts) {
 		/* we want to grow */
-		if ((diff > 0) && 
+		if ((diff > 0) &&
 			/* we haven't grown in the delay length */
-			(((jb->info.last_adjustment + JB_ADJUST_DELAY) < now) || 
+			(((jb->info.last_adjustment + JB_ADJUST_DELAY) < now) ||
 			/* we need to grow more than the "length" we have left */
 			(diff > queue_last(jb)  - queue_next(jb)) ) ) {
 			/* grow by interp frame length */
@@ -615,7 +616,7 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 		if (frame && frame->ts + jb->info.current < jb->info.next_voice_ts) {
 			if (frame->ts + jb->info.current > jb->info.next_voice_ts - jb->info.last_voice_ms) {
 				/* either we interpolated past this frame in the last jb_get */
-				/* or the frame is still in order, but came a little too quick */ 
+				/* or the frame is still in order, but came a little too quick */
 				*frameout = *frame;
 				/* reset expectation for next frame */
 				jb->info.next_voice_ts = frame->ts + jb->info.current + frame->ms;
@@ -632,8 +633,6 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 				jb->info.frames_late++;
 				jb->info.frames_lost--;
 				jb_dbg("l");
-				/*jb_warn("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
-				jb_warninfo(jb); */
 				return JB_DROP;
 			}
 		}
@@ -647,8 +646,8 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 		/* unless we don't have a frame, then shrink 1 frame */
 		/* every 80ms (though perhaps we can shrink even faster */
 		/* in this case) */
-		if (diff < -jb->info.conf.target_extra && 
-			((!frame && jb->info.last_adjustment + 80 < now) || 
+		if (diff < -jb->info.conf.target_extra &&
+			((!frame && jb->info.last_adjustment + 80 < now) ||
 			(jb->info.last_adjustment + 500 < now))) {
 
 			jb->info.last_adjustment = now;
@@ -681,16 +680,16 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 			 * otherwise, we presently get into a pattern where we return
 			 * INTERP for the lost frame, then it shows up next, and we
 			 * throw it away because it's late */
-	  		/* I've recently only been able to replicate this using
+			/* I've recently only been able to replicate this using
 			 * iaxclient talking to app_echo on asterisk.  In this case,
 			 * my outgoing packets go through asterisk's (old)
-			 * jitterbuffer, and then might get an unusual increasing delay 
+			 * jitterbuffer, and then might get an unusual increasing delay
 			 * there if it decides to grow?? */
 			/* Update: that might have been a different bug, that has been fixed..
 			 * But, this still seemed like a good idea, except that it ended up making a single actual
 			 * lost frame get interpolated two or more times, when there was "room" to grow, so it might
 			 * be a bit of a bad idea overall */
-			/*if (diff > -1 * jb->info.last_voice_ms) { 
+			/*if (diff > -1 * jb->info.last_voice_ms) {
 				jb->info.current += jb->info.last_voice_ms;
 				jb->info.last_adjustment = now;
 				jb_warn("g");
@@ -716,7 +715,7 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 		decrement_losspct(jb);
 		jb_dbg("v");
 		return JB_OK;
-	} else {     
+	} else {
 		/* TODO: after we get the non-silent case down, we'll make the
 		 * silent case -- basically, we'll just grow and shrink faster
 		 * here, plus handle next_voice_ts a bit differently */
@@ -724,12 +723,12 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 		/* to disable silent special case altogether, just uncomment this: */
 		/* jb->info.silence_begin_ts = 0; */
 
- 		/* shrink interpl len every 10ms during silence */
- 		if (diff < -jb->info.conf.target_extra &&
- 			jb->info.last_adjustment + 10 <= now) {
- 			jb->info.current -= interpl;
- 			jb->info.last_adjustment = now;
- 		}
+		/* shrink interpl len every 10ms during silence */
+		if (diff < -jb->info.conf.target_extra &&
+			jb->info.last_adjustment + 10 <= now) {
+			jb->info.current -= interpl;
+			jb->info.last_adjustment = now;
+		}
 
 		frame = queue_get(jb, now - jb->info.current);
 		if (!frame) {
@@ -748,8 +747,6 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 			jb->info.frames_late++;
 			jb->info.frames_lost--;
 			jb_dbg("l");
-			/*jb_warn("\nlate: wanted=%ld, this=%ld, next=%ld\n", jb->info.next_voice_ts - jb->info.current, frame->ts, queue_next(jb));
-			jb_warninfo(jb); */
 			return JB_DROP;
 		} else {
 			/* voice frame */
@@ -767,7 +764,7 @@ static enum jb_return_code _jb_get(jitterbuf *jb, jb_frame *frameout, long now, 
 	}
 }
 
-long jb_next(jitterbuf *jb) 
+long jb_next(jitterbuf *jb)
 {
 	if (jb->info.silence_begin_ts) {
 		if (jb->frames) {
@@ -778,14 +775,14 @@ long jb_next(jitterbuf *jb)
 				return jb->info.last_adjustment + 10;
 			return next + jb->info.target;
 		}
-		else 
+		else
 			return JB_LONGMAX;
 	} else {
 		return jb->info.next_voice_ts;
 	}
 }
 
-enum jb_return_code jb_get(jitterbuf *jb, jb_frame *frameout, long now, long interpl) 
+enum jb_return_code jb_get(jitterbuf *jb, jb_frame *frameout, long now, long interpl)
 {
 	enum jb_return_code ret = _jb_get(jb, frameout, now, interpl);
 #if 0
@@ -795,13 +792,13 @@ enum jb_return_code jb_get(jitterbuf *jb, jb_frame *frameout, long now, long int
 	if (thists && thists < lastts) jb_warn("XXXX timestamp roll-back!!!\n");
 	lastts = thists;
 #endif
-	if (ret == JB_INTERP) 
+	if (ret == JB_INTERP)
 		frameout->ms = jb->info.last_voice_ms;
-	
+
 	return ret;
 }
 
-enum jb_return_code jb_getall(jitterbuf *jb, jb_frame *frameout) 
+enum jb_return_code jb_getall(jitterbuf *jb, jb_frame *frameout)
 {
 	jb_frame *frame;
 	frame = queue_getall(jb);
@@ -815,7 +812,7 @@ enum jb_return_code jb_getall(jitterbuf *jb, jb_frame *frameout)
 }
 
 
-enum jb_return_code jb_getinfo(jitterbuf *jb, jb_info *stats) 
+enum jb_return_code jb_getinfo(jitterbuf *jb, jb_info *stats)
 {
 
 	history_get(jb);
@@ -825,12 +822,12 @@ enum jb_return_code jb_getinfo(jitterbuf *jb, jb_info *stats)
 	return JB_OK;
 }
 
-enum jb_return_code jb_setconf(jitterbuf *jb, jb_conf *conf) 
+enum jb_return_code jb_setconf(jitterbuf *jb, jb_conf *conf)
 {
 	/* take selected settings from the struct */
 
 	jb->info.conf.max_jitterbuf = conf->max_jitterbuf;
- 	jb->info.conf.resync_threshold = conf->resync_threshold;
+	jb->info.conf.resync_threshold = conf->resync_threshold;
 	jb->info.conf.max_contig_interp = conf->max_contig_interp;
 
 	/* -1 indicates use of the default JB_TARGET_EXTRA value */
@@ -838,7 +835,7 @@ enum jb_return_code jb_setconf(jitterbuf *jb, jb_conf *conf)
 		? JB_TARGET_EXTRA
 		: conf->target_extra
 		;
-		
+
 	/* update these to match new target_extra setting */
 	jb->info.current = jb->info.conf.target_extra;
 	jb->info.target = jb->info.conf.target_extra;

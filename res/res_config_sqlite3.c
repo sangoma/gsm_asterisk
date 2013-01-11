@@ -36,7 +36,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 335129 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 362307 $")
 
 #include <sqlite3.h>
 
@@ -598,7 +598,7 @@ static int static_realtime_cb(void *arg, int num_columns, char **values, char **
 	}
 
 	if (!(var = ast_variable_new(values[COL_VAR_NAME], values[COL_VAR_VAL], ""))) {
-		ast_log(LOG_WARNING, "Unable to allocate variable");
+		ast_log(LOG_WARNING, "Unable to allocate variable\n");
 		return SQLITE_ABORT;
 	}
 
@@ -961,7 +961,7 @@ static int handle_missing_column(struct realtime_sqlite3_db *db, const char *tab
 		return -1;
 	}
 
-	if (!(res = realtime_sqlite3_execute_handle(db, sql, NULL, NULL, 1) < 0 ? -1 : 0)) {
+	if (!(res = (realtime_sqlite3_execute_handle(db, sql, NULL, NULL, 1) < 0 ? -1 : 0))) {
 		ast_log(LOG_NOTICE, "Creating column '%s' type %s for table %s\n", column, sqltype, table);
 	}
 

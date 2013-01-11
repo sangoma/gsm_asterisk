@@ -30,7 +30,7 @@
 
 #include "asterisk.h"
 
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 328259 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 370655 $")
 
 #include <sys/stat.h>
 
@@ -144,7 +144,7 @@ static struct mysql_conn *find_database(const char *database, int for_write)
 		if (for_write) {
 			whichdb = ast_strdupa(ptr + 1);
 		} else {
-			whichdb = alloca(ptr - database + 1);
+			whichdb = ast_alloca(ptr - database + 1);
 			strncpy(whichdb, database, ptr - database);
 			whichdb[ptr - database] = '\0';
 		}
@@ -467,7 +467,7 @@ static struct ast_config *realtime_multi_mysql(const char *database, const char 
 	}
 
 	initfield = ast_strdupa(newparam);
-	if (initfield && (op = strchr(initfield, ' '))) {
+	if ((op = strchr(initfield, ' '))) {
 		*op = '\0';
 	}
 
@@ -1379,8 +1379,7 @@ static int load_module(void)
 	parse_config(0);
 
 	ast_config_engine_register(&mysql_engine);
-	if (option_verbose > 1)
-		ast_verbose(VERBOSE_PREFIX_2 "MySQL RealTime driver loaded.\n");
+	ast_verb(2, "MySQL RealTime driver loaded.\n");
 	ast_cli_register_multiple(cli_realtime_mysql_status, sizeof(cli_realtime_mysql_status) / sizeof(struct ast_cli_entry));
 	return 0;
 }
@@ -1392,8 +1391,7 @@ static int unload_module(void)
 
 	ast_cli_unregister_multiple(cli_realtime_mysql_status, sizeof(cli_realtime_mysql_status) / sizeof(struct ast_cli_entry));
 	ast_config_engine_deregister(&mysql_engine);
-	if (option_verbose > 1)
-		ast_verbose(VERBOSE_PREFIX_2 "MySQL RealTime unloaded.\n");
+	ast_verb(2, "MySQL RealTime unloaded.\n");
 
 	ast_module_user_hangup_all();
 
@@ -1419,11 +1417,7 @@ static int unload_module(void)
 static int reload(void)
 {
 	parse_config(1);
-
-	if (option_verbose > 1) {
-		ast_verb(2, "MySQL RealTime reloaded.\n");
-	}
-
+	ast_verb(2, "MySQL RealTime reloaded.\n");
 	return 0;
 }
 

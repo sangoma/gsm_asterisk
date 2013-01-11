@@ -77,7 +77,7 @@
  ***/
 
 #include "asterisk.h"
-ASTERISK_FILE_VERSION(__FILE__, "$Revision: 340665 $")
+ASTERISK_FILE_VERSION(__FILE__, "$Revision: 371592 $")
 
 #include <sqlite.h>
 
@@ -668,13 +668,13 @@ static struct sqlite_cache_tables *find_table(const char *tablename)
 	}
 
 	/* Table structure not cached; build the structure now */
-	if (asprintf(&sql, sql_table_structure, tablename) < 0) {
-		ast_log(LOG_WARNING, "asprintf() failed: %s\n", strerror(errno));
+	if (ast_asprintf(&sql, sql_table_structure, tablename) < 0) {
 		sql = NULL;
 	}
 	if (!(tblptr = ast_calloc(1, sizeof(*tblptr) + strlen(tablename) + 1))) {
 		AST_RWLIST_UNLOCK(&sqlite_tables);
 		ast_log(LOG_ERROR, "Memory error.  Cannot cache table '%s'\n", tablename);
+		ast_free(sql);
 		return NULL;
 	}
 	tblptr->name = (char *)tblptr + sizeof(*tblptr);
@@ -690,9 +690,11 @@ static struct sqlite_cache_tables *find_table(const char *tablename)
 		ast_free(errstr);
 		free_table(tblptr);
 		AST_RWLIST_UNLOCK(&sqlite_tables);
+		ast_free(sql);
 		return NULL;
 	}
 	ast_mutex_unlock(&mutex);
+	ast_free(sql);
 
 	if (AST_LIST_EMPTY(&(tblptr->columns))) {
 		free_table(tblptr);
@@ -903,7 +905,7 @@ static int add_cfg_entry(void *arg, int argc, char **argv, char **columnNames)
 	var = ast_variable_new(argv[RES_CONFIG_SQLITE_CONFIG_VAR_NAME], argv[RES_CONFIG_SQLITE_CONFIG_VAR_VAL], "");
 
 	if (!var) {
-		ast_log(LOG_WARNING, "Unable to allocate variable");
+		ast_log(LOG_WARNING, "Unable to allocate variable\n");
 		return 1;
 	}
 
@@ -1055,7 +1057,7 @@ static struct ast_variable * realtime_handler(const char *database, const char *
 #define QUERY "SELECT * FROM '%q' WHERE%s %q%s '%q'"
 /* \endcond */
 
-	query = sqlite_mprintf(QUERY, table, !strcmp(config_table, table) ? " commented = 0 AND" : "", params[0], op, vals[0]);
+	query = sqlite_mprintf(QUERY, table, (config_table && !strcmp(config_table, table)) ? " commented = 0 AND" : "", params[0], op, vals[0]);
 
 	if (!query) {
 		ast_log(LOG_WARNING, "Unable to allocate SQL query\n");
@@ -1216,10 +1218,10 @@ static struct ast_config *realtime_multi_handler(const char *database,
 
 /* \cond DOXYGEN_CAN_PARSE_THIS */
 #undef QUERY
-#define QUERY "SELECT * FROM '%q' WHERE commented = 0 AND %q%s '%q'"
+#define QUERY "SELECT * FROM '%q' WHERE%s %q%s '%q'"
 /* \endcond */
 
-	if (!(query = sqlite_mprintf(QUERY, table, params[0], op, tmp_str))) {
+	if (!(query = sqlite_mprintf(QUERY, table, (config_table && !strcmp(config_table, table)) ? " commented = 0 AND" : "", params[0], op, tmp_str))) {
 		ast_log(LOG_WARNING, "Unable to allocate SQL query\n");
 		ast_config_destroy(cfg);
 		ast_free(params);
