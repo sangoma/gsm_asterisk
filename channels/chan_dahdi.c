@@ -2807,9 +2807,11 @@ static int dahdi_setlaw(int dfd, int law)
 #ifdef HAVE_WAT
 static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int startpbx, int sub, const struct ast_channel *requestor)
 {
-	int dahdi_sub;
+	int dahdi_sub = SUB_REAL;
 	int audio = 1;
 	struct dahdi_pvt *p = pvt;
+	struct ast_callid *callid = NULL;
+	int callid_created = ast_callid_threadstorage_auto(&callid);
 
 	switch (sub) {
 		case WAT_CALL_SUB_REAL:
@@ -2830,9 +2832,9 @@ static struct ast_channel *my_new_wat_ast_channel(void *pvt, int state, int star
 		ast_log(LOG_WARNING, "Unable to set audio mode on channel %d to %d: %s\n",
 				p->channel, audio, strerror(errno));
 	}
-		
+
 	dahdi_setlaw(p->subs[SUB_REAL].dfd, p->law_default);
-	return dahdi_new(p, state, startpbx, dahdi_sub, p->law_default, requestor ? requestor->linkedid : "");
+	return dahdi_new_callid_clean(p, state, startpbx, dahdi_sub, p->law_default, requestor ? ast_channel_linkedid(requestor) : "", callid, callid_created);
 }
 #endif /* defined (HAVE_WAT) */
 

@@ -35,7 +35,6 @@
 #include "asterisk/stringfields.h"
 #include "asterisk/callerid.h"
 #include "asterisk/manager.h"
-#include "asterisk/version.h"
 
 #include "sig_wat.h"
 
@@ -262,7 +261,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 	ast_assert(con_event->sub < WAT_CALL_SUB_INVALID);
 
 
-#if ASTERISK_VERSION_NUM >= 10800
+#if ASTERISK_VERSION_NUM >= 10800 || !defined(ASTERISK_VERSION_NUM)
 	cid_num = wat->pvt->cid_num;
 	cid_name = wat->pvt->cid_name;
 	context = wat->pvt->context;
@@ -297,7 +296,7 @@ void sig_wat_con_ind(unsigned char span_id, uint8_t call_id, wat_con_event_t *co
 
 	wat->pvt->remotehangup = 0;
 
-#if ASTERISK_VERSION_NUM >= 10800
+#if ASTERISK_VERSION_NUM >= 10800 || !defined(ASTERISK_VERSION_NUM)
 	if (wat->pvt->use_callerid) {
 #else
 	if (wat->pvt->calls->get_use_callerid(wat->pvt->chan_pvt)) {
@@ -414,8 +413,8 @@ void sig_wat_rel_ind(unsigned char span_id, uint8_t call_id, wat_rel_event_t *re
 
 	if (wat->pvt->owner) {
 		wat->pvt->remotehangup = 1;
-		wat->pvt->owner->hangupcause = rel_event->cause;
-		wat->pvt->owner->_softhangup |= AST_SOFTHANGUP_DEV;
+		ast_queue_hangup_with_cause(wat->pvt->owner, rel_event->cause);
+		ast_softhangup_nolock(wat->pvt->owner, AST_SOFTHANGUP_DEV);
 	} else {
 		/* Proceed with the hangup even though we do not have an owner */
 		wat_rel_cfm(span_id, call_id);
@@ -631,7 +630,7 @@ int sig_wat_available(struct sig_wat_chan *p)
 }
 
 
-int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest)
+int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, const char *rdest)
 {
 	int i,j;
 	char *c;
@@ -815,7 +814,7 @@ static void wat_queue_control(struct sig_wat_span *wat, int subclass)
 		p->calls->queue_control(p->chan_pvt, subclass);
 	}
 
-#if ASTERISK_VERSION_NUM > 10800
+#if ASTERISK_VERSION_NUM > 10800 || !defined(ASTERISK_VERSION_NUM)
 	f.subclass.integer = subclass;
 #else
 	f.subclass = subclass;

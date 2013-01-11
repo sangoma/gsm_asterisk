@@ -191,7 +191,7 @@ void sig_wat_init_wat(struct sig_wat_span *wat);
 void wat_event_alarm(struct sig_wat_span *wat);
 void wat_event_noalarm(struct sig_wat_span *wat);
 
-int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, char *rdest);
+int sig_wat_call(struct sig_wat_chan *p, struct ast_channel *ast, const char *rdest);
 int sig_wat_answer(struct sig_wat_chan *p, struct ast_channel *ast);
 int sig_wat_hangup(struct sig_wat_chan *p, struct ast_channel *ast);
 int sig_wat_available(struct sig_wat_chan *p);
