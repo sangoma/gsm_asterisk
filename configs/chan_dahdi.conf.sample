@@ -442,6 +442,7 @@ context=public
 ; e911:           E911 (MF) style signalling
 ; ss7:            Signalling System 7
 ; mfcr2:          MFC/R2 Signalling. To specify the country variant see 'mfcr2_variant'
+; gsm:            GSM Signalling. To specify module type, see gsm_moduletype
 ;
 ; The following are used for Radio interfaces:
 ; fxs_rx:         Receive audio/COR on an FXS kewlstart interface (FXO at the
@@ -1532,6 +1533,40 @@ pickupgroup=1
 ; mfcr2_charge_calls=yes
 
 ; ---------------- END of options to be used with signalling=mfcr2
+
+
+; ---------------- Options for use with signalling=gsm --------------
+; GSM module type. This depends on the manufacturer and model of the GSM module.
+; some valid values are:
+; telit (tested with Telit GE864-QUAD V2)
+;
+; example:
+; wat_moduletype=telit
+
+; Caller ID Name Timeout. This is the amount of time (in milliseconds) we will wait for the Caller ID Name to be
+; received on incoming calls, before notifying Asterisk of the incoming call. If we receive the
+; Caller ID Name after the call has been forwarded to Asterisk, the Caller ID Name will not be
+; accessible from Asterisk for that call.
+; wat_timeout_cid_name=500
+
+; Signal Strength Poll Interval. This will adjust the frequency at which the Line Signal Strength is monitored. The value of the
+; signal strength will then be printed in the logs for debugging. If you are seeing dropped calls and suspect poor signal quality
+; decrease this value to see if the signal quality dropped right before a dropped call.
+; wat_signal_poll_interval=5000
+
+; Codec. This sets the list of codec to be used during voice calls.
+; some valid values are:
+; all
+; full-rate
+; enhanced-full-rate
+; half-rate
+; amr-full-rate
+; amr-half-rate
+;
+; example:
+; wat_codecs=full-rate,enhanced-full-rate
+; ---------------- END of options to be used with signalling=gsm ----
+
 
 ; Configuration Sections
 ; ~~~~~~~~~~~~~~~~~~~~~~
